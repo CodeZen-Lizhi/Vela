@@ -1,0 +1,24 @@
+{
+  "name": "vela",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "mygo dev",
+    "build": "mygo build",
+    "generate": "mygo generate",
+    "dev:web": "npm --workspace vela-frontend run dev",
+    "build:web": "npm --workspace vela-frontend run build",
+    "check": "npm run generate && npm --workspace vela-frontend run check",
+    "test:go": "go test ./..."
+  },
+  "devDependencies": {
+    "mygo-cli": "^0.8.3"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

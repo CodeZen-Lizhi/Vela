@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f4f0e7;
+  --foreground: #15242a;
+  --card: #fbf8f1;
+  --card-foreground: #15242a;
+  --popover: #fbf8f1;
+  --popover-foreground: #15242a;
+  --primary: #1e625c;
+  --primary-foreground: #f8f5ec;
+  --secondary: #e8e1d4;
+  --secondary-foreground: #24383c;
+  --muted: #e9e2d6;
+  --muted-foreground: #6d706b;
+  --accent: #d9a45e;
+  --accent-foreground: #2b2419;
+  --destructive: #a53f35;
+  --destructive-foreground: #fffaf1;
+  --border: #d7cec0;
+  --input: #d7cec0;
+  --ring: #2f766e;
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: "Manrope Variable", sans-serif;
+  --font-serif: "Newsreader Variable", serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    background: var(--background);
+  }
+
+  body {
+    @apply min-h-screen bg-background font-sans text-foreground antialiased;
+    margin: 0;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
