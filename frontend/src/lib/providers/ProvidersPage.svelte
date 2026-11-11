@@ -6,7 +6,7 @@
   import { Switch } from "$lib/components/ui/switch";
   import * as InputGroup from "$lib/components/ui/input-group";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { VelaService, type ProviderOverview, type Provider, type ProviderDefaults, type ProviderDraft, type ProviderModel, type ProviderAccount } from "$lib/generated/mygo";
+  import { VelaService, type ProviderOverview, type Provider, type ProviderDefaults, type ProviderDraft, type ProviderModel, type ProviderAccount, type VerificationSnapshot } from "$lib/generated/mygo";
   import Choice from "./Choice.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderDetails from "./ProviderDetails.svelte";
@@ -16,6 +16,8 @@
   let {notify,openAccountSettings}: {notify:(message:string)=>void;openAccountSettings:()=>void}=$props();
   let rows=$state<ProviderOverview[]>([]), defaults=$state<ProviderDefaults|null>(null);
   let accounts=$state<Record<string,ProviderAccount>>({}), relations=$state<Record<string,ProviderModel[]>>({}), rowErrors=$state<Record<string,string>>({});
+  /** 验证摘要只读本地最新结果，不启动检测。 */
+  let verification=$state<VerificationSnapshot|null>(null);
   let accountInterval=$state<number|null>(null);
   /** 账户保存及首次读取期间锁定父弹窗关闭入口。 */
   let accountBusy=$state(false);
@@ -45,6 +47,7 @@
         if(results[1].status==="fulfilled")nextRelations[id]=results[1].value;else nextErrors[id]=message(results[1].reason);
       }));
       accounts={...accounts,...nextAccounts};relations={...relations,...nextRelations};rowErrors=nextErrors;
+      verification=await VelaService.verification();
       const settings=await VelaService.settings();accountInterval=settings.account.enabled?settings.account.minutes:null;
     }catch(cause){error=message(cause);}finally{loading=false;}
   }
@@ -57,6 +60,21 @@
   async function setEnabled(provider:Provider,value:boolean):Promise<void>{busy=true;try{await VelaService.setProviderEnabled(provider.id,value);await load();notify(value?"供应商已启用":"供应商已停用");}catch(cause){notify(message(cause));}finally{busy=false;}}
   /** 删除只在二次确认后调用，真实关联清理由数据库事务与外键完成。 */
   async function remove():Promise<void>{if(!deleting)return;busy=true;formError="";try{await VelaService.deleteProvider(deleting.id);if(detailID===deleting.id)detailID="";deleting=null;await load();notify("供应商及其关联配置已删除");}catch(cause){formError=message(cause);}finally{busy=false;}}
+  /** 按计划有效组合统计可用结论，重复复测不累加覆盖。 */
+  function verificationSummary(id:string):string{
+    const plan=verification?.plans.find((item)=>item.providerId===id);
+    if(!plan)return "尚未检测";
+    const lines=plan.lines.filter((line)=>verification?.targets.some((target)=>target.providerId===id&&target.modelId===line.modelId&&target.keyId===line.keyId&&!target.reason));
+    const reports=lines.flatMap((line)=>verification?.reports.filter((report)=>report.target.providerId===id&&report.target.modelId===line.modelId&&report.target.keyId===line.keyId&&report.target.protocol===line.protocol&&report.target.effort===line.effort&&report.state==="complete"&&report.conclusion!=="insufficient")??[]);
+    if(!reports.length)return "尚未检测";
+    const differences=reports.filter((report)=>report.conclusion==="difference").length;
+    return `已测 ${reports.length}/${lines.length} · ${differences} 项差异`;
+  }
+  /** 最新检测时间来自当前供应商真实报告，不使用原型常量。 */
+  function verificationTime(id:string):string{
+    const times=verification?.reports.filter((report)=>report.target.providerId===id).map((report)=>report.time)??[];
+    return times.length?new Date(Math.max(...times)).toLocaleString():"";
+  }
   /** 零余额原样展示，未查询成功与查询失败不能冒充零。 */
   function balance(account:ProviderAccount|undefined):string{const value=account?.balance.amount;if(value===null||value===undefined)return "—";return account?.balance.currency==="USD"?`$${value.toFixed(2)}`:`${account?.balance.currency||""} ${value.toFixed(2)}`;}
   /** 名称和行共用详情入口，控件、链接与行内操作不误触整行。 */
@@ -74,7 +92,7 @@
         <td data-label="余额"><div class="font-medium tabular-nums">{balance(account)}</div>{#if account?.balance.status.state==="failed"}<small class="block max-w-36 truncate text-[10px] text-destructive" title={account.balance.status.error}>查询失败{account.balance.amount!==null?" · 保留上次结果":""}</small>{:else if accountInterval&&account?.config.mode}<small class="text-[10px] text-muted-foreground">每 {accountInterval} 分钟刷新</small>{/if}</td>
         <td data-label="首选 Key / 倍率"><div class="provider-key-summary"><strong title={row.preferredKey?.name}>{row.preferredKey?.name??"暂无可用 Key"}</strong><small>{row.preferredKey?(row.preferredKey.multiplier===null?"倍率未知":`${row.preferredKey.multiplier}×`):"—"}</small></div></td>
         <td data-label="健康"><span class="provider-health" data-state={row.health.state} title={row.health.reason}>{({normal:"正常",degraded:"降级",abnormal:"异常",unavailable:"不可用"})[row.health.state]}{row.health.percent!==null?` · ${row.health.percent}%`:""}</span></td>
-        <td data-label="模型验证"><span class="text-[11px] text-muted-foreground">尚未检测</span></td>
+        <td data-label="模型验证"><span class="text-[11px] text-muted-foreground">{verificationSummary(provider.id)}</span>{#if verificationTime(provider.id)}<small class="block text-[10px] text-muted-foreground">{verificationTime(provider.id)}</small>{/if}</td>
         <td data-label="状态"><Switch checked={provider.enabled} disabled={busy} aria-label={`${provider.enabled?"停用":"启用"}供应商 ${provider.name}`} onCheckedChange={(value)=>setEnabled(provider,value)}/></td>
         <td data-label="操作"><div class="provider-actions"><Button variant="ghost" size="icon-xs" aria-label={`管理 ${provider.name}`} title="管理" onclick={()=>detailID=provider.id}><SlidersHorizontal/></Button><Button variant="ghost" size="icon-xs" aria-label={`编辑 ${provider.name}`} title="编辑" onclick={()=>{editing=provider;formError="";editorOpen=true;}}><Pencil/></Button><Button variant="ghost" size="icon-xs" aria-label={`${provider.name} 账户信息`} title="账户信息" onclick={()=>accountProvider=provider}><Wallet/></Button><Button variant="ghost" size="icon-xs" aria-label={`删除 ${provider.name}`} title="删除" onclick={()=>{deleting=provider;formError="";}}><Trash2/></Button></div></td>
       </tr>

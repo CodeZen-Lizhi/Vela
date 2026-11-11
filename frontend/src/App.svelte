@@ -6,8 +6,10 @@
     Waypoints,
     Network,
     ScrollText,
+    FlaskConical,
   } from "@lucide/svelte";
   import VelaMark from "$lib/components/VelaMark.svelte";
+  import VerificationPage from "$lib/verification/VerificationPage.svelte";
   import ModelsPage from "$lib/models/ModelsPage.svelte";
   import ProvidersPage from "$lib/providers/ProvidersPage.svelte";
   import SchedulingPage from "$lib/scheduling/SchedulingPage.svelte";
@@ -23,6 +25,7 @@
     { name: "供应商", icon: Network, enabled: true },
     { name: "模型", icon: Box, enabled: true },
     { name: "调度", icon: Waypoints, enabled: true },
+    { name: "模型验证", icon: FlaskConical, enabled: true },
     { name: "使用记录", icon: ScrollText, enabled: false },
   ];
   /** 面包屑末级显示的设置分类名称。 */
@@ -108,7 +111,7 @@
     <main class="mx-auto max-w-7xl p-5 lg:p-8">
       {#if page === "供应商"}<ProvidersPage {notify} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
           {notify}
-        />{:else}<SettingsPage
+        />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
           section={settingsSection}
           {notify}
         />{/if}

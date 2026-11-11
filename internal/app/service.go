@@ -10,6 +10,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
+	"github.com/CodeZen-Lizhi/vela/internal/verification"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
 )
@@ -25,6 +26,8 @@ type VelaService struct {
 	accounts   *providers.Accounts
 	settings   *settings.Store
 	scheduling *scheduling.Store
+	// verification 管理独立固定目标的指纹检测，不参与调度健康。
+	verification *verification.Manager
 	// credentials 是本机加密凭据存储；applyGeneral 让常规设置在桌面宿主生效。
 	credentials  *credentials.Store
 	applyGeneral func(settings.GeneralSettings)
@@ -44,6 +47,8 @@ type Options struct {
 	Settings *settings.Store
 	// Scheduling 是与模型模块共用数据库的调度策略模块。
 	Scheduling *scheduling.Store
+	// Verification 是与供应商共用数据库的模型验证管理器。
+	Verification *verification.Manager
 	// Credentials 是桌面入口初始化的本机加密凭据存储。
 	Credentials *credentials.Store
 	// ApplyGeneral 让保存后的常规设置在窗口、菜单栏与 Dock 立即生效。
@@ -74,6 +79,7 @@ func NewVelaService(o Options) *VelaService {
 		accounts:     o.Accounts,
 		settings:     o.Settings,
 		scheduling:   o.Scheduling,
+		verification: o.Verification,
 		credentials:  o.Credentials,
 		applyGeneral: o.ApplyGeneral,
 	}

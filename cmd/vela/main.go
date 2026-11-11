@@ -16,6 +16,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
+	"github.com/CodeZen-Lizhi/vela/internal/verification"
 	"github.com/egoist/mygo"
 )
 
@@ -23,6 +24,9 @@ import (
 //
 //go:embed assets/tray.png
 var trayIconPNG []byte
+
+// verificationProgress 将合并后的检测样本进度推送给已打开页面。
+var verificationProgress = mygo.NewEvent[verification.VerificationProgress]("verification:progress")
 
 // main 组装桌面宿主、模型、设置与调度模块，生成绑定时不打开用户数据库。
 func main() {
@@ -104,6 +108,28 @@ func main() {
 	if general, err = preferences.General(context.Background()); err != nil {
 		log.Printf("读取常规设置失败，本次使用默认行为: %v", err)
 	}
+	verifier, err := verification.New(store.DB(), upstreams, store)
+	if err != nil {
+		log.Fatal(err)
+	}
+	verifier.SetProgressHandler(func(progress verification.VerificationProgress) {
+		if err := verificationProgress.Broadcast(progress); err != nil {
+			log.Printf("推送模型验证进度失败: %v", err)
+		}
+	})
+	mygo.Power.OnSuspend(verifier.Suspend)
+	mygo.Power.OnResume(func() {
+		if err := verifier.Resume(context.Background()); err != nil {
+			log.Printf("恢复模型验证计时失败: %v", err)
+		}
+	})
+	verificationContext, stopVerification := context.WithCancel(context.Background())
+	defer func() { stopVerification(); verifier.Close() }()
+	go func() {
+		if err := verifier.Run(verificationContext); err != nil && verificationContext.Err() == nil {
+			log.Printf("模型验证定时执行停止: %v", err)
+		}
+	}()
 	mygo.Theme.SetSource(themeSource(general.Appearance))
 	mygo.Bind(app.NewVelaService(app.Options{
 		Version:      buildinfo.Version,
@@ -112,6 +138,7 @@ func main() {
 		Accounts:     accounts,
 		Settings:     preferences,
 		Scheduling:   policies,
+		Verification: verifier,
 		Credentials:  secrets,
 		ApplyGeneral: applyGeneral,
 	}))
