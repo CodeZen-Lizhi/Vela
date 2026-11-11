@@ -47,7 +47,7 @@ func TestCreate(t *testing.T) {
 	if err != nil || len(result.Failures) != 0 || result.Updated != 1 {
 		t.Fatalf("手动模型不应同步: %+v %v", result, err)
 	}
-	if _, err = s.Update(ctx, Edit{ID: manual.ID, Name: manual.Name, Pricing: manual.Pricing, RestoreGroups: []string{"base"}}); err == nil {
+	if _, err = s.Update(ctx, Edit{ID: manual.ID, Revision: manual.Revision, Name: manual.Name, Pricing: manual.Pricing, RestoreGroups: []string{"base"}}); err == nil {
 		t.Fatal("无来源恢复应报错")
 	}
 	if _, err = s.Create(ctx, Create{ModelID: "bad", Name: "", Kind: "chat"}); err == nil {

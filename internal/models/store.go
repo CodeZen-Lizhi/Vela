@@ -95,14 +95,15 @@ func (s *Store) get(ctx context.Context, id string) (Model, error) {
 	return m, err
 }
 
-// save 在单条语句内替换完整规则，避免持久化半套价格；调用方持有写入锁。
-func (s *Store) save(ctx context.Context, m Model) error {
+// save 在单条语句内替换完整规则并递增版本，返回已保存版本；调用方持有写入锁。
+func (s *Store) save(ctx context.Context, m Model) (Model, error) {
+	m.Revision++
 	data, err := json.Marshal(m)
 	if err != nil {
-		return err
+		return Model{}, err
 	}
 	_, err = s.db.ExecContext(ctx, "UPDATE models SET document=? WHERE id=?", string(data), m.ID)
-	return err
+	return m, err
 }
 
 // Add 从已读取的真实来源候选添加模型，重复统一身份返回错误而不覆盖已有配置。
@@ -154,6 +155,7 @@ func (s *Store) add(ctx context.Context, providerID, modelID string, draft *Crea
 
 // insert 由数据库唯一约束拒绝重复身份，不覆盖已有配置。
 func (s *Store) insert(ctx context.Context, m Model) (Model, error) {
+	m.Revision = 1
 	data, err := json.Marshal(m)
 	if err != nil {
 		return m, err
@@ -169,7 +171,7 @@ func (s *Store) insert(ctx context.Context, m Model) (Model, error) {
 	return m, nil
 }
 
-// Update 校验可编辑字段并按规则组设置修改保护，不更改来源身份。
+// Update 拒绝过期草稿，校验可编辑字段并按规则组设置修改保护，不更改来源身份。
 func (s *Store) Update(ctx context.Context, edit Edit) (Model, error) {
 	edit.Name = strings.TrimSpace(edit.Name)
 	if edit.Name == "" || len([]rune(edit.Name)) > 80 {
@@ -183,6 +185,9 @@ func (s *Store) Update(ctx context.Context, edit Edit) (Model, error) {
 	m, err := s.get(ctx, edit.ID)
 	if err != nil {
 		return m, err
+	}
+	if edit.Revision != m.Revision {
+		return Model{}, errors.New("模型已更新，请取消编辑并重新打开，已保留最新配置")
 	}
 	for _, g := range groups {
 		if !sameGroup(m.Pricing, edit.Pricing, g) && !contains(m.Overrides, g) {
@@ -210,10 +215,10 @@ func (s *Store) Update(ctx context.Context, edit Edit) (Model, error) {
 	}
 	m.Name = edit.Name
 	m.Pricing = edit.Pricing
-	return m, s.save(ctx, m)
+	return s.save(ctx, m)
 }
 
-// Delete 删除本阶段的独立模型；后续新增关联表时必须在同一模块扩展清理事务。
+// Delete 删除统一模型，由外键在同一语句事务中级联清理供应商关联、映射及 Key 模型权限。
 func (s *Store) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

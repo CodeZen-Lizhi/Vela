@@ -113,7 +113,7 @@
     createEntry = entry;
     dialogError = "";
     const pricing: Pricing = {base: [], tiers: [], modes: [], schedules: [], baseline: "", images: [], videos: []};
-    createDraft = {id: "", modelId: entry?.modelId ?? "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
+    createDraft = {id: "", revision: 0, modelId: entry?.modelId ?? "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
   }
   /** 返回目录丢弃未提交草稿，保留目录筛选和滚动位置；焦点回到搜索框。 */
   async function returnToCatalog(): Promise<void> {
@@ -154,8 +154,9 @@
       busy = false;
     }
   }
-  /** 编辑使用独立草稿，取消时不改列表或数据库。 */
+  /** 编辑使用独立草稿；等待写入或刷新完成后再打开，避免从旧列表创建草稿。 */
   function openEditor(m: Model, detail: boolean): void {
+    if (busy || loading) return;
     restoredGroups = [];
     selected = m;
     draft = structuredClone($state.snapshot(m));
@@ -163,7 +164,7 @@
     dialogError = "";
     editorOpen = true;
   }
-  /** 保存后重读，使成功状态对应真实持久化结果。 */
+  /** 保存后重读；失败保留草稿并刷新列表，取消重开时可取得最新版本。 */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (!draft) return;
@@ -172,6 +173,7 @@
     try {
       await VelaService.updateModel({
         id: draft.id,
+        revision: draft.revision,
         name: draft.name,
         pricing: draft.pricing,
         restoreGroups: restoredGroups,
@@ -180,6 +182,7 @@
       editorOpen = false;
     } catch (e) {
       dialogError = message(e);
+      await load();
     } finally {
       busy = false;
     }
@@ -416,11 +419,13 @@
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`查看 ${model.name}`}
+                    disabled={busy || loading}
                     onclick={() => openEditor(model, true)}><Eye /></Button
                   ><Button
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`编辑 ${model.name}`}
+                    disabled={busy || loading}
                     onclick={() => openEditor(model, false)}><Pencil /></Button
                   ><Button
                     variant="ghost"

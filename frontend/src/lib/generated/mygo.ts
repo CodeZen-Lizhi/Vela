@@ -88,6 +88,8 @@ export interface Create {
 export interface Edit {
   /** ID 本地稳定身份，删除重建时不复用。 */
   id: string;
+  /** Revision 打开编辑时读取的模型版本，须与当前保存版本一致。 */
+  revision: number;
   /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
   name: string;
   /** Pricing 当前生效的完整本地价格规则。 */
@@ -146,6 +148,8 @@ export interface Mode {
 export interface Model {
   /** ID 本地稳定身份，删除重建时不复用。 */
   id: string;
+  /** Revision 每次保存或同步后递增；旧记录缺失时为零，用于拒绝过期编辑草稿。 */
+  revision: number;
   /** ModelID 统一模型名称或来源候选名称。 */
   modelId: string;
   /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
@@ -565,7 +569,7 @@ export interface Schedule {
   start: string;
   /** End 不包含的当地结束时刻，可用 24:00。 */
   end: string;
-  /** Multiplier 相对 Standard 的正倍率；为空时使用显式价格。 */
+  /** Multiplier 分时窗口内相对基准口径的正倍率，必须大于零。 */
   multiplier: number;
   /** ExcludedDates 排除的当地日期，格式 YYYY-MM-DD。 */
   excludedDates: string[];
@@ -662,7 +666,7 @@ export const VelaService = {
   createProviderKey(providerID: string, draft: ProviderKeyDraft): Promise<ProviderKey> {
     return call("VelaService.CreateProviderKey", providerID, draft);
   },
-  /** DeleteModel 删除当前独立模型，调用方先展示确认。 */
+  /** DeleteModel 删除统一模型及其供应商关联、映射和 Key 模型权限，调用方先展示确认。 */
   deleteModel(id: string): Promise<void> {
     return call("VelaService.DeleteModel", id);
   },

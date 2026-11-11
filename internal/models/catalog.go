@@ -134,7 +134,7 @@ func (s *Store) fetchCatalog(ctx context.Context, includeDeprecated bool) ([]Cat
 			entry.Context = m.Limit.Context
 			entry.Kind = "chat"
 			switch {
-			case m.Type == "embedding" || m.Type == "rerank":
+			case m.Type == "embedding" || m.Type == "rerank" || m.Type == "reranking":
 				entry.Kind = "vector"
 			case m.Type == "video" || contains(m.Modalities.Output, "video"):
 				entry.Kind = "video"
@@ -190,7 +190,7 @@ func catalogReleaseDate(value string) time.Time {
 	return time.Time{}
 }
 
-// decodeRates 只映射 API 已声明的 Token 价格，不从 input/output 猜测图片或秒价。
+// decodeRates 映射明确的 Token 价格；独立推理单价无法表达时拒绝导入，不从 Token 价猜测图片或秒价。
 func decodeRates(raw json.RawMessage, kind string) ([]Rate, error) {
 	result := []Rate{}
 	if len(raw) == 0 || string(raw) == "null" {
@@ -199,6 +199,14 @@ func decodeRates(raw json.RawMessage, kind string) ([]Rate, error) {
 	var costs map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &costs); err != nil {
 		return nil, errors.New("来源价格格式无效")
+	}
+	// reasoning 与普通输出同价时可共用 output；不同价、缺少输出价或非法值不能静默丢弃。
+	if value, ok := costs["reasoning"]; ok {
+		var reasoning, output float64
+		if string(value) == "null" || json.Unmarshal(value, &reasoning) != nil || !validPrice(reasoning, false) ||
+			len(costs["output"]) == 0 || string(costs["output"]) == "null" || json.Unmarshal(costs["output"], &output) != nil || !validPrice(output, false) || reasoning != output {
+			return nil, errors.New("来源 reasoning 单价无法独立表达，已保留本地配置")
+		}
 	}
 	for _, key := range []string{"input", "output", "cache_read", "cache_write", "cache_write_1h", "input_audio", "output_audio"} {
 		value, ok := costs[key]
@@ -315,7 +323,7 @@ func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 		e, ok := lookup[m.ProviderID+"\x00"+m.SourceModelID]
 		if !ok {
 			m.SourceAvailable = false
-			if err = s.save(ctx, m); err != nil {
+			if _, err = s.save(ctx, m); err != nil {
 				return result, err
 			}
 			result.Failures = append(result.Failures, m.ModelID+"：来源已下架，保留本地配置")
@@ -324,6 +332,11 @@ func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 		if e.Problem != "" {
 			result.Failures = append(result.Failures, m.ModelID+"："+e.Problem)
 			continue
+		}
+		// 修正旧版导入器将重排模型保存为对话模型的记录，保留本地有效价格和修改保护。
+		if e.Kind == "vector" && m.Kind != "vector" {
+			m.Kind = "vector"
+			removeVectorOutput(&m.Pricing)
 		}
 		for _, g := range groups {
 			if hasGroup(e.Pricing, g) && !contains(m.Overrides, g) {
@@ -352,7 +365,7 @@ func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 		m.SourcePricing = e.Pricing
 		m.SourceAvailable = true
 		m.SyncedAt = time.Now().UTC().Format(time.RFC3339)
-		if err = s.save(ctx, m); err != nil {
+		if _, err = s.save(ctx, m); err != nil {
 			return result, fmt.Errorf("%s 同步保存失败: %w", m.ModelID, err)
 		}
 		result.Updated++

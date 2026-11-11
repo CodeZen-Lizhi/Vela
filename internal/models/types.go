@@ -103,7 +103,7 @@ type Schedule struct {
 	Start string `json:"start"`
 	// End 不包含的当地结束时刻，可用 24:00。
 	End string `json:"end"`
-	// Multiplier 相对 Standard 的正倍率；为空时使用显式价格。
+	// Multiplier 分时窗口内相对基准口径的正倍率，必须大于零。
 	Multiplier float64 `json:"multiplier"`
 	// ExcludedDates 排除的当地日期，格式 YYYY-MM-DD。
 	ExcludedDates []string `json:"excludedDates"`
@@ -153,6 +153,8 @@ type Pricing struct {
 type Model struct {
 	// ID 本地稳定身份，删除重建时不复用。
 	ID string `json:"id"`
+	// Revision 每次保存或同步后递增；旧记录缺失时为零，用于拒绝过期编辑草稿。
+	Revision int64 `json:"revision"`
 	// ModelID 统一模型名称或来源候选名称。
 	ModelID string `json:"modelId"`
 	// Name 模型显示名称或处理模式标识，按所属类型解释。
@@ -219,6 +221,8 @@ type CatalogEntry struct {
 type Edit struct {
 	// ID 本地稳定身份，删除重建时不复用。
 	ID string `json:"id"`
+	// Revision 打开编辑时读取的模型版本，须与当前保存版本一致。
+	Revision int64 `json:"revision"`
 	// Name 模型显示名称或处理模式标识，按所属类型解释。
 	Name string `json:"name"`
 	// Pricing 当前生效的完整本地价格规则。
