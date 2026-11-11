@@ -216,8 +216,6 @@ export interface Provider {
   website: string;
   /** URL 服务地址，只保存站点根地址，例如 https://api.example.com。 */
   url: string;
-  /** Note 备注，不参与调用。 */
-  note: string;
   /** Enabled 是否启用；停用后退出调用候选，Key 与其他配置保留。 */
   enabled: boolean;
   /** Request 请求配置。 */
@@ -277,8 +275,6 @@ export interface ProviderDraft {
   website: string;
   /** URL 服务地址；可带 /v1 或 /v1beta 后缀，保存时去掉。 */
   url: string;
-  /** Note 备注。 */
-  note: string;
   /** Request 请求配置。 */
   request: RequestPolicy;
 }
@@ -474,17 +470,12 @@ export interface Proxy {
 
 /** ProxyChoice 是供应商或上游 Key 的局部出口选择。 */
 export interface ProxyChoice {
-  /** Mode 出口方式；供应商可取 global、direct、custom，上游 Key 另可取 provider。 */
+  /** Mode 出口方式；供应商可取 global、direct，上游 Key 只可取 provider、direct。 */
   mode: ProxyMode;
-  /**
-   * URL 自定义代理地址，支持 http、https、socks5 或 socks5h；含认证时读取只返回 ***，编辑传 *** 或空串保留原值。
-   * 数据库使用带版本前缀的密文保存完整认证地址，只在实际出站前解密；无认证地址保持原样。
-   */
-  url: string;
 }
 
 /** ProxyMode 是供应商或上游 Key 的出口方式。 */
-export type ProxyMode = "global" | "direct" | "custom" | "provider";
+export type ProxyMode = "global" | "direct" | "provider";
 
 /** QueryConfig 定义账户连接；秘密字段读取只返回 ***，保存空串或 *** 均保留原值。 */
 export interface QueryConfig {
@@ -548,8 +539,6 @@ export interface RequestPolicy {
   proxy: ProxyChoice;
   /** ResponsesWebSocket 是否启用 Responses WebSocket 模式。 */
   responsesWebSocket: boolean;
-  /** TransportFailover 传输失败后是否继续转移。 */
-  transportFailover: boolean;
 }
 
 /** RuntimeInfo 是前端可读取的运行信息投影。 */

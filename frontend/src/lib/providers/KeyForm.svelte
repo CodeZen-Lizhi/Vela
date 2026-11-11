@@ -20,7 +20,7 @@
     name: item?.name ?? "", secret: "", note: item?.note ?? "", multiplier: item ? item.multiplier : defaults.keyMultiplier,
     priority: item?.priority ?? nextPriority, rpmLimit: item?.rpmLimit ?? 0, concurrencyLimit: item?.concurrencyLimit ?? 0,
     cacheMinutes: item?.cacheMinutes ?? defaults.keyCacheMinutes, probeMinutes: item?.probeMinutes ?? defaults.keyProbeMinutes,
-    proxy: {...(item?.proxy ?? {mode: "provider", url: ""})},
+    proxy: {...(item?.proxy ?? {mode: "provider"})},
   })));
   /** 名称与倍率来源、查询连接也属于当前新增或编辑草稿。 */
   let queryDraft = $state<ProviderKeyQueryDraft>(defaultKeyQuery());

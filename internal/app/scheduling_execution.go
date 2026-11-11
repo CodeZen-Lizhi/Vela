@@ -78,7 +78,7 @@ func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendo
 // clientFor 按Key→供应商→全局代理解析出口，客户端按地址复用，重定向不携带上游凭据。
 func (s *SchedulingExecution) clientFor(ctx context.Context, c scheduling.Candidate) (*http.Client, error) {
 	choice := c.Key.Proxy
-	if choice.Mode == providers.ProxyProvider {
+	if choice.Mode == providers.ProxyProvider || choice.Mode == "" {
 		choice = c.Provider.Request.Proxy
 	}
 	var proxy *url.URL
@@ -88,18 +88,15 @@ func (s *SchedulingExecution) clientFor(ctx context.Context, c scheduling.Candid
 			return nil, err
 		}
 		if global.Enabled {
-			choice = providers.ProxyChoice{Mode: providers.ProxyCustom, URL: global.URL}
-		} else {
-			choice.Mode = providers.ProxyDirect
+			proxy, err = outbound.ParseProxy(global.URL)
+			if err != nil {
+				return nil, err
+			}
 		}
+	} else if choice.Mode != providers.ProxyDirect {
+		return nil, errors.New("无效网络代理方式")
 	}
-	if choice.Mode == providers.ProxyCustom {
-		var err error
-		proxy, err = outbound.ParseProxy(choice.URL)
-		if err != nil {
-			return nil, err
-		}
-	}
+
 	key := "direct"
 	if proxy != nil {
 		key = proxy.String()

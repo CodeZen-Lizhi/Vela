@@ -84,9 +84,11 @@ func TestLocalDocumentsCombinedAccountLifecycle(t *testing.T) {
 	s, a, closeDB := openLocalProvider(t, dir)
 	d := validDraft("local-credentials")
 	d.URL = "http://upstream.test"
-	d.Request.Proxy = ProxyChoice{Mode: ProxyCustom, URL: authenticatedProxy(t, proxy.URL, "fixture-proxy-user", "fixture-proxy-password")}
+	d.Request.Proxy = ProxyChoice{Mode: ProxyGlobal}
+	global := authenticatedProxy(t, proxy.URL, "fixture-proxy-user", "fixture-proxy-password")
+	a.globalProxy = func(context.Context) (bool, string, error) { return true, global, nil }
 	p, err := s.Create(ctx, d)
-	if err != nil || p.Request.Proxy.URL != "***" {
+	if err != nil || p.Request.Proxy.Mode != ProxyGlobal {
 		t.Fatal("加密供应商创建失败", err)
 	}
 	account, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-local-account"}})
@@ -114,7 +116,7 @@ func TestLocalDocumentsCombinedAccountLifecycle(t *testing.T) {
 	if _, err = a.SaveProviderKeyQuery(ctx, query.KeyID, q); err != nil {
 		t.Fatal("独立查询配置保存失败", err)
 	}
-	d.Request.Proxy.URL = "***"
+	d.Request.Proxy.Mode = ProxyGlobal
 	if _, err = s.Update(ctx, p.ID, d); err != nil {
 		t.Fatal("加密文档代理掩码编辑失败", err)
 	}
@@ -139,6 +141,7 @@ func TestLocalDocumentsCombinedAccountLifecycle(t *testing.T) {
 	before := requests.Load()
 	closeDB()
 	s, a, closeDB = openLocalProvider(t, dir)
+	a.globalProxy = func(context.Context) (bool, string, error) { return true, global, nil }
 	if _, err = a.RefreshProviderAccounts(ctx, p.ID); err != nil {
 		t.Fatal("重启后账户刷新失败", err)
 	}
@@ -194,7 +197,7 @@ func TestLocalDocumentsCombinedAccountLifecycle(t *testing.T) {
 	}
 }
 
-// TestLocalDocumentsLegacyMigration 验证旧JSON含认证代理迁入整文档密文，代理二级密文和未知字段均保留。
+// TestLocalDocumentsLegacyMigration 验证旧JSON含认证代理迁入整文档密文，局部代理被移除且未知字段保留。
 func TestLocalDocumentsLegacyMigration(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -224,12 +227,12 @@ func TestLocalDocumentsLegacyMigration(t *testing.T) {
 		t.Fatal("迁移丢失字段", err)
 	}
 	var saved providerDocument
-	if err = protected.decodeDocument([]byte(raw), &saved); err != nil || !strings.HasPrefix(saved.Request.Proxy.URL, proxyCipherPrefix) {
-		t.Fatal("代理二级密文丢失", err)
+	if err = protected.decodeDocument([]byte(raw), &saved); err != nil || saved.Request.Proxy.Mode != ProxyGlobal {
+		t.Fatal("局部代理未迁为继承", err)
 	}
 	snapshot, err := protected.Snapshot(ctx)
-	if err != nil || snapshot.Providers[0].Provider.Request.Proxy.URL != "***" {
-		t.Fatal("迁移后掩码错误", err)
+	if err != nil || snapshot.Providers[0].Provider.Request.Proxy.Mode != ProxyGlobal {
+		t.Fatal("迁移后出口错误", err)
 	}
 	closeDB()
 }

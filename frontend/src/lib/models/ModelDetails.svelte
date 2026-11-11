@@ -5,7 +5,13 @@
   import * as Table from "$lib/components/ui/table";
   import ModelCapabilities from "./ModelCapabilities.svelte";
   import PriceSummary from "./PriceSummary.svelte";
-  import { dateLabel, kinds, rateNames, unitLabel } from "./display";
+  import {
+    dateLabel,
+    kinds,
+    modelInitial,
+    rateNames,
+    unitLabel,
+  } from "./display";
 
   /** 只读详情按原型展示身份、能力与已提供价格，不复用编辑表单。 */
   let { model }: { model: Model } = $props();
@@ -63,7 +69,11 @@
     <span
       class="model-brand"
       data-brand={model.canonicalId.split("/")[0]}
-      aria-hidden="true">{model.providerName.slice(0, 1).toUpperCase()}</span
+      aria-hidden="true">{modelInitial(
+        model.name,
+        model.providerName,
+        !model.providerId,
+      )}</span
     >
     <div>
       <p class="detail-eyebrow">{model.providerName}</p>
@@ -112,13 +122,15 @@
   </dl>
 
   <Separator orientation="horizontal" class="h-px" />
-  <section
-    class="detail-capabilities"
-    aria-labelledby="detail-capabilities-title"
-  >
-    <h3 id="detail-capabilities-title">模型能力</h3>
-    <ModelCapabilities values={model.capabilities} />
-  </section>
+  {#if model.capabilities.length}
+    <section
+      class="detail-capabilities"
+      aria-labelledby="detail-capabilities-title"
+    >
+      <h3 id="detail-capabilities-title">模型能力</h3>
+      <ModelCapabilities values={model.capabilities} />
+    </section>
+  {/if}
 
   <section class="detail-pricing" aria-labelledby="detail-price-title">
     <header class="detail-price-heading">

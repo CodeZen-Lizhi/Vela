@@ -8,6 +8,7 @@
   import ModelCapabilities from "./ModelCapabilities.svelte";
   import PriceSummary from "./PriceSummary.svelte";
   import { kinds } from "./display";
+  import { searchCatalogEntries } from "./catalog-search";
   import anthropicLogo from "$lib/assets/providers/anthropic.svg";
   import openaiLogo from "$lib/assets/providers/openai.svg";
   import googleLogo from "$lib/assets/providers/google.svg";
@@ -80,17 +81,14 @@
   const current = $derived(provider || vendors[0]?.id || "all");
   /** 有搜索词时跨全部来源匹配，否则按所选官方厂商浏览。 */
   const matches = $derived.by(() => {
-    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return catalog.filter((entry) => {
-      if (kind !== "all" && entry.kind !== kind) return false;
-      if (!words.length)
-        return current === "all"
-          ? !vendors.length || vendors.some((vendor) => vendor.id === entry.providerId)
-          : entry.providerId === current;
-      const text =
-        `${entry.name} ${entry.modelId} ${entry.providerName} ${entry.family} ${kinds[entry.kind]}`.toLowerCase();
-      return words.every((word) => text.includes(word));
-    });
+    const scoped = query.trim()
+      ? catalog
+      : catalog.filter((entry) =>
+          current === "all"
+            ? !vendors.length || vendors.some((vendor) => vendor.id === entry.providerId)
+            : entry.providerId === current,
+        );
+    return searchCatalogEntries(scoped, query, kind, kinds);
   });
   /** 选择厂商即回到按厂商浏览，同时清空跨来源搜索词。 */
   function pick(id: string): void {

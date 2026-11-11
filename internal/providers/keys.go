@@ -104,7 +104,7 @@ func (doc keyDocument) key(id, providerID string, enabled, allModels bool, mask 
 		ConcurrencyLimit: doc.ConcurrencyLimit,
 		CacheMinutes:     doc.CacheMinutes,
 		ProbeMinutes:     doc.ProbeMinutes,
-		Proxy:            maskProxy(doc.Proxy),
+		Proxy:            doc.Proxy,
 		AllModels:        allModels,
 		HealthScore:      initialKeyHealth,
 	}
@@ -161,11 +161,6 @@ func (s *Store) sealingMasterKey(ctx context.Context) ([]byte, error) {
 	if err = s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM provider_keys WHERE secret IS NOT NULL)").Scan(&sealed); err != nil {
 		return nil, fmt.Errorf("检查已保存的凭据: %w", err)
 	}
-	proxySealed, err := s.hasProxyCredentials(ctx)
-	if err != nil {
-		return nil, err
-	}
-	sealed = sealed || proxySealed
 	// 账户连接也含密文；即使全部 Key 已删除，丢失主密钥也不能生成另一把覆盖旧凭据。
 	for _, table := range []string{"provider_accounts", "provider_key_queries"} {
 		var exists bool
@@ -205,9 +200,7 @@ func (s *Store) Keys(ctx context.Context, providerID string) ([]ProviderKey, err
 	result := []ProviderKey{}
 	var master []byte
 	for _, row := range rows {
-		if _, err = s.proxyForNetwork(proxyBinding("key", row.id), row.doc.Proxy); err != nil {
-			return nil, err
-		}
+
 		mask := ""
 		if row.sealed != nil {
 			if master == nil {
@@ -272,10 +265,7 @@ func (s *Store) CreateKey(ctx context.Context, providerID string, draft Provider
 	if !exists {
 		return ProviderKey{}, errProviderMissing
 	}
-	doc.Proxy, err = s.protectProxy(ctx, proxyBinding("key", id), doc.Proxy, ProxyChoice{})
-	if err != nil {
-		return ProviderKey{}, err
-	}
+
 	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return ProviderKey{}, err
@@ -302,14 +292,7 @@ func (s *Store) UpdateKey(ctx context.Context, keyID string, draft ProviderKeyDr
 	if err != nil {
 		return ProviderKey{}, err
 	}
-	oldProxy, err := s.storedKeyProxy(ctx, keyID)
-	if err != nil {
-		return ProviderKey{}, err
-	}
-	doc.Proxy, err = s.protectProxy(ctx, proxyBinding("key", keyID), doc.Proxy, oldProxy)
-	if err != nil {
-		return ProviderKey{}, err
-	}
+
 	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return ProviderKey{}, err

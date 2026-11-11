@@ -414,7 +414,7 @@ func TestAccountMasterKeyLoss(t *testing.T) {
 	}
 }
 
-// TestAccountProxyChoice 通过实际 HTTP 代理证明余额走供应商出口，Key 直连可覆盖供应商代理。
+// TestAccountProxyChoice 通过实际 HTTP 代理证明余额继承全局出口，Key 直连可覆盖供应商继承。
 func TestAccountProxyChoice(t *testing.T) {
 	ctx := context.Background()
 	var direct, proxied atomic.Int32
@@ -431,7 +431,8 @@ func TestAccountProxyChoice(t *testing.T) {
 	a, p, k, _ := accountFixture(t, upstream.URL)
 	d := validDraft(p.Name)
 	d.URL = upstream.URL
-	d.Request.Proxy = ProxyChoice{Mode: ProxyCustom, URL: proxy.URL}
+	d.Request.Proxy = ProxyChoice{Mode: ProxyGlobal}
+	a.globalProxy = func(context.Context) (bool, string, error) { return true, proxy.URL, nil }
 	if _, e := a.store.Update(ctx, p.ID, d); e != nil {
 		t.Fatal(e)
 	}

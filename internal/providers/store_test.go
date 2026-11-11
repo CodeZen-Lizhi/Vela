@@ -58,7 +58,7 @@ func openStore(t *testing.T, path string, keys KeyStore) (*Store, func()) {
 
 // validDraft 返回一份合法的供应商草稿，各用例在其上修改单个字段。
 func validDraft(name string) ProviderDraft {
-	return ProviderDraft{Name: name, URL: "https://api.example.com", Request: RequestPolicy{Proxy: ProxyChoice{Mode: ProxyGlobal}, TransportFailover: true}}
+	return ProviderDraft{Name: name, URL: "https://api.example.com", Request: RequestPolicy{Proxy: ProxyChoice{Mode: ProxyGlobal}}}
 }
 
 // expectError 断言操作失败且提示包含给定文字。
@@ -86,12 +86,11 @@ func TestProviderLifecycle(t *testing.T) {
 	draft := validDraft("  Northstar  ")
 	draft.Website = "northstar.example/"
 	draft.URL = " https://API.Example.com/v1/ "
-	draft.Note = " 主力 "
 	first, err := s.Create(ctx, draft)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Name != "Northstar" || first.Website != "https://northstar.example" || first.URL != "https://api.example.com" || first.Note != "主力" || !first.Enabled {
+	if first.Name != "Northstar" || first.Website != "https://northstar.example" || first.URL != "https://api.example.com" || !first.Enabled {
 		t.Fatalf("归一化结果 = %+v", first)
 	}
 
@@ -117,7 +116,7 @@ func TestProviderLifecycle(t *testing.T) {
 		"非流式请求超时":   func(d *ProviderDraft) { d.Request.RequestSeconds = -1 },
 		"不能为负数":     func(d *ProviderDraft) { d.Request.MaxTransfers = -1 },
 		"请选择网络代理方式": func(d *ProviderDraft) { d.Request.Proxy.Mode = ProxyProvider },
-		"代理地址":      func(d *ProviderDraft) { d.Request.Proxy = ProxyChoice{Mode: ProxyCustom, URL: "ftp://proxy"} },
+		"代理方式":      func(d *ProviderDraft) { d.Request.Proxy = ProxyChoice{Mode: "custom"} },
 	}
 	for want, change := range invalid {
 		bad := validDraft("Invalid")
@@ -131,12 +130,12 @@ func TestProviderLifecycle(t *testing.T) {
 
 	edit := validDraft("Northstar Pro")
 	edit.URL = "http://localhost:3000/v1beta"
-	edit.Request = RequestPolicy{Attempts: 2, StreamTotalMillis: 300_125, MaxTransfers: 3, Proxy: ProxyChoice{Mode: ProxyCustom, URL: " socks5://127.0.0.1:1080 "}}
+	edit.Request = RequestPolicy{Attempts: 2, StreamTotalMillis: 300_125, MaxTransfers: 3, Proxy: ProxyChoice{Mode: ProxyDirect}}
 	updated, err := s.Update(ctx, first.ID, edit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Name != "Northstar Pro" || updated.URL != "http://localhost:3000" || updated.Website != "" || updated.Request.StreamTotalMillis != 300_125 || updated.Request.Proxy.URL != "socks5://127.0.0.1:1080" || updated.Request.TransportFailover {
+	if updated.Name != "Northstar Pro" || updated.URL != "http://localhost:3000" || updated.Website != "" || updated.Request.StreamTotalMillis != 300_125 || updated.Request.Proxy.Mode != ProxyDirect {
 		t.Fatalf("编辑结果 = %+v", updated)
 	}
 	_, err = s.Update(ctx, first.ID, validDraft("northstar"))
