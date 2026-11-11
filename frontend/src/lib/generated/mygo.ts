@@ -4,6 +4,554 @@ import { call } from "mygo-runtime";
 
 // ---- Types ----
 
+/** AccountBalance 保留原币种金额及独立上游额度；nil 表示未知，0 有效。 */
+export interface AccountBalance {
+  /** Amount、Cash、Points、Used 分别为余额、现金、积分、上游已用。 */
+  amount: number | null;
+  cash: number | null;
+  points: number | null;
+  used: number | null;
+  /** Currency 原币种；Subscription 为不包含认证的上游订阅对象 JSON。 */
+  currency: string;
+  subscription: string;
+  /** Status、SubscriptionStatus、Checkin 分别记录余额、订阅与签到结果。 */
+  status: QueryStatus;
+  subscriptionStatus: QueryStatus;
+  checkin: QueryStatus;
+}
+
+/** AccountRefresh 是所有供应商账户共用的定时刷新设置。 */
+export interface AccountRefresh {
+  /** Enabled 是否定时刷新账户信息，默认关闭。 */
+  enabled: boolean;
+  /** Minutes 刷新间隔，单位分钟，至少为 1。 */
+  minutes: number;
+}
+
+/** AttentionSettings 是总览提醒的展示偏好，只控制展示，不启动采集或验证任务。 */
+export interface AttentionSettings {
+  /** Balance 是否展示供应商余额不足。 */
+  balance: boolean;
+  /** Difference 是否展示模型验证差异。 */
+  difference: boolean;
+  /** Health 是否展示供应商健康异常。 */
+  health: boolean;
+  /** Rate 是否展示 Key 倍率变化。 */
+  rate: boolean;
+  /** BalanceThreshold 余额低于该美元金额时提醒，零是有效阈值。 */
+  balanceThreshold: number;
+}
+
+/** CatalogEntry 是搜索目录候选；非官方来源必须由用户主动选择。 */
+export interface CatalogEntry {
+  /** ProviderID 价格来源供应商的稳定标识，不是用户中转站配置。 */
+  providerId: string;
+  /** ProviderName 价格来源供应商显示名称。 */
+  providerName: string;
+  /** ModelID 统一模型名称或来源候选名称。 */
+  modelId: string;
+  /** CanonicalID 来源声明的规范模型身份，缺失时不根据名称猜测。 */
+  canonicalId: string;
+  /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
+  name: string;
+  /** Family 来源声明的模型系列；空值表示未知。 */
+  family: string;
+  /** Kind chat、image、video 或 vector 类型。 */
+  kind: string;
+  /** Context 来源声明的上下文 Token 上限；零表示未知。 */
+  context: number;
+  /** Capabilities 来源声明的输入类型、思考与工具能力。 */
+  capabilities: string[];
+  /** Official 只有来源规范身份归属与供应商一致时标为官方。 */
+  official: boolean;
+  /** Pricing 当前生效的完整本地价格规则。 */
+  pricing: Pricing;
+  /** Problem 该来源候选无法导入的原因；空值表示有效。 */
+  problem: string;
+}
+
+/** Create 提交创建草稿，目录资料由服务端读取，空来源表示手动创建。 */
+export interface Create {
+  /** ProviderID 精确目录来源；为空时不关联任何目录。 */
+  providerId: string;
+  /** ModelID 目录候选 ID 或手动填写的真实调用名称。 */
+  modelId: string;
+  /** Name 用户确认的显示名称，1～80 个字符。 */
+  name: string;
+  /** Kind 仅用于手动模型，取 chat、image、video 或 vector。 */
+  kind: string;
+  /** Pricing 本地有效价格；空规则表示未知。 */
+  pricing: Pricing;
+}
+
+/** Edit 仅开放显示名称及价格，不接受调用方改写来源、身份或修改保护标记。 */
+export interface Edit {
+  /** ID 本地稳定身份，删除重建时不复用。 */
+  id: string;
+  /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
+  name: string;
+  /** Pricing 当前生效的完整本地价格规则。 */
+  pricing: Pricing;
+  /** RestoreGroups 指定本次保存时恢复来源并解除保护的规则组。 */
+  restoreGroups: string[];
+}
+
+/** GatewaySettings 是本机网关的监听设置；监听地址固定为 127.0.0.1。 */
+export interface GatewaySettings {
+  /** Port 监听的 TCP 端口，范围 1024～65535。 */
+  port: number;
+}
+
+/** GeneralSettings 是常规设置：外观、关闭窗口后的行为、后台入口与页面刷新间隔。 */
+export interface GeneralSettings {
+  /** Appearance 界面外观，取 light 或 dark。 */
+  appearance: string;
+  /** CloseAction 关闭主窗口后的行为：background 继续运行，quit 退出应用。 */
+  closeAction: string;
+  /** BackgroundEntry 后台运行时保留的系统入口：menu、dock 或 both。 */
+  backgroundEntry: string;
+  /** DashboardSeconds 总览刷新间隔，单位秒。 */
+  dashboardSeconds: number;
+  /** ProviderSeconds 供应商列表刷新间隔，单位秒。 */
+  providerSeconds: number;
+}
+
+/** ImagePrice 按尺寸和质量给出每张美元价格；像素区间通过 MinPixels/MaxPixels 表达。 */
+export interface ImagePrice {
+  /** Size 来源或用户明确配置的图片尺寸，区间计价时可为空。 */
+  size: string;
+  /** Quality 来源或用户配置的图片质量档位。 */
+  quality: string;
+  /** MinPixels 像素回退区间下界，零表示未限定。 */
+  minPixels: number;
+  /** MaxPixels 像素回退区间上界，零表示未使用区间。 */
+  maxPixels: number;
+  /** Price 非负美元单价，零明确表示免费。 */
+  price: number;
+}
+
+/** Mode 表示 fast 或 priority 模式；倍率与显式价格二选一。 */
+export interface Mode {
+  /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
+  name: string;
+  /** Multiplier 相对 Standard 的正倍率；为空时使用显式价格。 */
+  multiplier: number | null;
+  /** Rates 当前规则的显式单价；空集合表示未提供。 */
+  rates: Rate[];
+  /** Tiers 按输入量递增的整套上下文阶梯。 */
+  tiers: Tier[];
+}
+
+/** Model 保持本地稳定身份与来源身份分离；SourceAvailable 记录最近目录是否仍包含此来源模型。 */
+export interface Model {
+  /** ID 本地稳定身份，删除重建时不复用。 */
+  id: string;
+  /** ModelID 统一模型名称或来源候选名称。 */
+  modelId: string;
+  /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
+  name: string;
+  /** Family 来源声明的模型系列；空值表示未知。 */
+  family: string;
+  /** Kind chat、image、video 或 vector 类型。 */
+  kind: string;
+  /** Context 来源声明的上下文 Token 上限；零表示未知。 */
+  context: number;
+  /** Capabilities 来源声明的输入类型、思考与工具能力。 */
+  capabilities: string[];
+  /** ProviderID 价格来源供应商的稳定标识，不是用户中转站配置。 */
+  providerId: string;
+  /** ProviderName 价格来源供应商显示名称。 */
+  providerName: string;
+  /** SourceModelID 在选定来源供应商内用于同步的模型名称。 */
+  sourceModelId: string;
+  /** CanonicalID 来源声明的规范模型身份，缺失时不根据名称猜测。 */
+  canonicalId: string;
+  /** Official 只有来源规范身份归属与供应商一致时标为官方。 */
+  official: boolean;
+  /** SourceAvailable 最近成功读取的目录是否仍存在该来源模型。 */
+  sourceAvailable: boolean;
+  /** SyncedAt 最近成功保存来源价格的 UTC RFC 3339 时间。 */
+  syncedAt: string;
+  /** Pricing 当前生效的完整本地价格规则。 */
+  pricing: Pricing;
+  /** SourcePricing 最近成功读取的来源规则，不含本地覆盖。 */
+  sourcePricing: Pricing;
+  /** Overrides 受到本地修改保护的价格规则组。 */
+  overrides: string[];
+}
+
+/** PreferredKey 是供应商列表展示的首选 Key：已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的。 */
+export interface PreferredKey {
+  /** Name Key 名称。 */
+  name: string;
+  /** Multiplier 倍率；nil 表示未知，0 是有效值。 */
+  multiplier: number | null;
+}
+
+/** Pricing 将可独立编辑和恢复的价格规则分组；空集合表示未知，不代表免费。 */
+export interface Pricing {
+  /** Base 基础单价集合；缺失维度保持未知。 */
+  base: Rate[];
+  /** Tiers 按输入量递增的整套上下文阶梯。 */
+  tiers: Tier[];
+  /** Modes Fast 和 priority 模式的倍率或显式价格。 */
+  modes: Mode[];
+  /** Schedules 同一时区内的分时窗口，窗口不能重叠。 */
+  schedules: Schedule[];
+  /** Baseline 分时倍率所依赖的基础价格口径。 */
+  baseline: string;
+  /** Images 按尺寸、质量或像素区间给出的每张价。 */
+  images: ImagePrice[];
+  /** Videos 按分辨率给出的每秒价。 */
+  videos: VideoPrice[];
+}
+
+/** Provider 是一个上游供应商（中转站）的本地配置。 */
+export interface Provider {
+  /** ID 稳定身份，删除后重建同名供应商不会复用。 */
+  id: string;
+  /** Name 名称，全局唯一且区分大小写。 */
+  name: string;
+  /** Website 供应商主站链接，可为空；与服务地址无关，不由服务地址推导。 */
+  website: string;
+  /** URL 服务地址，只保存站点根地址，例如 https://api.example.com。 */
+  url: string;
+  /** Note 备注，不参与调用。 */
+  note: string;
+  /** Enabled 是否启用；停用后退出调用候选，Key 与其他配置保留。 */
+  enabled: boolean;
+  /** Request 请求配置。 */
+  request: RequestPolicy;
+}
+
+/** ProviderAccount 是余额连接与已保存的查询结果，不包含任何明文凭据。 */
+export interface ProviderAccount {
+  /** ProviderID 为所属供应商，Config 为脱敏连接。 */
+  providerId: string;
+  config: QueryConfig;
+  /** MonthlyQuota 是本地月配额美元金额，0 不限；Checkin 仅 New API 余额查询使用。 */
+  monthlyQuota: number;
+  checkin: boolean;
+  /** Balance 为最近结果，失败保留旧值。 */
+  balance: AccountBalance;
+}
+
+/** ProviderAccountDraft 只允许修改账户配置，不接收客户端余额结果。 */
+export interface ProviderAccountDraft {
+  /** Config、MonthlyQuota、Checkin 与 ProviderAccount 同名字段含义一致。 */
+  config: QueryConfig;
+  monthlyQuota: number;
+  checkin: boolean;
+}
+
+/** ProviderAccountRefresh 汇总本次主动查询之后的本地状态，单项失败通过各自 Status 返回。 */
+export interface ProviderAccountRefresh {
+  /** Accounts 与 Keys 仅包含本次指定范围的对象。 */
+  accounts: ProviderAccount[];
+  keys: ProviderKeyQuery[];
+}
+
+/** ProviderDefaults 是表单占位文字、预填值和“当前生效值”提示使用的默认值，由本模块唯一定义。 */
+export interface ProviderDefaults {
+  /** Attempts 总尝试次数（含首次）。 */
+  attempts: number;
+  /** StreamTotalMillis 流式请求总超时，单位毫秒。 */
+  streamTotalMillis: number;
+  /** FirstByteSeconds 首次响应超时，单位秒。 */
+  firstByteSeconds: number;
+  /** RequestSeconds 非流式请求超时，单位秒。 */
+  requestSeconds: number;
+  /** KeyMultiplier 新增 Key 的倍率。 */
+  keyMultiplier: number;
+  /** KeyCacheMinutes 新增 Key 的缓存 TTL，单位分钟。 */
+  keyCacheMinutes: number;
+  /** KeyProbeMinutes 新增 Key 的熔断探测间隔上限，单位分钟。 */
+  keyProbeMinutes: number;
+}
+
+/** ProviderDraft 是新增或编辑供应商时可以提交的字段；启停通过单独的操作修改。 */
+export interface ProviderDraft {
+  /** Name 名称，去掉首尾空格后为 1～80 个字符。 */
+  name: string;
+  /** Website 主站链接；可为空，未写协议时按 https 处理。 */
+  website: string;
+  /** URL 服务地址；可带 /v1 或 /v1beta 后缀，保存时去掉。 */
+  url: string;
+  /** Note 备注。 */
+  note: string;
+  /** Request 请求配置。 */
+  request: RequestPolicy;
+}
+
+/** ProviderHealth 是供应商的健康汇总：已启用 Key 的健康分等权平均。 */
+export interface ProviderHealth {
+  /** State 健康分档。 */
+  state: ProviderHealthState;
+  /** Percent 平均健康度，0～100 的整数；不可用时为 nil。 */
+  percent: number | null;
+  /** Reason 不可用的原因；其他分档为空。 */
+  reason: string;
+}
+
+/** ProviderHealthState 是供应商健康汇总的分档。 */
+export type ProviderHealthState = "normal" | "degraded" | "abnormal" | "unavailable";
+
+/** ProviderKey 是一把上游 Key 的展示信息；密钥明文不随它返回。 */
+export interface ProviderKey {
+  /** ID 稳定身份。 */
+  id: string;
+  /** ProviderID 所属供应商。 */
+  providerId: string;
+  /** Name 名称，同一供应商内可以重名。 */
+  name: string;
+  /** Note 备注。 */
+  note: string;
+  /** Enabled 是否启用。 */
+  enabled: boolean;
+  /** HasSecret 是否已设置密钥。 */
+  hasSecret: boolean;
+  /** SecretMask 密钥掩码；未设置密钥时为空字符串。 */
+  secretMask: string;
+  /** Multiplier 倍率；nil 表示未知，0 是有效值。 */
+  multiplier: number | null;
+  /** Priority 优先级，数值越小越优先。 */
+  priority: number;
+  /** RPMLimit 每分钟请求数上限，1～10000；0 表示不限制。 */
+  rpmLimit: number;
+  /** ConcurrencyLimit 并发请求上限；0 表示不限制。 */
+  concurrencyLimit: number;
+  /** CacheMinutes 缓存 TTL，单位分钟，0～60；0 表示禁用。 */
+  cacheMinutes: number;
+  /** ProbeMinutes 熔断探测间隔上限，单位分钟，1～32。 */
+  probeMinutes: number;
+  /** Proxy 出口选择，默认跟随所属供应商。 */
+  proxy: ProxyChoice;
+  /** AllModels 是否允许该供应商的全部模型。 */
+  allModels: boolean;
+  /** HealthScore 健康分，0～10。 */
+  healthScore: number;
+}
+
+/** ProviderKeyDraft 是新增或编辑上游 Key 时可以提交的字段；启停和模型权限通过单独的操作修改。 */
+export interface ProviderKeyDraft {
+  /** Name 名称，去掉首尾空格后为 1～100 个字符。 */
+  name: string;
+  /** Secret 密钥明文。新增时为空表示暂不设置，编辑时为空表示不修改原密钥。 */
+  secret: string;
+  /** Note 备注。 */
+  note: string;
+  /** Multiplier 手动倍率，0～100，0 是有效值；必须填写，缺失不会被当作 0。 */
+  multiplier: number | null;
+  /** Priority 优先级，非负整数，数值越小越优先。 */
+  priority: number;
+  /** RPMLimit 每分钟请求数上限，1～10000；0 表示不限制。 */
+  rpmLimit: number;
+  /** ConcurrencyLimit 并发请求上限，非负整数；0 表示不限制。 */
+  concurrencyLimit: number;
+  /** CacheMinutes 缓存 TTL，单位分钟，0～60；0 表示禁用。 */
+  cacheMinutes: number;
+  /** ProbeMinutes 熔断探测间隔上限，单位分钟，1～32。 */
+  probeMinutes: number;
+  /** Proxy 出口选择。 */
+  proxy: ProxyChoice;
+}
+
+/** ProviderKeyQuery 保存每把 Key 的连接选择、独立来源和同步状态。 */
+export interface ProviderKeyQuery {
+  /** KeyID 为本地 Key；ReuseProvider 默认 true，false 使用独立 Config。 */
+  keyId: string;
+  reuseProvider: boolean;
+  config: QueryConfig;
+  /** NameSource 为 manual、upstream_key、upstream_group；MultiplierSource 为 manual、upstream。 */
+  nameSource: string;
+  multiplierSource: string;
+  /** NamePath、GroupPath、MultiplierPath、KeyPath 为自定义对象点路径；复用时 KeyPath 必须精确匹配完整密钥。 */
+  namePath: string;
+  groupPath: string;
+  multiplierPath: string;
+  keyPath: string;
+  /** GroupName 为只读上游分组，NameStatus 与 MultiplierStatus 独立记录字段状态。 */
+  groupName: string;
+  nameStatus: QueryStatus;
+  multiplierStatus: QueryStatus;
+}
+
+/** ProviderKeyQueryDraft 为可保存的 Key 查询配置，不允许伪造同步结果。 */
+export interface ProviderKeyQueryDraft {
+  /** ReuseProvider、Config、来源与路径对应 ProviderKeyQuery；调用方须明确提交复用选择。 */
+  reuseProvider: boolean;
+  config: QueryConfig;
+  nameSource: string;
+  multiplierSource: string;
+  namePath: string;
+  groupPath: string;
+  multiplierPath: string;
+  keyPath: string;
+}
+
+/** ProviderModel 是已关联统一模型及其供应商侧配置；ModelID 指本地稳定身份，ModelName 才是真实默认请求名。 */
+export interface ProviderModel {
+  /** ModelID 统一模型的本地稳定身份，用于关联、权限及映射写入。 */
+  modelId: string;
+  /** ModelName 统一模型的调用名称，未设置映射时使用。 */
+  modelName: string;
+  /** Name 模型显示名称，列表按它与稳定身份排序。 */
+  name: string;
+  /** Kind 统一模型类型：chat、image、video 或 vector。 */
+  kind: string;
+  /** Enabled 供应商是否提供此模型；停用保留权限及映射。 */
+  enabled: boolean;
+  /** Mappings 已保存的有序映射，空数组表示默认请求名。 */
+  mappings: ProviderModelMapping[];
+}
+
+/** ProviderModelGrant 是新增关联时对指定权限 Key 的授权选择。 */
+export type ProviderModelGrant = "none" | "selected" | "enabled";
+
+/** ProviderModelMapping 是模型级请求名及操作范围，不含 Key 覆盖、API 格式或端点范围。 */
+export interface ProviderModelMapping {
+  /** RequestName 去首尾空白的上游请求名，同模型内必须唯一。 */
+  requestName: string;
+  /** Priority 正整数，越小越优先；传零时按列表位置生成 1..N，保留旧版同级排序兼容。 */
+  priority: number;
+  /** Operations 请求操作标识，去空白、小写且去重；空数组适用于全部操作。 */
+  operations: string[];
+}
+
+/** ProviderModelMappingsDraft 是工作台中一个模型的完整映射草稿。 */
+export interface ProviderModelMappingsDraft {
+  /** ModelID 已关联统一模型的本地稳定身份。 */
+  modelId: string;
+  /** Mappings 完整目标映射集合，空数组清除映射并恢复默认请求名。 */
+  mappings: ProviderModelMapping[];
+}
+
+/** ProviderModelPermissions 将全部模式与指定零个独立保留；主动不选任何项保存时调用方应传 AllModels=true。 */
+export interface ProviderModelPermissions {
+  /** AllModels 为 true 时自动覆盖当前和以后关联的模型，此时 ModelIDs 必须为空。 */
+  allModels: boolean;
+  /** ModelIDs 指定权限的统一模型稳定身份；AllModels=false 且为空表示无模型权限。 */
+  modelIds: string[];
+}
+
+/** ProviderModelsDraft 原子替换供应商的完整关联集合；保留项的启停、映射及权限不变。 */
+export interface ProviderModelsDraft {
+  /** ModelIDs 完整目标关联集合，使用统一模型的本地稳定身份。 */
+  modelIds: string[];
+  /** GrantMode 仅决定新增关联的权限；空值等价 none。 */
+  grantMode: ProviderModelGrant;
+  /** KeyIDs selected 模式下接收新增模型的 Key，必须全部属于当前供应商。 */
+  keyIds: string[];
+}
+
+/** ProviderOverview 是供应商列表的一行：配置加上由 Key 汇总出的展示信息。 */
+export interface ProviderOverview {
+  /** Provider 供应商配置。 */
+  provider: Provider;
+  /** KeyCount 上游 Key 的数量，包含已停用的。 */
+  keyCount: number;
+  /** PreferredKey 首选 Key；nil 表示暂无可用 Key。 */
+  preferredKey: PreferredKey | null;
+  /** Health 健康汇总。 */
+  health: ProviderHealth;
+}
+
+/** ProviderSnapshot 是供应商页一次读取的内容。 */
+export interface ProviderSnapshot {
+  /** Providers 供应商概览：启用的在前，其次按创建顺序；没有供应商时为空数组。 */
+  providers: ProviderOverview[];
+  /** Defaults 表单使用的默认值。 */
+  defaults: ProviderDefaults;
+}
+
+/** Proxy 是全局目录网络设置；关闭时直连，开启时使用指定 HTTP/SOCKS 地址。 */
+export interface Proxy {
+  /** Enabled 是否启用唯一全局代理，关闭时明确直连。 */
+  enabled: boolean;
+  /** URL 全局代理地址，只有开启时参与目录连接。 */
+  url: string;
+}
+
+/** ProxyChoice 是供应商或上游 Key 的局部出口选择。 */
+export interface ProxyChoice {
+  /** Mode 出口方式；供应商可取 global、direct、custom，上游 Key 另可取 provider。 */
+  mode: ProxyMode;
+  /**
+   * URL 自定义代理地址，支持 http、https、socks5 或 socks5h；含认证时读取只返回 ***，编辑传 *** 或空串保留原值。
+   * 数据库使用带版本前缀的密文保存完整认证地址，只在实际出站前解密；无认证地址保持原样。
+   */
+  url: string;
+}
+
+/** ProxyMode 是供应商或上游 Key 的出口方式。 */
+export type ProxyMode = "global" | "direct" | "custom" | "provider";
+
+/** QueryConfig 定义账户连接；秘密字段读取只返回 ***，保存空串或 *** 均保留原值。 */
+export interface QueryConfig {
+  /** Mode 接入方式：sub2api、newapi、usage_api、custom；空表示未配置。 */
+  mode: string;
+  /** BaseURL 内置站点地址；空时保存供应商地址。 */
+  baseUrl: string;
+  /** RefreshToken、AccessToken、APIKey 为加密认证信息，读取只返回掩码。 */
+  refreshToken: string;
+  accessToken: string;
+  apiKey: string;
+  /** UserID 为 New API 用户标识。 */
+  userId: string;
+  /** QuotaDivisor 为 New API 正数额度除数，0 使用 500000。 */
+  quotaDivisor: number;
+  /** Method、URL 是自定义 GET/POST 请求；URL 查询参数读取时逐值掩码，留空/掩码保留。 */
+  method: string;
+  url: string;
+  /** Headers、Body 是加密保存的请求头 JSON 与 POST JSON；读取只返回掩码。 */
+  headers: string;
+  body: string;
+  /** BalancePath 是自定义余额点路径，Currency 为原币种，默认 USD。 */
+  balancePath: string;
+  currency: string;
+}
+
+/** QueryStatus 保存单个字段最近查询状态及最后成功时间；失败不清除旧值。 */
+export interface QueryStatus {
+  /** State 为 unknown、success 或 failed；Error 为不含凭据的失败原因。 */
+  state: string;
+  error: string;
+  /** LastSuccess 为最后成功时间，零值表示从未成功。 */
+  lastSuccess: string;
+}
+
+/** Rate 是一项美元单价；Key 指定计费维度，Unit 为 million_tokens、image、second 或 request。 */
+export interface Rate {
+  /** Key 计费维度键，与价格单位一起决定含义。 */
+  key: string;
+  /** Price 非负美元单价，零明确表示免费。 */
+  price: number;
+  /** Unit 价格单位，取 million_tokens、image、second 或 request。 */
+  unit: string;
+}
+
+/** RequestPolicy 是供应商的请求配置。本模块只负责保存与校验，执行语义由网关与调度实现。 */
+export interface RequestPolicy {
+  /** Attempts 总尝试次数（含首次），1～99；0 表示使用默认值。 */
+  attempts: number;
+  /** StreamTotalMillis 流式请求总超时，单位毫秒，1000～1200000；0 表示使用默认值。 */
+  streamTotalMillis: number;
+  /** FirstByteSeconds 首次响应超时，单位秒，1～300；0 表示使用默认值。 */
+  firstByteSeconds: number;
+  /** RequestSeconds 非流式请求超时，单位秒，1～1200；0 表示使用默认值。 */
+  requestSeconds: number;
+  /** MaxTransfers 最大转移次数；0 表示不限制。 */
+  maxTransfers: number;
+  /** MaxTransferSeconds 最大转移超时，单位秒；0 表示不限制。 */
+  maxTransferSeconds: number;
+  /** Proxy 供应商的出口选择。 */
+  proxy: ProxyChoice;
+  /** ResponsesWebSocket 是否启用 Responses WebSocket 模式。 */
+  responsesWebSocket: boolean;
+  /** TransportFailover 传输失败后是否继续转移。 */
+  transportFailover: boolean;
+}
+
 /** RuntimeInfo 是前端可读取的运行信息投影。 */
 export interface RuntimeInfo {
   /** Ready 表示桌面应用服务已经可以响应前端调用。 */
@@ -18,12 +566,259 @@ export interface RuntimeInfo {
   startedAt: string;
 }
 
+/** Schedule 描述左闭右开的每日时段；Days 使用 0～6 表示周日到周六，ExcludedDates 为当地日期。 */
+export interface Schedule {
+  /** Timezone IANA 时区名，用于解释日内时段和日期。 */
+  timezone: string;
+  /** Days 生效星期，0 表示周日，6 表示周六。 */
+  days: number[];
+  /** Start 包含的当地开始时刻，格式 HH:MM。 */
+  start: string;
+  /** End 不包含的当地结束时刻，可用 24:00。 */
+  end: string;
+  /** Multiplier 相对 Standard 的正倍率；为空时使用显式价格。 */
+  multiplier: number;
+  /** ExcludedDates 排除的当地日期，格式 YYYY-MM-DD。 */
+  excludedDates: string[];
+}
+
+/** SchedulingPolicy 是调度页读取的已保存调度配置。 */
+export interface SchedulingPolicy {
+  /** Strategy 当前生效的调度策略。 */
+  strategy: SchedulingStrategy;
+}
+
+/** SchedulingStrategy 是全局唯一的候选排序方式，取值即持久化与前后端传递的字符串。 */
+export type SchedulingStrategy = "cache_affinity" | "fixed_order" | "cost_based";
+
+/** SettingsSnapshot 是设置页一次读取的已保存设置；访问密钥内容不随快照下发。 */
+export interface SettingsSnapshot {
+  /** General 是常规设置。 */
+  general: GeneralSettings;
+  /** OpenAtLogin 是系统当前是否在登录时启动应用，以系统登录项为准。 */
+  openAtLogin: boolean;
+  /** Gateway 是网关监听设置。 */
+  gateway: GatewaySettings;
+  /** Account 是全局账户刷新设置。 */
+  account: AccountRefresh;
+  /** Attention 是总览提醒偏好。 */
+  attention: AttentionSettings;
+}
+
+/** SyncResult 返回按模型提交的同步结果；Failures 同时包含保留原配置的原因。 */
+export interface SyncResult {
+  /** Updated 本次已成功保存来源价格的模型数量。 */
+  updated: number;
+  /** Failures 未更新模型及原因，失败模型保留已有配置。 */
+  failures: string[];
+}
+
+/** Tier 在输入上下文超过 Above 个 Token 时应用整套价格，不混合来源档位。 */
+export interface Tier {
+  /** Above 输入上下文严格超过此 Token 数时进入该档。 */
+  above: number;
+  /** Rates 当前规则的显式单价；空集合表示未提供。 */
+  rates: Rate[];
+}
+
+/** VideoPrice 给出指定分辨率每秒的美元价格。 */
+export interface VideoPrice {
+  /** Resolution 来源或用户明确配置的分辨率档位。 */
+  resolution: string;
+  /** Price 非负美元单价，零明确表示免费。 */
+  price: number;
+}
+
 // ---- Services ----
 
-/** VelaService 是当前最小应用服务，由 MyGo 生成 TypeScript 客户端。 */
+/** VelaService 提供运行信息、模型管理、供应商管理、调度策略和全局设置操作，由 MyGo 生成 TypeScript 客户端。 */
 export const VelaService = {
+  /** AddModel 根据来源身份添加模型，前端不能注入来源价格。 */
+  addModel(providerID: string, modelID: string): Promise<Model> {
+    return call("VelaService.AddModel", providerID, modelID);
+  },
+  /** CopyAccessKey 将访问密钥直接写入系统剪贴板，密钥不经过页面。 */
+  copyAccessKey(): Promise<void> {
+    return call("VelaService.CopyAccessKey");
+  },
+  /** CopyProviderKeySecret 把上游 Key 的完整密钥直接写入系统剪贴板，明文不经过页面。 */
+  copyProviderKeySecret(keyID: string): Promise<void> {
+    return call("VelaService.CopyProviderKeySecret", keyID);
+  },
+  /** CopyText 将前端选中的文本写入系统剪贴板，写入失败返回错误。 */
+  copyText(text: string): Promise<void> {
+    return call("VelaService.CopyText", text);
+  },
+  /** CreateModel 原子保存目录确认草稿或无来源的手动模型。 */
+  createModel(draft: Create): Promise<Model> {
+    return call("VelaService.CreateModel", draft);
+  },
+  /** CreateProvider 新增供应商，默认启用；名称重复或字段不合法时不写入。 */
+  createProvider(draft: ProviderDraft): Promise<Provider> {
+    return call("VelaService.CreateProvider", draft);
+  },
+  /** CreateProviderKey 为供应商新增一把上游 Key，密钥加密保存。 */
+  createProviderKey(providerID: string, draft: ProviderKeyDraft): Promise<ProviderKey> {
+    return call("VelaService.CreateProviderKey", providerID, draft);
+  },
+  /** DeleteModel 删除当前独立模型，调用方先展示确认。 */
+  deleteModel(id: string): Promise<void> {
+    return call("VelaService.DeleteModel", id);
+  },
+  /** DeleteProvider 删除供应商及其全部 Key，调用方先展示确认。 */
+  deleteProvider(id: string): Promise<void> {
+    return call("VelaService.DeleteProvider", id);
+  },
+  /** DeleteProviderKey 删除一把上游 Key 及其密钥，调用方先展示确认。 */
+  deleteProviderKey(keyID: string): Promise<void> {
+    return call("VelaService.DeleteProviderKey", keyID);
+  },
+  /** GlobalProxy 读取唯一的全局网络设置。 */
+  globalProxy(): Promise<Proxy> {
+    return call("VelaService.GlobalProxy");
+  },
+  /** HasAccessKey 报告是否已设置网关访问密钥，不返回密钥内容。 */
+  hasAccessKey(): Promise<boolean> {
+    return call("VelaService.HasAccessKey");
+  },
+  /** ListModels 读取本地模型完整配置。 */
+  listModels(): Promise<Model[]> {
+    return call("VelaService.ListModels");
+  },
+  /** ModelCatalog 加载真实目录，价格缺失保持未知。 */
+  modelCatalog(): Promise<CatalogEntry[]> {
+    return call("VelaService.ModelCatalog");
+  },
+  /** ProviderAccount 只读取本地账户配置与结果，不访问上游。 */
+  providerAccount(providerID: string): Promise<ProviderAccount> {
+    return call("VelaService.ProviderAccount", providerID);
+  },
+  /** ProviderKeyModelPermissions 读取 Key 的全部或指定权限，明确区分指定零个。 */
+  providerKeyModelPermissions(keyID: string): Promise<ProviderModelPermissions> {
+    return call("VelaService.ProviderKeyModelPermissions", keyID);
+  },
+  /** ProviderKeyQuery 只读取本地 Key 查询配置与状态。 */
+  providerKeyQuery(keyID: string): Promise<ProviderKeyQuery> {
+    return call("VelaService.ProviderKeyQuery", keyID);
+  },
+  /** ProviderKeys 读取一个供应商的上游 Key，只包含密钥掩码。 */
+  providerKeys(providerID: string): Promise<ProviderKey[]> {
+    return call("VelaService.ProviderKeys", providerID);
+  },
+  /** ProviderModels 读取供应商已关联模型及有序映射，不暴露价格和凭据。 */
+  providerModels(providerID: string): Promise<ProviderModel[]> {
+    return call("VelaService.ProviderModels", providerID);
+  },
+  /** Providers 一次读取供应商页需要的内容：供应商概览与表单默认值。 */
+  providers(): Promise<ProviderSnapshot> {
+    return call("VelaService.Providers");
+  },
+  /** RefreshProviderAccounts 主动查询指定供应商，空 ID 查询全部（包括只有 Key 独立连接的供应商）。 */
+  refreshProviderAccounts(providerID: string): Promise<ProviderAccountRefresh> {
+    return call("VelaService.RefreshProviderAccounts", providerID);
+  },
+  /** RefreshProviderKey 用于创建或替换调用密钥后只同步受影响 Key。 */
+  refreshProviderKey(keyID: string): Promise<ProviderKeyQuery> {
+    return call("VelaService.RefreshProviderKey", keyID);
+  },
+  /** RevealAccessKey 在用户主动查看时返回访问密钥。 */
+  revealAccessKey(): Promise<string> {
+    return call("VelaService.RevealAccessKey");
+  },
   /** RuntimeInfo 返回当前应用的基础运行信息。 */
   runtimeInfo(): Promise<RuntimeInfo> {
     return call("VelaService.RuntimeInfo");
+  },
+  /** SaveAccessKey 校验后把访问密钥写入系统凭据存储；失败时原密钥保持不变。 */
+  saveAccessKey(value: string): Promise<void> {
+    return call("VelaService.SaveAccessKey", value);
+  },
+  /** SaveAccountRefresh 保存全局账户刷新设置。 */
+  saveAccountRefresh(value: AccountRefresh): Promise<void> {
+    return call("VelaService.SaveAccountRefresh", value);
+  },
+  /** SaveAttentionSettings 保存总览提醒偏好。 */
+  saveAttentionSettings(value: AttentionSettings): Promise<void> {
+    return call("VelaService.SaveAttentionSettings", value);
+  },
+  /** SaveGatewaySettings 保存网关监听端口；网关接入后按此端口监听。 */
+  saveGatewaySettings(value: GatewaySettings): Promise<void> {
+    return call("VelaService.SaveGatewaySettings", value);
+  },
+  /** SaveGeneralSettings 保存常规设置，并让外观、关闭行为与后台入口立即生效。 */
+  saveGeneralSettings(value: GeneralSettings): Promise<void> {
+    return call("VelaService.SaveGeneralSettings", value);
+  },
+  /** SaveGlobalProxy 保存全局代理，目录读取立即遵循此配置。 */
+  saveGlobalProxy(p: Proxy): Promise<void> {
+    return call("VelaService.SaveGlobalProxy", p);
+  },
+  /** SaveProviderAccount 保存账户并独立同步余额及复用它的 Key；同步失败在结果状态中表达。 */
+  saveProviderAccount(providerID: string, draft: ProviderAccountDraft): Promise<ProviderAccount> {
+    return call("VelaService.SaveProviderAccount", providerID, draft);
+  },
+  /** SaveProviderKey 原子保存 Key 与查询配置；keyID 为空创建，提交后的上游失败通过返回状态提示。 */
+  saveProviderKey(providerID: string, keyID: string, draft: ProviderKeyDraft, query: ProviderKeyQueryDraft): Promise<ProviderKeyQuery> {
+    return call("VelaService.SaveProviderKey", providerID, keyID, draft, query);
+  },
+  /** SaveProviderKeyModelPermissions 保存当前 Key 权限；界面主动取消全选需显式使用全部模式。 */
+  saveProviderKeyModelPermissions(keyID: string, p: ProviderModelPermissions): Promise<void> {
+    return call("VelaService.SaveProviderKeyModelPermissions", keyID, p);
+  },
+  /** SaveProviderKeyQuery 保存来源和查询配置，只同步当前 Key。 */
+  saveProviderKeyQuery(keyID: string, draft: ProviderKeyQueryDraft): Promise<ProviderKeyQuery> {
+    return call("VelaService.SaveProviderKeyQuery", keyID, draft);
+  },
+  /** SaveProviderModelMappings 原子保存工作台提交的所有模型映射；空列表清除当前模型映射。 */
+  saveProviderModelMappings(providerID: string, drafts: ProviderModelMappingsDraft[]): Promise<void> {
+    return call("VelaService.SaveProviderModelMappings", providerID, drafts);
+  },
+  /** SaveProviderModels 一次替换供应商全部模型关联，并按草稿为新增模型授权。 */
+  saveProviderModels(providerID: string, draft: ProviderModelsDraft): Promise<void> {
+    return call("VelaService.SaveProviderModels", providerID, draft);
+  },
+  /** SaveSchedulingStrategy 保存全局调度策略，取值为 cache_affinity、fixed_order 或 cost_based；失败时原策略保持不变。 */
+  saveSchedulingStrategy(strategy: SchedulingStrategy): Promise<void> {
+    return call("VelaService.SaveSchedulingStrategy", strategy);
+  },
+  /** SchedulingPolicy 读取调度页需要的已保存调度配置；尚未保存时为默认的缓存亲和。 */
+  schedulingPolicy(): Promise<SchedulingPolicy> {
+    return call("VelaService.SchedulingPolicy");
+  },
+  /** SetOpenAtLogin 向系统登记或取消开机启动，返回系统的实际状态；失败时系统设置保持原样。 */
+  setOpenAtLogin(enabled: boolean): Promise<boolean> {
+    return call("VelaService.SetOpenAtLogin", enabled);
+  },
+  /** SetProviderEnabled 启用或停用供应商，Key 与其他配置保留。 */
+  setProviderEnabled(id: string, enabled: boolean): Promise<void> {
+    return call("VelaService.SetProviderEnabled", id, enabled);
+  },
+  /** SetProviderKeyEnabled 启用或停用一把上游 Key。 */
+  setProviderKeyEnabled(keyID: string, enabled: boolean): Promise<void> {
+    return call("VelaService.SetProviderKeyEnabled", keyID, enabled);
+  },
+  /** SetProviderModelEnabled 即时启停一个供应商模型，保留映射及权限。 */
+  setProviderModelEnabled(providerID: string, modelID: string, enabled: boolean): Promise<void> {
+    return call("VelaService.SetProviderModelEnabled", providerID, modelID, enabled);
+  },
+  /** Settings 一次读取设置页需要的已保存设置。 */
+  settings(): Promise<SettingsSnapshot> {
+    return call("VelaService.Settings");
+  },
+  /** SyncModelPrices 更新全部已添加模型并返回各模型失败原因。 */
+  syncModelPrices(): Promise<SyncResult> {
+    return call("VelaService.SyncModelPrices");
+  },
+  /** UpdateModel 保存名称与完整价格草稿，并保持来源修改保护。 */
+  updateModel(edit: Edit): Promise<Model> {
+    return call("VelaService.UpdateModel", edit);
+  },
+  /** UpdateProvider 保存供应商的名称与配置，不改变启停状态。 */
+  updateProvider(id: string, draft: ProviderDraft): Promise<Provider> {
+    return call("VelaService.UpdateProvider", id, draft);
+  },
+  /** UpdateProviderKey 保存一把上游 Key 的配置；草稿中的密钥为空时保留原密钥。 */
+  updateProviderKey(keyID: string, draft: ProviderKeyDraft): Promise<ProviderKey> {
+    return call("VelaService.UpdateProviderKey", keyID, draft);
   },
 } as const;

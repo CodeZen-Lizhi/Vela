@@ -24,3 +24,6 @@ export type WithoutChild<T> = T extends { child?: unknown }
 export type WithoutChildren<T> = T extends { children?: unknown }
   ? Omit<T, "children">
   : T;
+
+/** 从覆盖层属性中移除 children 与 child，供生成的 shadcn-svelte 弹窗使用。 */
+export type WithoutChildrenOrChild<T> = Omit<T, "children" | "child">;

@@ -1,11 +1,22 @@
 package main
 
 import (
+	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/app"
 	"github.com/CodeZen-Lizhi/vela/internal/buildinfo"
+	"github.com/CodeZen-Lizhi/vela/internal/models"
+	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
+	"github.com/CodeZen-Lizhi/vela/internal/settings"
 	"github.com/egoist/mygo"
 )
 
@@ -14,19 +25,107 @@ import (
 //go:embed assets/tray.png
 var trayIconPNG []byte
 
-var (
-	mainWindow *mygo.Window
-	appTray    *mygo.Tray
-)
+// accessKeyAccount 返回访问密钥在系统凭据存储中的账户名；隔离数据目录使用独立账户，不读写日常密钥。
+func accessKeyAccount(dataDir string, isolated bool) string {
+	if !isolated {
+		return "gateway-access-key"
+	}
+	if abs, err := filepath.Abs(dataDir); err == nil {
+		dataDir = abs
+	}
+	sum := sha256.Sum256([]byte(dataDir))
+	return "gateway-access-key@" + hex.EncodeToString(sum[:8])
+}
 
-// main 组装 MyGo 桌面宿主与最小应用服务。
+// main 组装桌面宿主、模型、设置与调度模块，生成绑定时不打开用户数据库。
 func main() {
-	service := app.NewVelaService(buildinfo.Version)
-	mygo.Bind(service)
+	// MyGo 生成客户端会执行入口，只注册类型即可，避免构建时创建用户数据。
+	if os.Getenv("MYGO_GENERATE") != "" {
+		mygo.Bind(app.NewVelaService(app.Options{Version: buildinfo.Version}))
+		if err := mygo.App.Run(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	dataDir := os.Getenv("VELA_DATA_DIR")
+	isolated := dataDir != ""
+	if !isolated {
+		base, err := os.UserConfigDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		dataDir = filepath.Join(base, "Vela")
+	} else {
+		// 隔离数据目录同时承载窗口状态，验收运行不改动日常窗口位置。
+		mygo.App.SetPath(mygo.PathUserData, dataDir)
+	}
+	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, "https://models.dev/api.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("关闭模型数据库失败: %v", err)
+		}
+	}()
+	preferences, err := settings.New(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
+	policies, err := scheduling.New(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
+	upstreams, err := providers.New(store.DB(), keychainEntry{account: "provider-master@" + accessKeyAccount(dataDir, isolated)})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err = upstreams.InitModels(); err != nil {
+		log.Fatal(err)
+	}
+	accounts, err := providers.NewAccounts(upstreams, func(ctx context.Context) (bool, string, error) {
+		proxy, readErr := store.GetProxy(ctx)
+		return proxy.Enabled, proxy.URL, readErr
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	queryContext, stopQueries := context.WithCancel(context.Background())
+	defer stopQueries()
+	go func() {
+		if err := accounts.Run(queryContext, func(ctx context.Context) (bool, int, error) {
+			value, readErr := preferences.AccountRefresh(ctx)
+			return value.Enabled, value.Minutes, readErr
+		}); err != nil && queryContext.Err() == nil {
+			log.Printf("账户定时刷新停止: %v", err)
+		}
+	}()
+	// 读取失败时以默认行为启动，设置页会显示同一错误，已保存的内容不被覆盖。
+	if general, err = preferences.General(context.Background()); err != nil {
+		log.Printf("读取常规设置失败，本次使用默认行为: %v", err)
+	}
+	mygo.Theme.SetSource(themeSource(general.Appearance))
+	mygo.Bind(app.NewVelaService(app.Options{
+		Version:          buildinfo.Version,
+		Models:           store,
+		Providers:        upstreams,
+		Accounts:         accounts,
+		Settings:         preferences,
+		Scheduling:       policies,
+		AccessKeyAccount: accessKeyAccount(dataDir, isolated),
+		ApplyGeneral:     applyGeneral,
+	}))
 
 	mygo.App.WhenReady(func() {
 		mainWindow = createMainWindow()
-		installTray()
+		syncTray()
+	})
+	mygo.App.OnWindowAllClosed(lastWindowClosed)
+	mygo.App.OnActivate(func(hasVisibleWindows bool) {
+		if !hasVisibleWindows {
+			openMainWindow()
+		}
 	})
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		if appTray != nil {
@@ -37,48 +136,4 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// createMainWindow 创建 Vela 主窗口，供应用启动和菜单栏重新打开时复用。
-func createMainWindow() *mygo.Window {
-	return mygo.NewWindow(mygo.WindowOptions{
-		Title:           "Vela",
-		Width:           1180,
-		Height:          760,
-		MinWidth:        820,
-		MinHeight:       600,
-		BackgroundColor: "#f4f0e7",
-		StateKey:        "main",
-		URL:             "/",
-	})
-}
-
-// showMainWindow 将现有主窗口带回前台；窗口已关闭时重新创建。
-func showMainWindow(_ *mygo.MenuItem, _ *mygo.Window) {
-	if mainWindow == nil || mainWindow.IsDestroyed() {
-		mainWindow = createMainWindow()
-	}
-	mygo.App.Show()
-	mainWindow.Show()
-	mainWindow.Focus()
-}
-
-// installTray 创建菜单栏 V 图标，并提供打开主窗口和退出应用的入口。
-func installTray() {
-	tray, err := mygo.NewTray(mygo.TrayOptions{
-		ID:             "vela.status",
-		Icon:           trayIconPNG,
-		IconIsTemplate: true,
-		ToolTip:        "Vela AI Gateway",
-		Menu: mygo.NewMenu([]*mygo.MenuItem{
-			{Label: "打开 Vela", Click: showMainWindow},
-			mygo.Separator(),
-			{Role: mygo.RoleQuit},
-		}),
-	})
-	if err != nil {
-		log.Printf("创建菜单栏图标失败: %v", err)
-		return
-	}
-	appTray = tray
 }

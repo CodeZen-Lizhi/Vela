@@ -1,0 +1,92 @@
+/* 供应商页面沿用已认可的紧凑列表和单层抽屉；所有颜色来自项目主题。 */
+.provider-page { display:flex; flex-direction:column; gap:22px; }
+.provider-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.provider-heading h1 { font-size:23px; font-weight:650; letter-spacing:-.035em; }
+.provider-heading p { margin-top:6px; color:var(--muted-foreground); font-size:12px; }
+.provider-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.provider-surface { border:1px solid var(--border); border-radius:12px; background:var(--card); overflow:hidden; }
+.provider-toolbar { display:flex; gap:12px; padding:17px 20px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.provider-search { max-width:300px; flex:1; min-width:150px; }
+.provider-filter { width:180px; }
+.provider-status { display:flex; gap:3px; padding:3px; border-radius:8px; background:var(--muted); }
+.provider-status button { padding:6px 10px; color:var(--muted-foreground); font-size:12px; border-radius:6px; }
+.provider-status button[aria-pressed=true] { color:var(--foreground); background:var(--background); box-shadow:0 1px 3px #0000000b; }
+.provider-table { width:100%; border-collapse:collapse; text-align:left; font-size:12px; }
+.provider-table th { background:var(--muted); color:var(--muted-foreground); font-size:11px; font-weight:500; padding:12px 16px; white-space:nowrap; }
+.provider-table td { padding:18px 16px; border-top:1px solid var(--border); vertical-align:middle; }
+.provider-table tr[data-disabled=true] td { color:var(--muted-foreground); }
+.provider-table tbody tr { transition:background .15s; }
+.provider-table tbody tr:hover { background:color-mix(in srgb,var(--muted) 55%,transparent); }
+.provider-identity { display:flex; gap:10px; align-items:center; min-width:120px; }
+.provider-avatar { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border-radius:9px; color:var(--accent-foreground); background:var(--accent); font-size:14px; font-weight:600; }
+.provider-name { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.provider-name:hover { color:var(--primary); }
+.provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
+.provider-key-summary { display:flex; flex-direction:column; gap:4px; max-width:160px; }
+.provider-key-summary strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.provider-key-summary small { color:var(--muted-foreground); font-size:11px; }
+.provider-health { display:flex; align-items:center; gap:6px; font-size:11px; white-space:nowrap; }
+.provider-health::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--muted-foreground); }
+.provider-health[data-state=normal]::before { background:var(--primary); }
+.provider-health[data-state=degraded]::before { background:var(--accent-foreground); }
+.provider-health[data-state=abnormal]::before { background:var(--destructive); }
+.provider-empty { display:flex; min-height:210px; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:28px; text-align:center; color:var(--muted-foreground); font-size:13px; }
+.provider-error { color:var(--destructive); font-size:12px; white-space:pre-wrap; padding:10px 0; }
+.provider-preview { background:var(--muted); color:var(--muted-foreground); border-radius:8px; padding:10px 14px; font-size:12px; }
+.provider-form-dialog[data-slot=dialog-content] { width:min(760px,calc(100vw - 32px)); max-width:none; max-height:90dvh; display:flex; flex-direction:column; gap:18px; padding:24px; }
+.provider-form { overflow:auto; min-height:0; padding:1px 2px; }
+.provider-fields-grid[data-slot=field-group] { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.provider-form-footer { display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border); padding:17px 0 0; margin-top:22px; background:var(--background); }
+.provider-advanced { display:flex; width:100%; justify-content:space-between; align-items:center; font-size:12px; font-weight:600; padding:13px 0; border-top:1px solid var(--border); }
+.provider-advanced span { color:var(--muted-foreground); font-weight:400; font-size:11px; }
+.provider-drawer[data-slot=dialog-content] { top:0; right:0; bottom:0; left:auto; translate:0 0 !important; transform:none; width:min(1120px,76vw); height:100dvh; max-width:none; max-height:none; border-radius:12px 0 0 12px; padding:0; display:flex; flex-direction:column; gap:0; }
+.provider-drawer-heading { padding:24px 28px; border-bottom:1px solid var(--border); padding-right:64px; }
+.provider-tabs { display:flex; gap:24px; padding:0 28px; border-bottom:1px solid var(--border); }
+.provider-tabs button { padding:16px 0 13px; border-bottom:2px solid transparent; font-size:13px; color:var(--muted-foreground); white-space:nowrap; }
+.provider-tabs button[aria-selected=true] { color:var(--primary); border-bottom-color:var(--primary); font-weight:600; }
+.provider-tabs small { margin-left:6px; font-size:10px; padding:2px 5px; border-radius:5px; background:var(--muted); }
+.provider-drawer-body { padding:24px 28px; overflow:auto; min-height:0; flex:1; }
+.provider-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.provider-section-heading h3 { font-size:14px; font-weight:600; }
+.provider-health-bar { height:5px; width:80px; background:var(--muted); border-radius:4px; overflow:hidden; }
+.provider-health-bar span { display:block; height:100%; background:var(--primary); }
+.provider-model-list { display:flex; flex-direction:column; }
+.provider-model-row { display:flex; gap:12px; padding:16px; align-items:center; border-top:1px solid var(--border); }
+.provider-model-row:first-child { border-top:0; }
+.provider-model-row code { color:var(--muted-foreground); font-size:11px; overflow-wrap:anywhere; }
+.provider-selection { max-height:45dvh; overflow:auto; border:1px solid var(--border); border-radius:9px; }
+.provider-check-row { display:flex; align-items:center; gap:12px; padding:13px 15px; border-bottom:1px solid var(--border); font-size:12px; }
+.provider-check-row:last-child { border-bottom:0; }
+.provider-query-layout { display:grid; grid-template-columns:170px minmax(0,1fr); gap:22px; }
+.provider-methods { display:flex; flex-direction:column; gap:7px; }
+.provider-methods button { text-align:left; border:1px solid var(--border); padding:12px; border-radius:8px; font-size:12px; }
+.provider-methods button[aria-checked=true] { border-color:var(--primary); color:var(--primary); background:var(--accent); }
+@media(max-width:900px) {
+ .provider-heading { align-items:flex-start; flex-wrap:wrap; }
+ .provider-drawer[data-slot=dialog-content] { width:100vw; border-radius:0; }
+ .provider-drawer-heading,.provider-drawer-body { padding:20px; }
+ .provider-tabs { padding:0 20px; gap:20px; }
+ .provider-table thead { display:none; }
+ .provider-table,.provider-table tbody { display:block; }
+ .provider-table tbody tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:16px; gap:15px; border-top:1px solid var(--border); }
+ .provider-table td { display:block; padding:0; border:0; min-width:0; }
+ .provider-table td::before { content:attr(data-label); display:block; font-size:10px; color:var(--muted-foreground); margin-bottom:6px; }
+ .provider-table td.provider-main { grid-column:1/-1; }
+ .provider-table td.provider-main::before { display:none; }
+ .provider-actions { justify-content:flex-start; }
+ .provider-toolbar { padding:14px; }
+ .provider-status { overflow:auto; max-width:100%; }
+}
+@media(max-width:600px) {
+ .provider-fields-grid[data-slot=field-group],.provider-query-layout { grid-template-columns:1fr; }
+ .provider-methods { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .provider-form-dialog[data-slot=dialog-content] { padding:20px; }
+ .provider-filter { width:100%; }
+}
+
+/* 账户连接含可选请求字段，内容在弹窗内滚动，操作按钮保持可达。 */
+.provider-form-dialog .account-form { overflow:auto; min-height:0; }
+
+/* 后台 WebView 会暂停动画帧；关闭态立即退出绘制，避免等待卸载时仍遮挡页面。 */
+[data-slot=dialog-content][data-state=closed],
+[data-slot=dialog-overlay][data-state=closed] { display:none; }
