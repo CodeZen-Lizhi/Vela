@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -328,28 +329,25 @@ func (m *Manager) credential(ctx context.Context, t VerificationTarget) (provide
 // client 复用项目代理解析与传输层，禁止重定向携带认证，调用方释放连接。
 func (m *Manager) client(ctx context.Context, c providers.ExecutionCandidate) (*http.Client, error) {
 	choice := c.Key.Proxy
-	if choice.Mode == providers.ProxyProvider {
+	if choice.Mode == providers.ProxyProvider || choice.Mode == "" {
 		choice = c.Provider.Request.Proxy
 	}
+	var proxy *url.URL
 	if choice.Mode == providers.ProxyGlobal {
 		global, err := m.catalog.GetProxy(ctx)
 		if err != nil {
 			return nil, err
 		}
-		choice = providers.ProxyChoice{Mode: providers.ProxyDirect}
 		if global.Enabled {
-			choice = providers.ProxyChoice{Mode: providers.ProxyCustom, URL: global.URL}
+			proxy, err = outbound.ParseProxy(global.URL)
+			if err != nil {
+				return nil, err
+			}
 		}
+	} else if choice.Mode != providers.ProxyDirect {
+		return nil, errors.New("无效网络代理方式")
 	}
-	transport := outbound.Transport(nil)
-	if choice.Mode == providers.ProxyCustom {
-		proxy, err := outbound.ParseProxy(choice.URL)
-		if err != nil {
-			return nil, err
-		}
-		transport = outbound.Transport(proxy)
-	}
-	return &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
+	return &http.Client{Transport: outbound.Transport(proxy), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }
 
 // saveReport 替换组合唯一最近报告，外键确保删除目标不会被重新创建。
