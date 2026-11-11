@@ -8,7 +8,8 @@
     Route,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
-  import { VelaService, type SchedulingStrategy } from "$lib/generated/mygo";
+  import ProviderOrder from "./ProviderOrder.svelte";
+  import { VelaService, type ProviderOverview, type SchedulingStrategy } from "$lib/generated/mygo";
   import { errorMessage, type Notify } from "$lib/settings/sections";
 
   /** 调度页：选择全局调度策略并查看供应商优先顺序；点击策略即保存，失败时回到上次成功保存的策略。 */
@@ -51,23 +52,27 @@
     },
   ];
 
-  /** 是否运行在 Vela 桌面窗口内；浏览器预览只展示默认策略且不可保存。 */
+  /** 是否运行在 Vela 桌面窗口内；浏览器预览不伪造策略或供应商数据。 */
   const desktop = isMyGo();
   /** saved 是最后一次成功读取或保存的策略，null 表示尚未读到；pending 是正在保存的策略。 */
-  let saved = $state<SchedulingStrategy | null>(desktop ? null : "cache_affinity");
+  let saved = $state<SchedulingStrategy | null>(null);
   let pending = $state<SchedulingStrategy | null>(null);
+  /** 快照中的全部供应商，包含停用项；null 表示尚未读取。 */
+  let providers = $state<ProviderOverview[] | null>(null);
   /** loadError、saveError 分别是读取与最近一次保存失败的原因，空字符串表示没有。 */
   let loadError = $state("");
   let saveError = $state("");
   /** 界面上显示为选中的策略：保存进行中显示所选项，否则显示已保存值。 */
   const selected = $derived(pending ?? saved);
 
-  /** 读取已保存的策略；失败时不显示任何策略为选中，提供重试。 */
+  /** 同一次快照读取策略与全部供应商；失败时提供重试，不把失败显示为空列表。 */
   async function load(): Promise<void> {
     if (!desktop) return;
     loadError = "";
     try {
-      saved = (await VelaService.schedulingPolicy()).strategy;
+      const snapshot = await VelaService.schedulingSnapshot();
+      saved = snapshot.policy.strategy;
+      providers = snapshot.providers;
     } catch (cause) {
       loadError = errorMessage(cause);
     }
@@ -105,7 +110,7 @@
       浏览器预览 · 调度策略的读取与保存请在 Vela 桌面窗口中进行。
     </p>{/if}
   {#if loadError}<div role="alert" class="error-banner">
-      调度策略读取失败：{loadError}<Button
+      调度配置读取失败：{loadError}<Button
         variant="ghost"
         size="sm"
         onclick={() => void load()}>重试</Button
@@ -116,7 +121,7 @@
     </p>{/if}
 
   <section class="overflow-hidden rounded-xl border bg-card" aria-label="调度策略">
-    {#if !loadError && selected === null}
+    {#if desktop && !loadError && selected === null}
       <p class="p-16 text-center text-sm text-muted-foreground">
         正在读取调度策略…
       </p>
@@ -146,26 +151,11 @@
     {/if}
   </section>
 
-  <section
-    class="overflow-hidden rounded-xl border bg-card"
-    aria-labelledby="provider-order-title"
-  >
-    <header class="border-b px-5 py-4">
-      <h2 id="provider-order-title" class="text-sm font-semibold">
-        供应商优先顺序
-      </h2>
-      <p class="mt-1 text-xs text-muted-foreground">
-        按顺序主备，第 1 位最优先。
-      </p>
-    </header>
-    <div class="flex flex-col items-center gap-2 px-6 py-14 text-center">
-      <ListOrdered class="size-8 text-muted-foreground" />
-      <h3 class="text-sm font-semibold">还没有供应商</h3>
-      <p class="text-xs text-muted-foreground">
-        添加供应商后即可设置调度顺序。
-      </p>
-    </div>
-  </section>
+  {#if providers !== null}
+    <ProviderOrder {providers} {notify} />
+  {:else if desktop && !loadError}
+    <p class="text-sm text-muted-foreground">正在读取供应商顺序…</p>
+  {/if}
 
   <p class="settings-note">
     调度策略已保存在本机；网关接入后按此策略调度。

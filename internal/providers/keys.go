@@ -221,7 +221,11 @@ func (s *Store) Keys(ctx context.Context, providerID string) ([]ProviderKey, err
 			}
 			mask = maskSecret(secret)
 		}
-		result = append(result, row.doc.key(row.id, providerID, row.enabled, row.allModels, mask, row.sealed != nil))
+		key := row.doc.key(row.id, providerID, row.enabled, row.allModels, mask, row.sealed != nil)
+		if s.healthLookup != nil {
+			key.HealthScore, _ = s.healthLookup(row.id, executionVersion(row.sealed))
+		}
+		result = append(result, key)
 	}
 	return result, nil
 }

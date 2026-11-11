@@ -1,5 +1,5 @@
 // Package scheduling 维护不依赖桌面宿主的全局调度策略：取值、默认值与 SQLite 持久化。
-// 当前只保存策略；供应商顺序与网关的实际排序在供应商和网关模块接入后加入。
+// 配置保存与运行核心分开，SQLite 修订号隔离旧配置的在途亲和写入。
 package scheduling
 
 import (
@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // SchedulingStrategy 是全局唯一的候选排序方式，取值即持久化与前后端传递的字符串。
@@ -29,6 +30,10 @@ const DefaultStrategy = CacheAffinity
 type SchedulingPolicy struct {
 	// Strategy 当前生效的调度策略。
 	Strategy SchedulingStrategy `json:"strategy"`
+	// ProviderOrder 是全部现存供应商的稳定顺序，停用项仍保留。
+	ProviderOrder []string `json:"providerOrder"`
+	// Revision 仅在策略、顺序或供应商集合实际变化后递增，隔离旧亲和。
+	Revision int64 `json:"revision"`
 }
 
 // Validate 只接受三种已定义的策略，返回可直接展示给用户的错误。
@@ -51,7 +56,10 @@ type Store struct {
 func New(db *sql.DB) (*Store, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS scheduling_policy (
  id INTEGER PRIMARY KEY CHECK (id = 1),
- strategy TEXT NOT NULL CHECK (strategy IN ('cache_affinity','fixed_order','cost_based')))`)
+ strategy TEXT NOT NULL CHECK (strategy IN ('cache_affinity','fixed_order','cost_based')));
+CREATE TABLE IF NOT EXISTS scheduling_meta(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
+INSERT OR IGNORE INTO scheduling_meta VALUES(1,0);
+CREATE TABLE IF NOT EXISTS scheduling_provider_order(provider_id TEXT PRIMARY KEY, position INTEGER NOT NULL UNIQUE);`)
 	if err != nil {
 		return nil, fmt.Errorf("初始化调度数据: %w", err)
 	}
@@ -60,27 +68,130 @@ func New(db *sql.DB) (*Store, error) {
 
 // Policy 读取已保存的调度配置：尚未保存时返回默认策略；读取失败或内容不合法时报错，不用默认策略冒充已保存的配置。
 func (s *Store) Policy(ctx context.Context) (SchedulingPolicy, error) {
-	var strategy SchedulingStrategy
-	err := s.db.QueryRowContext(ctx, "SELECT strategy FROM scheduling_policy WHERE id = 1").Scan(&strategy)
-	if errors.Is(err, sql.ErrNoRows) {
-		return SchedulingPolicy{Strategy: DefaultStrategy}, nil
-	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return SchedulingPolicy{}, fmt.Errorf("读取调度策略: %w", err)
+		return SchedulingPolicy{}, err
 	}
-	if err = strategy.Validate(); err != nil {
-		return SchedulingPolicy{}, fmt.Errorf("调度策略数据无效: %w", err)
+	defer tx.Rollback()
+	p, err := readPolicy(ctx, tx)
+	if err != nil {
+		return p, err
 	}
-	return SchedulingPolicy{Strategy: strategy}, nil
+	return p, tx.Commit()
 }
 
-// SaveStrategy 校验后以单条语句替换已保存的策略；失败时原策略保持不变。
+// readPolicy 在调用方事务内同时读取策略、完整顺序和修订号，避免组合两个版本的配置。
+func readPolicy(ctx context.Context, tx *sql.Tx) (SchedulingPolicy, error) {
+	p := SchedulingPolicy{Strategy: DefaultStrategy, ProviderOrder: []string{}}
+	err := tx.QueryRowContext(ctx, "SELECT strategy FROM scheduling_policy WHERE id=1").Scan(&p.Strategy)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return p, fmt.Errorf("读取调度策略: %w", err)
+	}
+	if err = p.Strategy.Validate(); err != nil {
+		return p, err
+	}
+	if err = tx.QueryRowContext(ctx, "SELECT revision FROM scheduling_meta WHERE id=1").Scan(&p.Revision); err != nil {
+		return p, err
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT provider_id FROM scheduling_provider_order ORDER BY position")
+	if err != nil {
+		return p, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return p, err
+		}
+		p.ProviderOrder = append(p.ProviderOrder, id)
+	}
+	return p, rows.Err()
+}
+
+// SaveStrategy 原子保存策略，实际变化才递增修订；失败保持旧配置和旧亲和范围。
 func (s *Store) SaveStrategy(ctx context.Context, strategy SchedulingStrategy) error {
-	if err := strategy.Validate(); err != nil {
+	return s.saveConfiguration(ctx, &strategy, nil, false)
+}
+
+// SaveProviderOrder 原子保存全部现存供应商顺序；重复、缺失、未知身份均拒绝。
+func (s *Store) SaveProviderOrder(ctx context.Context, ids []string) error {
+	return s.saveConfiguration(ctx, nil, ids, true)
+}
+
+// ImportPolicy 供配置搬运在导入供应商后原子应用策略与完整顺序；忽略外部修订号，失败保留现有配置。
+// 整份供应商和凭据导入的事务由配置搬运模块负责，此方法不宣称实现整份配置导入。
+func (s *Store) ImportPolicy(ctx context.Context, policy SchedulingPolicy) error {
+	return s.saveConfiguration(ctx, &policy.Strategy, policy.ProviderOrder, true)
+}
+
+// saveConfiguration 在同一事务内校验并应用策略和顺序，避免导入只写成功一半。
+func (s *Store) saveConfiguration(ctx context.Context, strategy *SchedulingStrategy, ids []string, replaceOrder bool) error {
+	if strategy != nil {
+		if err := strategy.Validate(); err != nil {
+			return err
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "INSERT INTO scheduling_policy(id, strategy) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET strategy = excluded.strategy", string(strategy)); err != nil {
+	defer tx.Rollback()
+	p, err := readPolicy(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if strategy == nil {
+		strategy = &p.Strategy
+	}
+	if replaceOrder {
+		rows, err := tx.QueryContext(ctx, "SELECT id FROM providers")
+		if err != nil {
+			return err
+		}
+		expected := map[string]bool{}
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			expected[id] = true
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if len(ids) != len(expected) {
+			return errors.New("供应商已变化，请刷新后重新排序")
+		}
+		for _, id := range ids {
+			if !expected[id] {
+				return errors.New("供应商顺序包含重复或不存在的供应商")
+			}
+			delete(expected, id)
+		}
+	} else {
+		ids = p.ProviderOrder
+	}
+	if *strategy == p.Strategy && slices.Equal(ids, p.ProviderOrder) {
+		return tx.Commit()
+	}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO scheduling_policy(id,strategy) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET strategy=excluded.strategy", *strategy); err != nil {
 		return fmt.Errorf("保存调度策略: %w", err)
 	}
-	return nil
+	if !slices.Equal(ids, p.ProviderOrder) {
+		if _, err = tx.ExecContext(ctx, "DELETE FROM scheduling_provider_order"); err != nil {
+			return err
+		}
+		for i, id := range ids {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO scheduling_provider_order VALUES(?,?)", id, i+1); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE scheduling_meta SET revision=revision+1 WHERE id=1"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

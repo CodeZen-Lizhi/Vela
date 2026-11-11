@@ -586,6 +586,18 @@ export interface Schedule {
 export interface SchedulingPolicy {
   /** Strategy 当前生效的调度策略。 */
   strategy: SchedulingStrategy;
+  /** ProviderOrder 是全部现存供应商的稳定顺序，停用项仍保留。 */
+  providerOrder: string[];
+  /** Revision 仅在策略、顺序或供应商集合实际变化后递增，隔离旧亲和。 */
+  revision: number;
+}
+
+/** SchedulingSnapshot 是调度页的同一次读取结果，供应商包含停用项，按已保存顺序排列。 */
+export interface SchedulingSnapshot {
+  /** Policy 包含策略、顺序及修订号。 */
+  policy: SchedulingPolicy;
+  /** Providers 只提供名称、健康与启停等已有展示字段，不包含明文密钥。 */
+  providers: ProviderOverview[];
 }
 
 /** SchedulingStrategy 是全局唯一的候选排序方式，取值即持久化与前后端传递的字符串。 */
@@ -777,6 +789,10 @@ export const VelaService = {
   saveProviderModels(providerID: string, draft: ProviderModelsDraft): Promise<void> {
     return call("VelaService.SaveProviderModels", providerID, draft);
   },
+  /** SaveSchedulingProviderOrder 原子保存完整供应商顺序，失败不改变已保存配置。 */
+  saveSchedulingProviderOrder(ids: string[]): Promise<void> {
+    return call("VelaService.SaveSchedulingProviderOrder", ids);
+  },
   /** SaveSchedulingStrategy 保存全局调度策略，取值为 cache_affinity、fixed_order 或 cost_based；失败时原策略保持不变。 */
   saveSchedulingStrategy(strategy: SchedulingStrategy): Promise<void> {
     return call("VelaService.SaveSchedulingStrategy", strategy);
@@ -784,6 +800,10 @@ export const VelaService = {
   /** SchedulingPolicy 读取调度页需要的已保存调度配置；尚未保存时为默认的缓存亲和。 */
   schedulingPolicy(): Promise<SchedulingPolicy> {
     return call("VelaService.SchedulingPolicy");
+  },
+  /** SchedulingSnapshot 读取真实供应商并按全局调度顺序排列，不以空数组掩盖加载失败。 */
+  schedulingSnapshot(): Promise<SchedulingSnapshot> {
+    return call("VelaService.SchedulingSnapshot");
   },
   /** SetOpenAtLogin 向系统登记或取消开机启动，返回系统的实际状态；失败时系统设置保持原样。 */
   setOpenAtLogin(enabled: boolean): Promise<boolean> {

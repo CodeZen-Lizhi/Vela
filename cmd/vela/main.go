@@ -78,6 +78,11 @@ func main() {
 	if err = upstreams.InitModels(); err != nil {
 		log.Fatal(err)
 	}
+	execution, err := app.NewSchedulingExecution(context.Background(), policies, upstreams, store)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer execution.Close()
 	accounts, err := providers.NewAccounts(upstreams, func(ctx context.Context) (bool, string, error) {
 		proxy, readErr := store.GetProxy(ctx)
 		return proxy.Enabled, proxy.URL, readErr

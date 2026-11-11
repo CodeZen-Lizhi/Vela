@@ -36,6 +36,22 @@ CREATE TABLE IF NOT EXISTS provider_keys (
   document TEXT NOT NULL                 -- 名称、备注、倍率、优先级、限制与出口选择（JSON）
 );
 CREATE INDEX IF NOT EXISTS provider_keys_provider ON provider_keys(provider_id);
+-- 顺序由调度维护；供应商创建、删除时在同一事务中维护集合完整性。
+CREATE TABLE IF NOT EXISTS scheduling_meta(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
+INSERT OR IGNORE INTO scheduling_meta VALUES(1,0);
+CREATE TABLE IF NOT EXISTS scheduling_provider_order(provider_id TEXT PRIMARY KEY, position INTEGER NOT NULL UNIQUE);
+INSERT INTO scheduling_provider_order(provider_id,position)
+ SELECT id,(SELECT COALESCE(MAX(position),0) FROM scheduling_provider_order)+ROW_NUMBER() OVER(ORDER BY seq)
+ FROM providers WHERE id NOT IN (SELECT provider_id FROM scheduling_provider_order);
+CREATE TRIGGER IF NOT EXISTS scheduling_provider_added AFTER INSERT ON providers BEGIN
+ INSERT INTO scheduling_provider_order VALUES(NEW.id,(SELECT COALESCE(MAX(position),0)+1 FROM scheduling_provider_order));
+ UPDATE scheduling_meta SET revision=revision+1 WHERE id=1;
+END;
+CREATE TRIGGER IF NOT EXISTS scheduling_provider_deleted AFTER DELETE ON providers BEGIN
+ DELETE FROM scheduling_provider_order WHERE provider_id=OLD.id;
+ UPDATE scheduling_meta SET revision=revision+1 WHERE id=1;
+END;
+
 `
 
 // Store 维护供应商与上游 Key 的本地配置。它与模型模块共用同一个 SQLite 数据库，数据库的打开与关闭由入口负责。
@@ -45,6 +61,8 @@ type Store struct {
 	mu sync.Mutex
 	// vault 加解密上游密钥。
 	vault *vault
+	// healthLookup 在接收请求前注入整Key健康投影。
+	healthLookup func(string, string) (float64, bool)
 	// documents 加密供应商和Key的完整配置文档。
 	documents *credentials.Store
 }
@@ -303,11 +321,13 @@ type keyBrief struct {
 	enabled bool
 	health  float64
 	doc     keyDocument
+	// available 表示凭据与运行准入允许普通调用，不参与平均分分母筛选。
+	available bool
 }
 
 // summarize 由供应商启停与它的全部 Key（按创建顺序）得出首选 Key 与健康汇总。
 // 首选 Key 取已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的；健康汇总是已启用 Key 健康分的等权平均。
-// 网关执行接入后，首选 Key 还需要排除冷却或熔断中的 Key。
+// 已接执行层时通过healthLookup排除冷却、熔断或无凭据的Key，不用分数重新排列供应商。
 func summarize(enabled bool, keys []keyBrief) (*PreferredKey, ProviderHealth) {
 	if !enabled {
 		return nil, ProviderHealth{State: ProviderHealthUnavailable, Reason: "供应商已停用"}
@@ -321,12 +341,16 @@ func summarize(enabled bool, keys []keyBrief) (*PreferredKey, ProviderHealth) {
 		}
 		active++
 		total += keys[i].health
-		if preferred == nil || keys[i].doc.Priority < preferred.Priority {
+		if keys[i].available && (preferred == nil || keys[i].doc.Priority < preferred.Priority) {
 			preferred = &keys[i].doc
 		}
 	}
 	if preferred == nil {
-		return nil, ProviderHealth{State: ProviderHealthUnavailable, Reason: "没有已启用的 Key"}
+		reason := "没有可调用的 Key"
+		if active == 0 {
+			reason = "没有已启用的 Key"
+		}
+		return nil, ProviderHealth{State: ProviderHealthUnavailable, Reason: reason}
 	}
 	// 健康分满分 10，换算为百分比后分档。
 	percent := int(math.Round(total / float64(active) * 10))
@@ -359,7 +383,7 @@ func (s *Store) Snapshot(ctx context.Context) (ProviderSnapshot, error) {
 	if err != nil {
 		return snapshot, err
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT id, name, enabled, document FROM providers ORDER BY enabled DESC, seq")
+	rows, err := s.db.QueryContext(ctx, "SELECT p.id,p.name,p.enabled,p.document FROM providers p JOIN scheduling_provider_order o ON o.provider_id=p.id ORDER BY p.enabled DESC,o.position,p.name")
 	if err != nil {
 		return snapshot, fmt.Errorf("读取供应商: %w", err)
 	}
@@ -390,23 +414,31 @@ func (s *Store) Snapshot(ctx context.Context) (ProviderSnapshot, error) {
 
 // keyBriefs 按供应商分组读取全部 Key 的启停与文档，组内保持创建顺序；不读取密钥。
 func (s *Store) keyBriefs(ctx context.Context) (map[string][]keyBrief, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT provider_id, enabled, document FROM provider_keys ORDER BY seq")
+	rows, err := s.db.QueryContext(ctx, "SELECT id,provider_id, enabled,secret, document FROM provider_keys ORDER BY seq")
 	if err != nil {
 		return nil, fmt.Errorf("读取上游 Key: %w", err)
 	}
 	defer rows.Close()
 	result := map[string][]keyBrief{}
 	for rows.Next() {
-		var providerID, data string
+		var providerID, data, keyID string
+		var sealed []byte
 		// 没有调用结果可结算前，每把 Key 都是初始健康分。
-		brief := keyBrief{health: initialKeyHealth}
-		if err = rows.Scan(&providerID, &brief.enabled, &data); err != nil {
+		brief := keyBrief{health: initialKeyHealth, available: true}
+		if err = rows.Scan(&keyID, &providerID, &brief.enabled, &sealed, &data); err != nil {
 			return nil, err
 		}
 		if err = s.decodeDocument([]byte(data), &brief.doc); err != nil {
 			return nil, fmt.Errorf("上游 Key 的数据已损坏: %w", err)
 		}
+		if s.healthLookup != nil {
+			brief.health, brief.available = s.healthLookup(keyID, executionVersion(sealed))
+			brief.available = brief.available && sealed != nil
+		}
 		result[providerID] = append(result[providerID], brief)
 	}
 	return result, rows.Err()
 }
+
+// SetHealthLookup 在宿主启动、接收请求之前注入整Key健康投影；回调必须可并发读取且不能再访问本数据库。
+func (s *Store) SetHealthLookup(lookup func(string, string) (float64, bool)) { s.healthLookup = lookup }
