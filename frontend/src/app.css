@@ -1,27 +1,67 @@
 @import "tailwindcss";
 
+/* shadcn-svelte 控件用 data-checked / data-unchecked 写选中状态，bits-ui 输出的是 data-state；
+   以下两个变体取自 shadcn-svelte 随包的 tailwind.css，开关与复选框据此显示选中底色。 */
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+@custom-variant data-unchecked {
+  &:where([data-state="unchecked"]),
+  &:where([data-unchecked]:not([data-unchecked="false"])) {
+    @slot;
+  }
+}
+
 :root {
-  color-scheme: light;
-  --background: #f4f0e7;
-  --foreground: #15242a;
-  --card: #fbf8f1;
-  --card-foreground: #15242a;
-  --popover: #fbf8f1;
-  --popover-foreground: #15242a;
-  --primary: #1e625c;
-  --primary-foreground: #f8f5ec;
-  --secondary: #e8e1d4;
-  --secondary-foreground: #24383c;
-  --muted: #e9e2d6;
-  --muted-foreground: #6d706b;
-  --accent: #d9a45e;
-  --accent-foreground: #2b2419;
-  --destructive: #a53f35;
-  --destructive-foreground: #fffaf1;
-  --border: #d7cec0;
-  --input: #d7cec0;
-  --ring: #2f766e;
-  --radius: 0.75rem;
+  color-scheme: light dark;
+  --background: #ffffff;
+  --foreground: #182338;
+  --card: #ffffff;
+  --card-foreground: #182338;
+  --popover: #ffffff;
+  --popover-foreground: #182338;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #24334d;
+  --muted: #f4f6f9;
+  --muted-foreground: #64748b;
+  --accent: #eff6ff;
+  --accent-foreground: #1d4ed8;
+  --destructive: #b42332;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #d5dce6;
+  --ring: #2563eb;
+  --radius: 0.625rem;
+}
+
+/* 深色外观由设置中的“外观”驱动：宿主切换应用外观，页面通过 prefers-color-scheme 跟随。 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #161b23;
+    --foreground: #e7ecf3;
+    --card: #161b23;
+    --card-foreground: #e7ecf3;
+    --popover: #1b212b;
+    --popover-foreground: #e7ecf3;
+    --primary: #6ea0ff;
+    --primary-foreground: #0c1524;
+    --secondary: #222a36;
+    --secondary-foreground: #d5dde8;
+    --muted: #10151c;
+    --muted-foreground: #93a0b4;
+    --accent: #1c2a44;
+    --accent-foreground: #a9c5ff;
+    --destructive: #f0808a;
+    --destructive-foreground: #1a0b0d;
+    --border: #28303c;
+    --input: #343e4d;
+    --ring: #6ea0ff;
+  }
 }
 
 @theme inline {
@@ -74,4 +114,730 @@
 
 ::selection {
   background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--muted);
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--muted);
+  padding: calc(var(--mygo-titlebar-height, 0px) + 26px) 14px 18px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.nav-item.active {
+  color: var(--primary);
+  background: var(--accent);
+}
+.nav-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.control {
+  display: block;
+  min-height: 36px;
+  border: 1px solid var(--input);
+  background: var(--background);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 100%;
+}
+.tag {
+  display: inline-block;
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.feedback {
+  border: 1px solid var(--border);
+  background: var(--accent);
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--accent-foreground);
+}
+.error-banner {
+  padding: 12px 14px;
+  border: 1px solid var(--destructive);
+  border-radius: 8px;
+  color: var(--destructive);
+  font-size: 13px;
+  background: var(--background);
+}
+.price-section {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.rule-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--muted);
+  border-radius: 6px;
+}
+.rate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.catalog-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+/* 弹窗内的滚动区保留滚轮、触控板和键盘滚动，不绘制滚动条。 */
+.scroll-quiet {
+  scrollbar-width: none;
+}
+.scroll-quiet::-webkit-scrollbar {
+  display: none;
+}
+/* shadcn 控件由自身样式绘制焦点环，原生控件才使用此兜底。 */
+button:not([data-slot]):focus-visible,
+select:not([data-slot]):focus-visible,
+input:not([data-slot]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .sidebar {
+    padding: calc(var(--mygo-titlebar-height, 0px) + 20px) 6px;
+  }
+  .sidebar-brand > div,
+  .sidebar > p,
+  .nav-item span {
+    display: none;
+  }
+  .sidebar-brand {
+    padding: 0 !important;
+    justify-content: center;
+  }
+  /* 窄侧栏放不下分类文字，子分类改为贴着侧栏的浮层。 */
+  .settings-subnav {
+    position: fixed;
+    left: 70px;
+    bottom: 14px;
+    z-index: 8;
+    width: 146px;
+    margin: 0;
+    padding: 7px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+  }
+  .nav-item {
+    justify-content: center;
+    padding: 12px;
+  }
+  .rate-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.control.model-kind {
+  width: 9rem;
+}
+
+/* 系统按钮的占位随全屏自动归零，页面顶部使用同一底色并提供原生拖动区域。 */
+.app-titlebar {
+  --app-region: drag;
+  background: var(--muted);
+  min-height: max(64px, var(--mygo-titlebar-height, 0px));
+  user-select: none;
+}
+.app-titlebar button,
+.app-titlebar input,
+.app-titlebar a {
+  --app-region: no-drag;
+}
+
+/* 模型页沿用原型的紧凑工具栏和四列信息层次，共享控件保持 36px 高度。 */
+.model-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.model-filters,
+.model-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.model-toolbar-actions {
+  flex-shrink: 0;
+}
+.model-search {
+  width: 260px;
+}
+.model-kind-filter {
+  width: 126px;
+}
+.catalog-source-filter {
+  width: 190px;
+}
+[data-slot="input-group-addon"][data-align="inline-start"] {
+  padding-left: 11px;
+}
+[data-slot="input-group-addon"][data-align="inline-end"] {
+  padding-right: 11px;
+}
+.model-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.model-table th {
+  font-size: 12px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--muted) 40%, var(--card));
+  padding: 11px 16px;
+  height: 40px;
+}
+.model-table th:nth-child(1) {
+  width: 36%;
+}
+.model-table th:nth-child(2) {
+  width: 19%;
+}
+.model-table th:nth-child(3) {
+  width: 29%;
+}
+.model-table th:nth-child(4) {
+  width: 16%;
+}
+.model-table td {
+  padding: 18px 16px;
+  white-space: normal;
+}
+.model-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.model-brand {
+  --brand-accent: #526b8b;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand-accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--brand-accent) 6%, var(--card));
+  color: var(--brand-accent);
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 600;
+}
+.model-brand[data-brand="anthropic"] {
+  --brand-accent: #ad5738;
+}
+.model-brand[data-brand="openai"] {
+  --brand-accent: #247667;
+}
+.model-brand[data-brand="deepseek"] {
+  --brand-accent: #356bc6;
+}
+.model-identity-copy {
+  min-width: 0;
+}
+.model-identity-copy strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.model-id-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted-foreground);
+}
+.model-identity-copy code {
+  min-width: 0;
+  display: block;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 180px;
+}
+.capability-pill {
+  --capability-accent: #667085;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 23px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid
+    color-mix(in srgb, var(--capability-accent) 28%, var(--card));
+  color: var(--capability-accent);
+  background: color-mix(in srgb, var(--capability-accent) 7%, var(--card));
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1;
+}
+.capability-pill.vision {
+  --capability-accent: #176da8;
+}
+.capability-pill.tools {
+  --capability-accent: #b9560d;
+}
+.capability-pill.reasoning {
+  --capability-accent: #7b35bd;
+}
+.capability-pill.structured {
+  --capability-accent: #087a4c;
+}
+.price-amount {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.price-amount strong {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.price-divider {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.price-basis {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.price-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+.price-trait {
+  --trait-accent: #667085;
+  display: inline-flex;
+  align-items: center;
+  min-height: 19px;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--trait-accent) 28%, var(--card));
+  border-radius: 4px;
+  color: var(--trait-accent);
+  background: color-mix(in srgb, var(--trait-accent) 5%, var(--card));
+  font-size: 10px;
+  line-height: 1.5;
+}
+.price-trait.cache {
+  --trait-accent: #087b87;
+}
+.price-trait.tier {
+  --trait-accent: #315b9d;
+}
+.price-trait.speed {
+  --trait-accent: #7354c8;
+}
+.price-trait.time {
+  --trait-accent: #a75a23;
+}
+@media (max-width: 1100px) {
+  .model-toolbar {
+    flex-wrap: wrap;
+  }
+  .model-filters {
+    flex: 1;
+  }
+  .model-search {
+    width: auto;
+    flex: 1;
+  }
+  .model-table th:nth-child(1) {
+    width: 34%;
+  }
+  .model-table th:nth-child(2) {
+    width: 20%;
+  }
+  .model-table th:nth-child(3) {
+    width: 28%;
+  }
+  .model-table th:nth-child(4) {
+    width: 18%;
+  }
+  .model-table td {
+    padding: 15px 12px;
+  }
+  .model-brand {
+    width: 34px;
+    height: 34px;
+  }
+  .model-identity {
+    gap: 9px;
+  }
+}
+@media (max-width: 720px) {
+  .model-toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .model-search {
+    min-width: 120px;
+  }
+  .model-table th:nth-child(1) {
+    width: 35%;
+  }
+  .model-table th:nth-child(2) {
+    width: 20%;
+  }
+  .model-table th:nth-child(3) {
+    width: 25%;
+  }
+  .model-table th:nth-child(4) {
+    width: 20%;
+  }
+  .model-brand {
+    display: none;
+  }
+  .model-identity-copy strong {
+    font-size: 12px;
+  }
+  .price-amount strong {
+    font-size: 13px;
+  }
+  .model-table td,
+  .model-table th {
+    padding: 12px 8px;
+  }
+}
+
+/* 设置：入口固定在侧栏底部，进入后展开子分类；内容区按“名称在左、控件在右”逐行排列。 */
+.settings-nav {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.settings-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0 21px;
+  padding-left: 9px;
+  border-left: 1px solid var(--border);
+}
+.settings-subnav button {
+  min-height: 31px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.settings-subnav button:hover {
+  color: var(--foreground);
+}
+.settings-subnav button.active {
+  background: var(--secondary);
+  color: var(--foreground);
+  font-weight: 600;
+}
+/* 矮窗口下仅在展开设置分类时收紧侧栏间距，保证六个分类无需滚动即可到达；其他页面的侧栏不变。 */
+@media (max-height: 720px) {
+  .sidebar:has(.settings-subnav) {
+    padding-top: calc(var(--mygo-titlebar-height, 0px) + 14px);
+    padding-bottom: 10px;
+  }
+  .sidebar:has(.settings-subnav) .sidebar-brand {
+    margin-bottom: 18px;
+  }
+  .sidebar:has(.settings-subnav) .nav-item {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .sidebar:has(.settings-subnav) .settings-nav {
+    padding-top: 8px;
+  }
+  .sidebar:has(.settings-subnav) .settings-subnav {
+    gap: 1px;
+    margin-top: 4px;
+  }
+  .sidebar:has(.settings-subnav) .settings-subnav button {
+    min-height: 27px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  .sidebar:has(.settings-subnav) > p {
+    padding-top: 8px;
+  }
+}
+.settings-page {
+  padding-bottom: 20px;
+}
+/* 端口、间隔与阈值直接输入数值，不显示 WebKit 的步进箭头；方向键仍可增减。 */
+.settings-page input[type="number"]::-webkit-inner-spin-button,
+.settings-page input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.settings-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  /* 与模型页卡片（rounded-xl）同一圆角。 */
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--card);
+}
+.settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+}
+.settings-heading h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings-heading p {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.settings-heading .tag {
+  flex-shrink: 0;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 70px;
+  padding: 16px 24px;
+  font-size: 13px;
+}
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border);
+}
+.setting-row.tall {
+  min-height: 76px;
+}
+.setting-row strong,
+.setting-row small {
+  display: block;
+}
+.setting-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.setting-row small {
+  margin-top: 5px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.segmented {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--secondary);
+}
+.segmented button {
+  min-height: 29px;
+  padding: 3px 16px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+.segmented button.chosen {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+.segmented button:disabled {
+  cursor: default;
+}
+.settings-note {
+  margin: 12px 4px 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.settings-helper {
+  margin: 14px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.access-field {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 24px;
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.access-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.access-value code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  user-select: all;
+}
+.attention-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+.attention-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  z-index: 60;
+  max-width: calc(100vw - 30px);
+  padding: 11px 18px;
+  border-radius: 8px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 12px;
+  box-shadow: 0 6px 24px rgb(15 23 42 / 0.18);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+@media (max-width: 620px) {
+  .settings-heading,
+  .setting-row {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .setting-row {
+    gap: 12px;
+  }
+  .access-field {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .attention-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .attention-icon {
+    display: none;
+  }
+}
+
+/* 深色外观下提亮模型页的品牌、能力与价格标签色，保持文字对比度。 */
+@media (prefers-color-scheme: dark) {
+  .model-brand {
+    --brand-accent: #9fb4d0;
+  }
+  .model-brand[data-brand="anthropic"] {
+    --brand-accent: #e39a7c;
+  }
+  .model-brand[data-brand="openai"] {
+    --brand-accent: #5fc4ae;
+  }
+  .model-brand[data-brand="deepseek"] {
+    --brand-accent: #7fa8f5;
+  }
+  .capability-pill {
+    --capability-accent: #a3adbd;
+  }
+  .capability-pill.vision {
+    --capability-accent: #6cb8ea;
+  }
+  .capability-pill.tools {
+    --capability-accent: #f0a05f;
+  }
+  .capability-pill.reasoning {
+    --capability-accent: #c39af0;
+  }
+  .capability-pill.structured {
+    --capability-accent: #5fcf9b;
+  }
+  .price-trait {
+    --trait-accent: #a3adbd;
+  }
+  .price-trait.cache {
+    --trait-accent: #5ecbd6;
+  }
+  .price-trait.tier {
+    --trait-accent: #8fb3ee;
+  }
+  .price-trait.speed {
+    --trait-accent: #b3a0f2;
+  }
+  .price-trait.time {
+    --trait-accent: #e8a878;
+  }
 }

@@ -1,0 +1,106 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { isMyGo } from "mygo-runtime";
+  import { Button } from "$lib/components/ui/button";
+  import { VelaService, type SettingsSnapshot } from "$lib/generated/mygo";
+  import { errorMessage, type Notify, type SettingsSection } from "./sections";
+  import GeneralSettings from "./GeneralSettings.svelte";
+  import ConnectionSettings from "./ConnectionSettings.svelte";
+  import AccountSettings from "./AccountSettings.svelte";
+  import NetworkSettings from "./NetworkSettings.svelte";
+  import AttentionSettings from "./AttentionSettings.svelte";
+  import RecordsSettings from "./RecordsSettings.svelte";
+
+  /** 设置页一次读取已保存设置；各分类保持挂载，切换分类不丢草稿。 */
+  let {
+    section,
+    notify,
+  }: {
+    /** 当前显示的分类，由应用侧栏持有。 */
+    section: SettingsSection;
+    /** 保存、复制等操作的成功反馈。 */
+    notify: Notify;
+  } = $props();
+
+  /** 浏览器预览没有桌面服务，只展示默认值且不可保存；外观跟随浏览器当前的明暗偏好。 */
+  const preview: SettingsSnapshot = {
+    general: {
+      appearance: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+      closeAction: "background",
+      backgroundEntry: "menu",
+      dashboardSeconds: 10,
+      providerSeconds: 60,
+    },
+    openAtLogin: false,
+    gateway: { port: 18080 },
+    account: { enabled: false, minutes: 5 },
+    attention: {
+      balance: true,
+      difference: true,
+      health: true,
+      rate: true,
+      balanceThreshold: 10,
+    },
+  };
+  /** 是否运行在 Vela 桌面窗口内。 */
+  const desktop = isMyGo();
+  /** 已保存的设置；null 表示尚未读到。loadError 是读取失败的原因。 */
+  let snapshot = $state<SettingsSnapshot | null>(desktop ? null : preview);
+  let loadError = $state("");
+
+  /** 读取失败时不显示默认值冒充已保存设置，提供重试。 */
+  async function load(): Promise<void> {
+    if (!desktop) return;
+    loadError = "";
+    try {
+      snapshot = await VelaService.settings();
+    } catch (error) {
+      loadError = errorMessage(error);
+    }
+  }
+  onMount(() => {
+    void load();
+  });
+</script>
+
+<div class="settings-page">
+  {#if !desktop}<p class="feedback mb-5">
+      浏览器预览 · 设置的读取与保存请在 Vela 桌面窗口中进行。
+    </p>{/if}
+  {#if loadError}
+    <div role="alert" class="error-banner">
+      设置读取失败：{loadError}
+      <Button variant="ghost" size="sm" onclick={() => void load()}>重试</Button>
+    </div>
+  {:else if !snapshot}
+    <p class="p-16 text-center text-sm text-muted-foreground">正在读取设置…</p>
+  {:else}
+    <div hidden={section !== "general"}>
+      <GeneralSettings
+        bind:saved={snapshot.general}
+        bind:openAtLogin={snapshot.openAtLogin}
+        {desktop}
+      />
+    </div>
+    <div hidden={section !== "connection"}>
+      <ConnectionSettings
+        bind:saved={snapshot.gateway}
+        active={section === "connection"}
+        {desktop}
+        {notify}
+      />
+    </div>
+    <div hidden={section !== "account"}>
+      <AccountSettings bind:saved={snapshot.account} {desktop} {notify} />
+    </div>
+    <div hidden={section !== "network"}>
+      <NetworkSettings {desktop} {notify} />
+    </div>
+    <div hidden={section !== "attention"}>
+      <AttentionSettings bind:saved={snapshot.attention} {desktop} {notify} />
+    </div>
+    <div hidden={section !== "records"}>
+      <RecordsSettings />
+    </div>
+  {/if}
+</div>

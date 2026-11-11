@@ -3,7 +3,7 @@
   "style": "sera",
   "tailwind": {
     "css": "src/app.css",
-    "baseColor": "taupe"
+    "baseColor": "slate"
   },
   "aliases": {
     "components": "$lib/components",

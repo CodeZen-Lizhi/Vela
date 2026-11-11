@@ -11,15 +11,17 @@
   "dependencies": {
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
+    "@lucide/svelte": "^1.71.0",
     "clsx": "^2.1.1",
-    "@lucide/svelte": "^1.70.0",
     "mygo-runtime": "^0.8.3",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@internationalized/date": "^3.12.4",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^26.6.6",
+    "bits-ui": "^2.20.6",
     "svelte": "^5.57.3",
     "svelte-check": "^4.7.8",
     "tailwind-variants": "^3.3.1",
