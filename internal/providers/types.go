@@ -37,19 +37,14 @@ const (
 	ProxyGlobal ProxyMode = "global"
 	// ProxyDirect 不使用代理，直接连接。
 	ProxyDirect ProxyMode = "direct"
-	// ProxyCustom 使用 ProxyChoice.URL 指定的代理地址。
-	ProxyCustom ProxyMode = "custom"
 	// ProxyProvider 跟随所属供应商的出口方式，只用于上游 Key。
 	ProxyProvider ProxyMode = "provider"
 )
 
 // ProxyChoice 是供应商或上游 Key 的局部出口选择。
 type ProxyChoice struct {
-	// Mode 出口方式；供应商可取 global、direct、custom，上游 Key 另可取 provider。
+	// Mode 出口方式；供应商可取 global、direct，上游 Key 只可取 provider、direct。
 	Mode ProxyMode `json:"mode"`
-	// URL 自定义代理地址，支持 http、https、socks5 或 socks5h；含认证时读取只返回 ***，编辑传 *** 或空串保留原值。
-	// 数据库使用带版本前缀的密文保存完整认证地址，只在实际出站前解密；无认证地址保持原样。
-	URL string `json:"url"`
 }
 
 // RequestPolicy 是供应商的请求配置。本模块只负责保存与校验，执行语义由网关与调度实现。
@@ -70,8 +65,6 @@ type RequestPolicy struct {
 	Proxy ProxyChoice `json:"proxy"`
 	// ResponsesWebSocket 是否启用 Responses WebSocket 模式。
 	ResponsesWebSocket bool `json:"responsesWebSocket"`
-	// TransportFailover 传输失败后是否继续转移。
-	TransportFailover bool `json:"transportFailover"`
 }
 
 // Provider 是一个上游供应商（中转站）的本地配置。
@@ -84,8 +77,6 @@ type Provider struct {
 	Website string `json:"website"`
 	// URL 服务地址，只保存站点根地址，例如 https://api.example.com。
 	URL string `json:"url"`
-	// Note 备注，不参与调用。
-	Note string `json:"note"`
 	// Enabled 是否启用；停用后退出调用候选，Key 与其他配置保留。
 	Enabled bool `json:"enabled"`
 	// Request 请求配置。
@@ -100,8 +91,6 @@ type ProviderDraft struct {
 	Website string `json:"website"`
 	// URL 服务地址；可带 /v1 或 /v1beta 后缀，保存时去掉。
 	URL string `json:"url"`
-	// Note 备注。
-	Note string `json:"note"`
 	// Request 请求配置。
 	Request RequestPolicy `json:"request"`
 }

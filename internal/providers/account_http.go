@@ -46,12 +46,8 @@ func (a *Accounts) connection(ctx context.Context, c QueryConfig, p ProxyChoice,
 				}
 			}
 		}
-	} else if p.Mode == ProxyCustom {
-		var e error
-		proxy, e = outbound.ParseProxy(p.URL)
-		if e != nil {
-			return nil, errors.New("局部代理地址无效")
-		}
+	} else if p.Mode != ProxyDirect {
+		return nil, errors.New("无效网络代理方式")
 	}
 	t := outbound.Transport(proxy)
 	h := &accountHTTP{transport: t, client: &http.Client{Transport: t, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, config: c, headers: map[string]string{}}

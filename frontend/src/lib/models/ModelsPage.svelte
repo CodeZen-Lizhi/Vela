@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
     CloudDownload,
@@ -12,6 +12,7 @@
     Box,
     Copy,
     Check,
+    ArrowLeft,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Select from "$lib/components/ui/select";
@@ -29,7 +30,7 @@
     type CatalogEntry,
     type Pricing,
   } from "$lib/generated/mygo";
-  import { kinds, dateLabel } from "./display";
+  import { kinds, dateLabel, modelInitial } from "./display";
   let models = $state<Model[]>([]),
     catalog = $state<CatalogEntry[]>([]);
   let query = $state(""),
@@ -42,6 +43,8 @@
   /** 创建草稿只在最终提交时落库；来源条目用于保持精确来源身份。 */
   let createDraft = $state<Model | null>(null);
   let createEntry = $state<CatalogEntry | null>(null);
+  /** 在线目录始终挂载，返回时用于恢复搜索焦点且不改变卡片滚动位置。 */
+  let catalogPanel = $state<HTMLDivElement | null>(null);
   /** 最近成功复制的模型记录，用于按钮的轻量成功反馈。 */
   let copiedModelId = $state("");
   let addOpen = $state(false),
@@ -105,12 +108,20 @@
       catalogLoading = false;
     }
   }
-  /** 仅构造独立创建草稿，取消或返回目录均不写入；entry 为空表示手动创建。 */
+  /** 仅构造独立创建草稿，取消不写入；entry 为空表示手动创建。 */
   function selectForCreate(entry: CatalogEntry | null): void {
     createEntry = entry;
     dialogError = "";
     const pricing: Pricing = {base: [], tiers: [], modes: [], schedules: [], baseline: "", images: [], videos: []};
-    createDraft = {id: "", modelId: entry?.modelId ?? "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: pricing, overrides: []};
+    createDraft = {id: "", revision: 0, modelId: entry?.modelId ?? "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
+  }
+  /** 返回目录丢弃未提交草稿，保留目录筛选和滚动位置；焦点回到搜索框。 */
+  async function returnToCatalog(): Promise<void> {
+    createDraft = null;
+    createEntry = null;
+    dialogError = "";
+    await tick();
+    catalogPanel?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
   }
   /** 最终创建一次提交名称与本地价格，失败保留草稿。 */
   async function add(event: SubmitEvent): Promise<void> {
@@ -143,8 +154,9 @@
       busy = false;
     }
   }
-  /** 编辑使用独立草稿，取消时不改列表或数据库。 */
+  /** 编辑使用独立草稿；等待写入或刷新完成后再打开，避免从旧列表创建草稿。 */
   function openEditor(m: Model, detail: boolean): void {
+    if (busy || loading) return;
     restoredGroups = [];
     selected = m;
     draft = structuredClone($state.snapshot(m));
@@ -152,7 +164,7 @@
     dialogError = "";
     editorOpen = true;
   }
-  /** 保存后重读，使成功状态对应真实持久化结果。 */
+  /** 保存后重读；失败保留草稿并刷新列表，取消重开时可取得最新版本。 */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (!draft) return;
@@ -161,6 +173,7 @@
     try {
       await VelaService.updateModel({
         id: draft.id,
+        revision: draft.revision,
         name: draft.name,
         pricing: draft.pricing,
         restoreGroups: restoredGroups,
@@ -169,6 +182,7 @@
       editorOpen = false;
     } catch (e) {
       dialogError = message(e);
+      await load();
     } finally {
       busy = false;
     }
@@ -366,7 +380,11 @@
                     class="model-brand"
                     data-brand={model.canonicalId.split("/")[0]}
                     aria-hidden="true"
-                    >{brand(model).slice(0, 1).toUpperCase()}</span
+                    >{modelInitial(
+                      model.name,
+                      brand(model),
+                      !model.providerId,
+                    )}</span
                   >
                   <div class="model-identity-copy">
                     <strong>{model.name}</strong>
@@ -401,11 +419,13 @@
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`查看 ${model.name}`}
+                    disabled={busy || loading}
                     onclick={() => openEditor(model, true)}><Eye /></Button
                   ><Button
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`编辑 ${model.name}`}
+                    disabled={busy || loading}
                     onclick={() => openEditor(model, false)}><Pencil /></Button
                   ><Button
                     variant="ghost"
@@ -428,15 +448,15 @@
   </section>
 </div>
 
-<!-- 在线流程的目录与确认两步共用同一固定尺寸，确认时目录保持挂载以保留筛选和滚动位置；手动创建使用表单尺寸。 -->
+<!-- 在线目录与确认表单保持相同宽高，切换不跳动；手动创建随内容收缩。 -->
 <Dialog.Root bind:open={addOpen}>
   <Dialog.Content
     class={createDraft && !createEntry
       ? "flex max-h-[86vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(760px,calc(100vw-3rem))]"
       : "flex h-[min(86vh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(920px,calc(100vw-3rem))]"}
   >
-    <Dialog.Header class="shrink-0 border-b px-6 py-5"
-      ><Dialog.Title
+    <Dialog.Header class="h-16 shrink-0 flex-row items-center gap-3 border-b px-6 pr-16"
+      >{#if createDraft && createEntry}<Button variant="ghost" size="sm" disabled={busy} onclick={() => void returnToCatalog()}><ArrowLeft data-icon="inline-start" />返回</Button>{/if}<Dialog.Title
         >{createDraft
           ? createEntry
             ? "确认模型"
@@ -449,53 +469,41 @@
       ></Dialog.Header
     >
     {#if createDraft && !createEntry}
-      <div class="flex min-h-0 flex-col">
+      <div class="flex min-h-0 flex-1 flex-col">
         <ModelEditor
           bind:model={createDraft}
           {busy}
           error={dialogError}
-          mode="manual"
+          mode={createEntry ? "online" : "manual"}
           onsave={add}
           onrestore={restore}
           onclose={() => (addOpen = false)}
         />
       </div>
     {:else}
-      <div class="relative flex min-h-0 flex-1 flex-col">
-        <div
-          class={[
-            "flex min-h-0 flex-1 flex-col px-6 pt-5",
-            createDraft && "invisible",
-          ]}
-        >
-          <ModelCatalog
-            {catalog}
-            loading={catalogLoading}
+      <div bind:this={catalogPanel} class={createDraft ? "hidden" : "flex min-h-0 flex-1 flex-col px-6 pt-5"}>
+        <ModelCatalog
+          {catalog}
+          loading={catalogLoading}
+          {busy}
+          error={dialogError}
+          onretry={() => void openCatalog()}
+          onselect={selectForCreate}
+        />
+      </div>
+      {#if createDraft}
+        <div class="flex min-h-0 flex-1 flex-col">
+          <ModelEditor
+            bind:model={createDraft}
             {busy}
-            error={createDraft ? "" : dialogError}
-            onretry={() => void openCatalog()}
-            onselect={selectForCreate}
+            error={dialogError}
+            mode="online"
+            onsave={add}
+            onrestore={restore}
+            onclose={() => (addOpen = false)}
           />
         </div>
-        {#if createDraft}
-          <div class="absolute inset-0 flex flex-col bg-popover">
-            <ModelEditor
-              bind:model={createDraft}
-              {busy}
-              error={dialogError}
-              mode="online"
-              onsave={add}
-              onrestore={restore}
-              onback={() => {
-                createDraft = null;
-                createEntry = null;
-                dialogError = "";
-              }}
-              onclose={() => (addOpen = false)}
-            />
-          </div>
-        {/if}
-      </div>
+      {/if}
     {/if}
   </Dialog.Content>
 </Dialog.Root>

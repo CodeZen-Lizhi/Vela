@@ -51,7 +51,7 @@ func (s *VelaService) UpdateModel(ctx context.Context, edit models.Edit) (models
 	return store.Update(ctx, edit)
 }
 
-// DeleteModel 删除当前独立模型，调用方先展示确认。
+// DeleteModel 删除统一模型及其供应商关联、映射和 Key 模型权限，调用方先展示确认。
 func (s *VelaService) DeleteModel(ctx context.Context, id string) error {
 	store, err := s.modelStore()
 	if err != nil {

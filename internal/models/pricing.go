@@ -13,6 +13,23 @@ import (
 // groups 定义独立修改保护的规则组，关联阶梯永远作为整体。
 var groups = []string{"base", "tiers", "modes", "schedules", "images", "videos"}
 
+// removeVectorOutput 清除误分类为对话模型时导入的输出价，其余价格及完整规则组保持不变。
+func removeVectorOutput(p *Pricing) {
+	remove := func(rates []Rate) []Rate {
+		return slices.DeleteFunc(rates, func(rate Rate) bool { return rate.Key == "output" })
+	}
+	p.Base = remove(p.Base)
+	for i := range p.Tiers {
+		p.Tiers[i].Rates = remove(p.Tiers[i].Rates)
+	}
+	for i := range p.Modes {
+		p.Modes[i].Rates = remove(p.Modes[i].Rates)
+		for j := range p.Modes[i].Tiers {
+			p.Modes[i].Tiers[j].Rates = remove(p.Modes[i].Tiers[j].Rates)
+		}
+	}
+}
+
 // newID 为模型创建稳定身份，同名删除重建时不会重用历史身份。
 func newID() (string, error) {
 	var b [16]byte

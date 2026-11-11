@@ -33,11 +33,7 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	}
 	qctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	proxy, queryErr := a.store.proxyForNetwork(proxyBinding("provider", id), p.Request.Proxy)
-	var h *accountHTTP
-	if queryErr == nil {
-		h, queryErr = a.connection(qctx, c, proxy, proxy)
-	}
+	h, queryErr := a.connection(qctx, c, p.Request.Proxy, p.Request.Proxy)
 	if queryErr == nil {
 		defer h.transport.CloseIdleConnections()
 		queryErr = a.authenticate(qctx, h)
@@ -169,15 +165,7 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 		queryErr = errors.New("尚未配置信息查询连接")
 	}
 	if queryErr == nil {
-		// 只解密实际生效的出口；Key 直连或独立代理不依赖未使用的供应商认证。
-		proxy, binding := kd.Proxy, proxyBinding("key", id)
-		if proxy.Mode == ProxyProvider || proxy.Mode == "" {
-			proxy, binding = p.Request.Proxy, proxyBinding("provider", pid)
-		}
-		proxy, queryErr = a.store.proxyForNetwork(binding, proxy)
-		if queryErr == nil {
-			h, queryErr = a.connection(qctx, c, proxy, proxy)
-		}
+		h, queryErr = a.connection(qctx, c, kd.Proxy, p.Request.Proxy)
 	}
 	if queryErr == nil {
 		defer h.transport.CloseIdleConnections()

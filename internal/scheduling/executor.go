@@ -47,8 +47,6 @@ type AttemptResult struct {
 	Committed bool
 	// Retryable 表示故障分类允许重试，并仍受请求及配置边界约束。
 	Retryable bool
-	// TransportFailure 区分传输失败开关和普通上游状态错误。
-	TransportFailure bool
 	// Status 是上游或本地协议错误状态，诊断不得包含密钥及正文。
 	Status int
 }
@@ -235,9 +233,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				lastErr = fmt.Errorf("上游调用未成功（%d）", outcome.Status)
 			}
 			if outcome.Committed || !req.RetrySafe || req.PreviousResponseID != "" || !outcome.Retryable {
-				return result, lastErr
-			}
-			if outcome.TransportFailure && !c.Provider.Request.TransportFailover {
 				return result, lastErr
 			}
 		}

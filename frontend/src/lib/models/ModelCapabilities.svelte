@@ -32,6 +32,4 @@
         ><item.icon class="size-3" aria-hidden="true" />{item.label}</Badge
       >{/if}
   {/each}
-  {#if !values.length}<span class="text-xs text-muted-foreground">能力未知</span
-    >{/if}
 </div>

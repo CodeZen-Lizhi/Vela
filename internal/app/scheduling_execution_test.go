@@ -3,14 +3,19 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -123,7 +128,7 @@ func newExecutionFixture(t *testing.T) *executionFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.provider, err = f.vendors.Create(ctx, providers.ProviderDraft{Name: "Local", URL: upstream.URL, Request: providers.RequestPolicy{Attempts: 2, TransportFailover: true, Proxy: providers.ProxyChoice{Mode: providers.ProxyDirect}}})
+	f.provider, err = f.vendors.Create(ctx, providers.ProviderDraft{Name: "Local", URL: upstream.URL, Request: providers.RequestPolicy{Attempts: 2, Proxy: providers.ProxyChoice{Mode: providers.ProxyDirect}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,5 +327,161 @@ func TestSchedulingUsesProviderOperationMappings(t *testing.T) {
 	}
 	if _, err = f.vendors.ExecutionSecret(ctx, "logical-model", routes[0].Key.ID, routes[0].Version, "chat-upstream", "responses"); err == nil {
 		t.Fatal("跨操作映射通过执行前复核")
+	}
+}
+
+// TestExecutionGlobalProxyAndDirect 通过真实HTTP与加密全局代理验证调度出口；两级直连都不读取失效的全局凭据。
+func TestExecutionGlobalProxyAndDirect(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	catalog, err := models.Open(filepath.Join(dir, "proxy.sqlite"), http.DefaultClient, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalog.Close()
+	secrets, err := credentials.New(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = catalog.ProtectProxy(secrets); err != nil {
+		t.Fatal(err)
+	}
+	var proxied, direct atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { direct.Add(1); io.WriteString(w, "direct") }))
+	defer upstream.Close()
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Proxy-Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte("global-user:global-password")) {
+			w.WriteHeader(http.StatusProxyAuthRequired)
+			return
+		}
+		proxied.Add(1)
+		io.WriteString(w, "proxied")
+	}))
+	defer proxy.Close()
+	parsed, err := url.Parse(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed.User = url.UserPassword("global-user", "global-password")
+	if err = catalog.SetProxy(ctx, models.Proxy{Enabled: true, URL: parsed.String()}); err != nil {
+		t.Fatal(err)
+	}
+	execution := &SchedulingExecution{models: catalog, clients: map[string]*http.Client{}}
+	t.Cleanup(func() {
+		for _, client := range execution.clients {
+			client.CloseIdleConnections()
+		}
+	})
+	candidate := scheduling.Candidate{Provider: providers.Provider{Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyGlobal}}}, Key: providers.ProviderKey{Proxy: providers.ProxyChoice{Mode: providers.ProxyProvider}}}
+	request := func(c scheduling.Candidate, want string) {
+		t.Helper()
+		client, err := execution.clientFor(ctx, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := client.Get(upstream.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil || resp.StatusCode != 200 || string(body) != want {
+			t.Fatal("实际调度代理出口不匹配", err)
+		}
+	}
+	request(candidate, "proxied")
+	var document string
+	if err = catalog.DB().QueryRow("SELECT document FROM settings WHERE name='proxy'").Scan(&document); err != nil || strings.Contains(document, "global-password") {
+		t.Fatal("全局认证未加密", err)
+	}
+	// 全局模式每次读取最新设置，关闭全局代理后旧客户端不能继续被选中。
+	if err = catalog.SetProxy(ctx, models.Proxy{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	request(candidate, "direct")
+	if err = catalog.SetProxy(ctx, models.Proxy{Enabled: true, URL: parsed.String()}); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(dir, "credentials", "master.key")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = execution.clientFor(ctx, candidate); err == nil {
+		t.Fatal("全局凭据丢失仍静默出站")
+	}
+	candidate.Key.Proxy.Mode = providers.ProxyDirect
+	request(candidate, "direct")
+	candidate.Key.Proxy.Mode = providers.ProxyProvider
+	candidate.Provider.Request.Proxy.Mode = providers.ProxyDirect
+	request(candidate, "direct")
+	if proxied.Load() != 1 || direct.Load() != 3 {
+		t.Fatal("继承或直连请求数量错误")
+	}
+}
+
+// TestSchedulingConnectionFailureBudget 验证历史false不再阻止真实连接故障转移，尝试预算和不安全/不可重试边界继续生效。
+func TestSchedulingConnectionFailureBudget(t *testing.T) {
+	for _, tc := range []struct {
+		// name 用例说明；attempts 是每Key预算，safe 是入口确认的重放安全性。
+		name     string
+		attempts int
+		safe     bool
+		// status 非零时第一Key返回不可重试状态，否则真实关闭连接。
+		status int
+		// wantAttempts 与 success 为预期实际出站次数及最终成功状态。
+		wantAttempts int
+		success      bool
+	}{{"retryable-budget-two", 2, true, 0, 3, true}, {"retryable-budget-one", 1, true, 0, 2, true}, {"unsafe-stops", 2, false, 0, 1, false}, {"nonretryable-stops", 2, true, 400, 1, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newExecutionFixture(t)
+			var calls atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if r.Header.Get("Authorization") == "Bearer key-a" {
+					if tc.status != 0 {
+						w.WriteHeader(tc.status)
+						io.WriteString(w, `{"error":{"type":"invalid_request_error"}}`)
+						return
+					}
+					conn, _, err := w.(http.Hijacker).Hijack()
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					conn.Close()
+					return
+				}
+				io.WriteString(w, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
+			}))
+			defer upstream.Close()
+			request := f.provider.Request
+			request.Attempts = tc.attempts
+			// 注入旧版真实存储JSON；decoder须兼容历史false，但执行不得再受它控制。
+			raw, err := json.Marshal(map[string]any{"website": "", "url": upstream.URL, "request": request})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var legacy map[string]any
+			if err = json.Unmarshal(raw, &legacy); err != nil {
+				t.Fatal(err)
+			}
+			legacy["request"].(map[string]any)["transportFailover"] = false
+			raw, err = json.Marshal(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = f.catalog.DB().Exec("UPDATE providers SET document=? WHERE id=?", string(raw), f.provider.ID); err != nil {
+				t.Fatal(err)
+			}
+			req := f.request()
+			req.RetrySafe = tc.safe
+			var output bytes.Buffer
+			result, err := f.execution.Executor.Execute(context.Background(), req, &output)
+			if (err == nil) != tc.success || result.Attempts != tc.wantAttempts || int(calls.Load()) != tc.wantAttempts {
+				t.Fatalf("实际故障预算: %+v err=%v calls=%d", result, err, calls.Load())
+			}
+			if tc.success && result.KeyID != f.keys[1].ID {
+				t.Fatal("未转移到下一候选")
+			}
+		})
 	}
 }

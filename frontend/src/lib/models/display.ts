@@ -16,13 +16,22 @@ export const groupNames: Record<string, string> = {
   images: "图片矩阵",
   videos: "视频分辨率",
 };
+/** 模型头像取来源品牌或手动模型名称的首个字母，空名称使用 M 作为稳定占位。 */
+export function modelInitial(
+  name: string,
+  providerName: string,
+  manual = false,
+): string {
+  const source = (manual ? name : providerName || name).trim();
+  return (source.match(/[\p{L}\p{N}]/u)?.[0] ?? "M").toUpperCase();
+}
 /** 计价维度名称；单价统一使用美元。 */
 export const rateNames: Record<string, string> = {
   input: "输入",
   output: "输出",
   cache_read: "缓存读取",
-  cache_write: "5 分钟缓存创建",
-  cache_write_1h: "1 小时缓存创建",
+  cache_write: "缓存创建（5 分钟）",
+  cache_write_1h: "缓存创建（1 小时）",
   image_input: "图片输入 Token",
   image_output: "图片输出 Token",
   audio_input: "音频输入 Token",

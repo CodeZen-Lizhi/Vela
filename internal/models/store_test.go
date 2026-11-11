@@ -46,7 +46,7 @@ func TestLifecycle(t *testing.T) {
 	}
 	m.Pricing.Schedules = []Schedule{{Timezone: "Asia/Shanghai", Days: []int{1, 2, 3, 4, 5}, Start: "09:00", End: "12:00", Multiplier: 2}}
 	m.Pricing.Baseline = "低谷价格"
-	m, err = s.Update(ctx, Edit{ID: m.ID, Name: "本地名称", Pricing: m.Pricing})
+	m, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: "本地名称", Pricing: m.Pricing})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestLifecycle(t *testing.T) {
 	}
 	m.Pricing.Base[0].Price = 9
 	m.Pricing.Tiers[0].Rates[0].Price = 99
-	m, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: m.Pricing})
+	m, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: m.Pricing})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestLifecycle(t *testing.T) {
 		t.Fatal("同步覆盖本地规则")
 	}
 	m.Pricing.Base = m.SourcePricing.Base
-	m, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: m.Pricing, RestoreGroups: []string{"base"}})
+	m, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: m.Pricing, RestoreGroups: []string{"base"}})
 	if err != nil || m.Pricing.Base[0].Price != 2 || contains(m.Overrides, "base") {
 		t.Fatalf("恢复: %+v %v", m, err)
 	}
@@ -91,8 +91,12 @@ func TestLifecycle(t *testing.T) {
 	if _, err = s.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: m.Pricing, RestoreGroups: []string{"base"}}); err == nil {
-		t.Fatal("下架后恢复应报错")
+	m, err = s.get(ctx, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: m.Pricing, RestoreGroups: []string{"base"}}); err == nil || !strings.Contains(err.Error(), "没有可用的来源值") {
+		t.Fatal("下架后恢复应报告无来源值", err)
 	}
 	version.Store(4)
 	if _, err = s.Sync(ctx); err == nil {
@@ -204,16 +208,16 @@ func TestRestoreOnSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Pricing.Base = []Rate{{Key: "input", Price: 3, Unit: "million_tokens"}}
-	m, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: m.Pricing})
+	m, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: m.Pricing})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: m.SourcePricing, RestoreGroups: []string{"base"}})
+	m, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: m.SourcePricing, RestoreGroups: []string{"base"}})
 	if err != nil || contains(m.Overrides, "base") || m.Pricing.Base[0].Price != 1 {
 		t.Fatalf("保存恢复草稿失败: %+v %v", m, err)
 	}
 	m.Pricing.Base = []Rate{{Key: "input", Price: 4, Unit: "million_tokens"}}
-	m, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: m.Pricing, RestoreGroups: []string{"base"}})
+	m, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: m.Pricing, RestoreGroups: []string{"base"}})
 	if err != nil || !contains(m.Overrides, "base") || m.Pricing.Base[0].Price != 4 {
 		t.Fatalf("恢复后新编辑被覆盖: %+v %v", m, err)
 	}
@@ -280,7 +284,7 @@ func TestCompletePricing(t *testing.T) {
 	}
 	factor := 2.0
 	pricing := Pricing{Base: []Rate{{Key: "cache_write_1h", Price: 6, Unit: "million_tokens"}}, Tiers: []Tier{{Above: 200000, Rates: []Rate{{Key: "input", Price: 4, Unit: "million_tokens"}}}}, Modes: []Mode{{Name: "fast", Multiplier: &factor}, {Name: "priority", Rates: []Rate{{Key: "input", Price: 3, Unit: "million_tokens"}}, Tiers: []Tier{{Above: 200000, Rates: []Rate{{Key: "input", Price: 6, Unit: "million_tokens"}}}}}}, Baseline: "低谷价格", Schedules: []Schedule{{Timezone: "Asia/Shanghai", Days: []int{1, 2, 3, 4, 5}, Start: "09:00", End: "12:00", Multiplier: 2, ExcludedDates: []string{"2026-10-01"}}}, Images: []ImagePrice{{Size: "1024x1024", Quality: "standard", Price: 0.04}}, Videos: []VideoPrice{{Resolution: "1080p", Price: 0.2}}}
-	if _, err = s.Update(ctx, Edit{ID: m.ID, Name: m.Name, Pricing: pricing}); err != nil {
+	if _, err = s.Update(ctx, Edit{ID: m.ID, Revision: m.Revision, Name: m.Name, Pricing: pricing}); err != nil {
 		t.Fatal(err)
 	}
 	list, err := s.List(ctx)

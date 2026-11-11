@@ -58,16 +58,16 @@ func TestCredentialsServiceRestart(t *testing.T) {
 	if err := s.SaveAccessKey("test-gateway-updated-123456"); err != nil {
 		t.Fatal(err)
 	}
-	p, err := s.CreateProvider(ctx, providers.ProviderDraft{Name: "Test", URL: "https://example.invalid", Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyCustom, URL: proxy.URL}}})
+	p, err := s.CreateProvider(ctx, providers.ProviderDraft{Name: "Test", URL: "https://example.invalid", Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyGlobal}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	multiplier := 1.0
-	k, err := s.CreateProviderKey(ctx, p.ID, providers.ProviderKeyDraft{Name: "Test", Secret: "test-upstream-secret-123456", Multiplier: &multiplier, ProbeMinutes: 10, Proxy: providers.ProxyChoice{Mode: providers.ProxyCustom, URL: proxy.URL}})
+	k, err := s.CreateProviderKey(ctx, p.ID, providers.ProviderKeyDraft{Name: "Test", Secret: "test-upstream-secret-123456", Multiplier: &multiplier, ProbeMinutes: 10, Proxy: providers.ProxyChoice{Mode: providers.ProxyProvider}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot, err := s.Providers(ctx); err != nil || snapshot.Providers[0].Provider.Request.Proxy.URL != "***" {
+	if snapshot, err := s.Providers(ctx); err != nil || snapshot.Providers[0].Provider.Request.Proxy.Mode != providers.ProxyGlobal {
 		t.Fatal("供应商加密代理重读失败")
 	}
 	// 更新重启后旧存储即使不可用，也必须能读到最新访问密钥与上游凭据。
@@ -93,7 +93,7 @@ func TestCredentialsServiceRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 1 || keys[0].Proxy.URL != "***" {
+	if len(keys) != 1 || keys[0].Proxy.Mode != providers.ProxyProvider {
 		t.Fatal("Key 加密代理重读失败")
 	}
 	data, err := json.Marshal(keys)
@@ -145,13 +145,17 @@ func TestProviderDocumentMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy := "http://test-user:test-migration-password@127.0.0.1:18888"
-	p, err := old.Create(context.Background(), providers.ProviderDraft{Name: "Legacy", URL: "https://example.invalid", Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyCustom, URL: proxy}}})
+	p, err := old.Create(context.Background(), providers.ProviderDraft{Name: "Legacy", URL: "https://example.invalid", Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyGlobal}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	multiplier := 1.0
-	_, err = old.CreateKey(context.Background(), p.ID, providers.ProviderKeyDraft{Name: "Legacy", Multiplier: &multiplier, ProbeMinutes: 10, Proxy: providers.ProxyChoice{Mode: providers.ProxyCustom, URL: proxy}})
+	_, err = old.CreateKey(context.Background(), p.ID, providers.ProviderKeyDraft{Name: "Legacy", Multiplier: &multiplier, ProbeMinutes: 10, Proxy: providers.ProxyChoice{Mode: providers.ProxyProvider}})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// 模拟旧版写入的局部代理，当前入口已不再接受它。
+	if _, err = db.DB().Exec("UPDATE providers SET document=json_set(document,'$.request.proxy.mode','custom','$.request.proxy.url',?) WHERE id=?", proxy, p.ID); err != nil {
 		t.Fatal(err)
 	}
 	// 第二张表损坏时，第一张表的迁移也必须回滚。
@@ -177,7 +181,7 @@ func TestProviderDocumentMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot, err := upgraded.Snapshot(context.Background())
-	if err != nil || snapshot.Providers[0].Provider.Request.Proxy.URL != "***" {
+	if err != nil || snapshot.Providers[0].Provider.Request.Proxy.Mode != providers.ProxyGlobal {
 		t.Fatal("迁移丢失代理配置")
 	}
 	if err := db.DB().QueryRow("SELECT document FROM providers WHERE id=?", p.ID).Scan(&after); err != nil || strings.Contains(after, "test-migration-password") {

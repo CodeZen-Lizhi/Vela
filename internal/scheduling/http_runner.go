@@ -122,10 +122,8 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 			return result, ctx.Err()
 		}
 		result.Retryable = true
-		result.TransportFailure = true
 		result.Outcome.Penalty = Heavy
 		if !stopped || errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
-			result.TransportFailure = false
 			result.Outcome.Penalty = Light
 			result.Status = 504
 		}

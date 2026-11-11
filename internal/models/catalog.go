@@ -22,9 +22,13 @@ type rawModel struct {
 	Family      string `json:"family"`
 	Type        string `json:"type"`
 	CanonicalID string `json:"canonical_model_id"`
-	ToolCall    bool   `json:"tool_call"`
-	Reasoning   bool   `json:"reasoning"`
-	Limit       struct {
+	// ReleaseDate 是来源声明的发布日期，支持 YYYY-MM-DD 或仅有年月的 YYYY-MM。
+	ReleaseDate string `json:"release_date"`
+	// Status 为来源生命周期标记；deprecated 只从在线添加候选中排除，不影响已有模型同步。
+	Status    string `json:"status"`
+	ToolCall  bool   `json:"tool_call"`
+	Reasoning bool   `json:"reasoning"`
+	Limit     struct {
 		Context int `json:"context"`
 	} `json:"limit"`
 	Modalities struct {
@@ -58,8 +62,8 @@ func proxyTransport(p Proxy) (*http.Transport, error) {
 	return outbound.Transport(u), nil
 }
 
-// fetchCatalog 有界读取来源且透传取消；单模型异常保留为候选错误，不吞掉整体下载错误。
-func (s *Store) fetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
+// fetchCatalog 有界读取来源并按发布日期倒序排列；includeDeprecated 控制是否保留已弃用条目供同步使用。
+func (s *Store) fetchCatalog(ctx context.Context, includeDeprecated bool) ([]CatalogEntry, error) {
 	p, err := s.GetProxy(ctx)
 	if err != nil {
 		return nil, err
@@ -102,6 +106,10 @@ func (s *Store) fetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 		return nil, errors.New("模型目录为空，已保留本地配置")
 	}
 	entries := []CatalogEntry{}
+	// 区分全部被弃用过滤的正常空结果与来源本身没有任何模型。
+	deprecatedCount := 0
+	// 发布日期只用于本轮目录排序，不改变持久模型或桌面绑定契约；键为供应商 ID 和模型 ID。
+	releaseDates := make(map[[2]string]time.Time)
 	for pid, p := range providers {
 		for mid, raw := range p.Models {
 			entry := CatalogEntry{ProviderID: pid, ProviderName: p.Name, ModelID: mid}
@@ -112,7 +120,12 @@ func (s *Store) fetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 				entries = append(entries, entry)
 				continue
 			}
+			if !includeDeprecated && m.Status == "deprecated" {
+				deprecatedCount++
+				continue
+			}
 			entry.Name = m.Name
+			releaseDates[[2]string{pid, mid}] = catalogReleaseDate(m.ReleaseDate)
 			if entry.Name == "" {
 				entry.Name = mid
 			}
@@ -121,7 +134,7 @@ func (s *Store) fetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 			entry.Context = m.Limit.Context
 			entry.Kind = "chat"
 			switch {
-			case m.Type == "embedding" || m.Type == "rerank":
+			case m.Type == "embedding" || m.Type == "rerank" || m.Type == "reranking":
 				entry.Kind = "vector"
 			case m.Type == "video" || contains(m.Modalities.Output, "video"):
 				entry.Kind = "video"
@@ -146,21 +159,38 @@ func (s *Store) fetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		a, b := entries[i], entries[j]
+		ad, bd := releaseDates[[2]string{a.ProviderID, a.ModelID}], releaseDates[[2]string{b.ProviderID, b.ModelID}]
+		if !ad.Equal(bd) {
+			return ad.After(bd)
+		}
 		if a.Official != b.Official {
 			return a.Official
 		}
 		if a.Name != b.Name {
 			return a.Name < b.Name
 		}
-		return a.ProviderID < b.ProviderID
+		if a.ProviderID != b.ProviderID {
+			return a.ProviderID < b.ProviderID
+		}
+		return a.ModelID < b.ModelID
 	})
-	if len(entries) == 0 {
+	if len(entries) == 0 && deprecatedCount == 0 {
 		return nil, errors.New("目录没有模型，已保留本地配置")
 	}
 	return entries, nil
 }
 
-// decodeRates 只映射 API 已声明的 Token 价格，不从 input/output 猜测图片或秒价。
+// catalogReleaseDate 解析来源发布日期；仅有年月时按月初排序，缺失或非法值排在已知日期之后。
+func catalogReleaseDate(value string) time.Time {
+	for _, layout := range []string{time.DateOnly, "2006-01"} {
+		if date, err := time.Parse(layout, value); err == nil {
+			return date
+		}
+	}
+	return time.Time{}
+}
+
+// decodeRates 映射明确的 Token 价格；独立推理单价无法表达时拒绝导入，不从 Token 价猜测图片或秒价。
 func decodeRates(raw json.RawMessage, kind string) ([]Rate, error) {
 	result := []Rate{}
 	if len(raw) == 0 || string(raw) == "null" {
@@ -169,6 +199,14 @@ func decodeRates(raw json.RawMessage, kind string) ([]Rate, error) {
 	var costs map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &costs); err != nil {
 		return nil, errors.New("来源价格格式无效")
+	}
+	// reasoning 与普通输出同价时可共用 output；不同价、缺少输出价或非法值不能静默丢弃。
+	if value, ok := costs["reasoning"]; ok {
+		var reasoning, output float64
+		if string(value) == "null" || json.Unmarshal(value, &reasoning) != nil || !validPrice(reasoning, false) ||
+			len(costs["output"]) == 0 || string(costs["output"]) == "null" || json.Unmarshal(costs["output"], &output) != nil || !validPrice(output, false) || reasoning != output {
+			return nil, errors.New("来源 reasoning 单价无法独立表达，已保留本地配置")
+		}
 	}
 	for _, key := range []string{"input", "output", "cache_read", "cache_write", "cache_write_1h", "input_audio", "output_audio"} {
 		value, ok := costs[key]
@@ -247,9 +285,9 @@ func decodePricing(raw json.RawMessage, modes map[string]struct {
 	return p, validatePricing(p)
 }
 
-// Catalog 重新读取真实目录并保留本轮候选，添加时从该结果取值而不信任前端传来的价格。
+// Catalog 重新读取未弃用的目录候选，添加时从该结果取值而不信任前端传来的价格。
 func (s *Store) Catalog(ctx context.Context) ([]CatalogEntry, error) {
-	entries, err := s.fetchCatalog(ctx)
+	entries, err := s.fetchCatalog(ctx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +300,7 @@ func (s *Store) Catalog(ctx context.Context) ([]CatalogEntry, error) {
 // Sync 全量读取来源后按模型更新；来源缺失和非法模型保留原价格，成功模型独立提交。
 func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 	result := SyncResult{Failures: []string{}}
-	entries, err := s.fetchCatalog(ctx)
+	entries, err := s.fetchCatalog(ctx, true)
 	if err != nil {
 		return result, err
 	}
@@ -285,7 +323,7 @@ func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 		e, ok := lookup[m.ProviderID+"\x00"+m.SourceModelID]
 		if !ok {
 			m.SourceAvailable = false
-			if err = s.save(ctx, m); err != nil {
+			if _, err = s.save(ctx, m); err != nil {
 				return result, err
 			}
 			result.Failures = append(result.Failures, m.ModelID+"：来源已下架，保留本地配置")
@@ -294,6 +332,11 @@ func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 		if e.Problem != "" {
 			result.Failures = append(result.Failures, m.ModelID+"："+e.Problem)
 			continue
+		}
+		// 修正旧版导入器将重排模型保存为对话模型的记录，保留本地有效价格和修改保护。
+		if e.Kind == "vector" && m.Kind != "vector" {
+			m.Kind = "vector"
+			removeVectorOutput(&m.Pricing)
 		}
 		for _, g := range groups {
 			if hasGroup(e.Pricing, g) && !contains(m.Overrides, g) {
@@ -322,7 +365,7 @@ func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
 		m.SourcePricing = e.Pricing
 		m.SourceAvailable = true
 		m.SyncedAt = time.Now().UTC().Format(time.RFC3339)
-		if err = s.save(ctx, m); err != nil {
+		if _, err = s.save(ctx, m); err != nil {
 			return result, fmt.Errorf("%s 同步保存失败: %w", m.ModelID, err)
 		}
 		result.Updated++

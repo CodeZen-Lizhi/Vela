@@ -69,14 +69,7 @@ func (s *Store) ExecutionCandidates(ctx context.Context, modelName string, opera
 			continue
 		}
 		c.Model = resolved
-		c.Provider.Request.Proxy, err = s.proxyForNetwork(proxyBinding("provider", c.Provider.ID), c.Provider.Request.Proxy)
-		if err != nil {
-			return nil, err
-		}
-		c.Key.Proxy, err = s.proxyForNetwork(proxyBinding("key", c.Key.ID), c.Key.Proxy)
-		if err != nil {
-			return nil, err
-		}
+
 		c.Version = executionVersion(secret)
 		result = append(result, c)
 	}

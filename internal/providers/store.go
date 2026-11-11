@@ -14,7 +14,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/CodeZen-Lizhi/vela/internal/credentials"
-	"github.com/CodeZen-Lizhi/vela/internal/outbound"
 )
 
 // schema 是本模块的表结构。删除供应商或 Key 时，外键级联在同一条语句内清掉从属数据，不留下指向已删除记录的行。
@@ -86,18 +85,23 @@ func New(db *sql.DB, keys KeyStore, documents ...*credentials.Store) (*Store, er
 			return nil, err
 		}
 	}
-	if err := s.migrateProxyCredentials(context.Background()); err != nil {
-		return nil, fmt.Errorf("保护已有代理认证: %w", err)
+	if err := s.removeLocalProxies(context.Background()); err != nil {
+		return nil, fmt.Errorf("迁移局部代理: %w", err)
+	}
+	if err := s.removeTransportFailover(context.Background()); err != nil {
+		return nil, fmt.Errorf("迁移请求重试策略: %w", err)
+	}
+	if err := s.removeProviderNotes(context.Background()); err != nil {
+		return nil, fmt.Errorf("迁移供应商备注: %w", err)
 	}
 	return s, nil
 }
 
 // providerDocument 是 providers.document 列保存的内容；身份、名称与启停在独立列中。
 type providerDocument struct {
-	// Website、URL、Note、Request 与 Provider 的同名字段含义相同。
+	// Website、URL、Request 与 Provider 的同名字段含义相同。
 	Website string        `json:"website"`
 	URL     string        `json:"url"`
-	Note    string        `json:"note"`
 	Request RequestPolicy `json:"request"`
 }
 
@@ -142,25 +146,14 @@ func normalizeServiceURL(raw string) (string, error) {
 
 // normalizeProxy 校验出口选择并清理无关字段；只有上游 Key 可以选择跟随所属供应商。
 func normalizeProxy(choice ProxyChoice, forKey bool) (ProxyChoice, error) {
-	modes := []ProxyMode{ProxyGlobal, ProxyDirect, ProxyCustom}
+	modes := []ProxyMode{ProxyGlobal, ProxyDirect}
 	if forKey {
-		modes = append(modes, ProxyProvider)
+		modes = []ProxyMode{ProxyProvider, ProxyDirect}
 	}
 	if !slices.Contains(modes, choice.Mode) {
 		return ProxyChoice{}, errors.New("请选择网络代理方式")
 	}
-	if choice.Mode != ProxyCustom {
-		return ProxyChoice{Mode: choice.Mode}, nil
-	}
-	choice.URL = strings.TrimSpace(choice.URL)
-	// 编辑时允许保留秘密的占位输入，实际保存必须结合已有记录确认；新增不能存入占位。
-	if choice.URL == "" || choice.URL == "***" {
-		return choice, nil
-	}
-	if _, err := outbound.ParseProxy(choice.URL); err != nil {
-		return ProxyChoice{}, err
-	}
-	return choice, nil
+	return ProxyChoice{Mode: choice.Mode}, nil
 }
 
 // normalizeRequest 校验请求配置；数值为 0 表示使用默认值或不限制，其余必须落在各自范围内。
@@ -203,13 +196,12 @@ func (d ProviderDraft) normalize() (string, providerDocument, error) {
 	if err != nil {
 		return "", providerDocument{}, err
 	}
-	return name, providerDocument{Website: website, URL: serviceURL, Note: strings.TrimSpace(d.Note), Request: request}, nil
+	return name, providerDocument{Website: website, URL: serviceURL, Request: request}, nil
 }
 
 // provider 由独立列和文档组装对外的供应商配置。
 func (doc providerDocument) provider(id, name string, enabled bool) Provider {
-	doc.Request.Proxy = maskProxy(doc.Request.Proxy)
-	return Provider{ID: id, Name: name, Website: doc.Website, URL: doc.URL, Note: doc.Note, Enabled: enabled, Request: doc.Request}
+	return Provider{ID: id, Name: name, Website: doc.Website, URL: doc.URL, Enabled: enabled, Request: doc.Request}
 }
 
 // saveError 把写入失败转成用户可读的原因：名称被其他供应商占用时指出重名，其余保留原始错误。
@@ -230,10 +222,7 @@ func (s *Store) Create(ctx context.Context, draft ProviderDraft) (Provider, erro
 	id := rand.Text()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	doc.Request.Proxy, err = s.protectProxy(ctx, proxyBinding("provider", id), doc.Request.Proxy, ProxyChoice{})
-	if err != nil {
-		return Provider{}, err
-	}
+
 	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return Provider{}, err
@@ -262,10 +251,7 @@ func (s *Store) Update(ctx context.Context, id string, draft ProviderDraft) (Pro
 	if err = s.decodeDocument([]byte(raw), &old); err != nil {
 		return Provider{}, err
 	}
-	doc.Request.Proxy, err = s.protectProxy(ctx, proxyBinding("provider", id), doc.Request.Proxy, old.Request.Proxy)
-	if err != nil {
-		return Provider{}, err
-	}
+
 	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return Provider{}, err
@@ -398,9 +384,7 @@ func (s *Store) Snapshot(ctx context.Context) (ProviderSnapshot, error) {
 		if err = s.decodeDocument([]byte(data), &doc); err != nil {
 			return snapshot, fmt.Errorf("供应商「%s」的数据已损坏: %w", name, err)
 		}
-		if _, err = s.proxyForNetwork(proxyBinding("provider", id), doc.Request.Proxy); err != nil {
-			return snapshot, err
-		}
+
 		preferred, health := summarize(enabled, keys[id])
 		snapshot.Providers = append(snapshot.Providers, ProviderOverview{
 			Provider:     doc.provider(id, name, enabled),

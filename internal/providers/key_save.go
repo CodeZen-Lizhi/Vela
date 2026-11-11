@@ -59,10 +59,7 @@ func (a *Accounts) saveKeyLocal(ctx context.Context, providerID, keyID string, d
 	if err != nil {
 		return "", err
 	}
-	doc.Proxy, err = a.store.protectProxy(ctx, proxyBinding("key", id), doc.Proxy, saved.Proxy)
-	if err != nil {
-		return "", err
-	}
+
 	if status.MultiplierSource == "upstream" {
 		doc.Multiplier = saved.Multiplier
 	}
