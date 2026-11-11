@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/CodeZen-Lizhi/vela/internal/credentials"
 	"github.com/CodeZen-Lizhi/vela/internal/outbound"
 )
 
@@ -45,11 +45,13 @@ type Store struct {
 	mu sync.Mutex
 	// vault 加解密上游密钥。
 	vault *vault
+	// documents 加密供应商和Key的完整配置文档。
+	documents *credentials.Store
 }
 
 // New 复用已打开的数据库并建表；keys 是凭据主密钥的保存位置。
 // 本模块依赖外键级联清理从属数据，数据库连接必须已启用外键约束，否则拒绝启动。
-func New(db *sql.DB, keys KeyStore) (*Store, error) {
+func New(db *sql.DB, keys KeyStore, documents ...*credentials.Store) (*Store, error) {
 	var enforced int
 	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&enforced); err != nil {
 		return nil, fmt.Errorf("检查数据库外键约束: %w", err)
@@ -61,6 +63,11 @@ func New(db *sql.DB, keys KeyStore) (*Store, error) {
 		return nil, fmt.Errorf("初始化供应商数据: %w", err)
 	}
 	s := &Store{db: db, vault: &vault{store: keys}}
+	if len(documents) > 0 && documents[0] != nil {
+		if err := s.protectDocuments(documents[0]); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.migrateProxyCredentials(context.Background()); err != nil {
 		return nil, fmt.Errorf("保护已有代理认证: %w", err)
 	}
@@ -209,7 +216,7 @@ func (s *Store) Create(ctx context.Context, draft ProviderDraft) (Provider, erro
 	if err != nil {
 		return Provider{}, err
 	}
-	data, err := json.Marshal(doc)
+	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return Provider{}, err
 	}
@@ -234,14 +241,14 @@ func (s *Store) Update(ctx context.Context, id string, draft ProviderDraft) (Pro
 		return Provider{}, err
 	}
 	var old providerDocument
-	if err = json.Unmarshal([]byte(raw), &old); err != nil {
+	if err = s.decodeDocument([]byte(raw), &old); err != nil {
 		return Provider{}, err
 	}
 	doc.Request.Proxy, err = s.protectProxy(ctx, proxyBinding("provider", id), doc.Request.Proxy, old.Request.Proxy)
 	if err != nil {
 		return Provider{}, err
 	}
-	data, err := json.Marshal(doc)
+	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return Provider{}, err
 	}
@@ -364,7 +371,7 @@ func (s *Store) Snapshot(ctx context.Context) (ProviderSnapshot, error) {
 			return snapshot, err
 		}
 		var doc providerDocument
-		if err = json.Unmarshal([]byte(data), &doc); err != nil {
+		if err = s.decodeDocument([]byte(data), &doc); err != nil {
 			return snapshot, fmt.Errorf("供应商「%s」的数据已损坏: %w", name, err)
 		}
 		if _, err = s.proxyForNetwork(proxyBinding("provider", id), doc.Request.Proxy); err != nil {
@@ -396,7 +403,7 @@ func (s *Store) keyBriefs(ctx context.Context) (map[string][]keyBrief, error) {
 		if err = rows.Scan(&providerID, &brief.enabled, &data); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal([]byte(data), &brief.doc); err != nil {
+		if err = s.decodeDocument([]byte(data), &brief.doc); err != nil {
 			return nil, fmt.Errorf("上游 Key 的数据已损坏: %w", err)
 		}
 		result[providerID] = append(result[providerID], brief)

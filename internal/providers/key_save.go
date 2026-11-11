@@ -42,7 +42,7 @@ func (a *Accounts) saveKeyLocal(ctx context.Context, providerID, keyID string, d
 		if err != nil {
 			return "", err
 		}
-		if err = json.Unmarshal([]byte(raw), &saved); err != nil {
+		if err = a.store.decodeDocument([]byte(raw), &saved); err != nil {
 			return "", err
 		}
 	}
@@ -83,7 +83,7 @@ func (a *Accounts) saveKeyLocal(ctx context.Context, providerID, keyID string, d
 			return "", e
 		}
 	}
-	keyData, err := json.Marshal(doc)
+	keyData, err := a.store.encodeDocument(doc)
 	if err != nil {
 		return "", err
 	}

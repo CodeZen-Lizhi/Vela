@@ -1,14 +1,14 @@
 package providers
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/CodeZen-Lizhi/vela/internal/credentials"
 )
 
 // masterKeySize 是主密钥长度，对应 AES-256。
@@ -18,9 +18,9 @@ const masterKeySize = 32
 var ErrNoMasterKey = errors.New("尚未生成凭据密钥")
 
 // errMasterKeyMissing 是已有加密凭据却找不到主密钥时给用户的说明。
-var errMasterKeyMissing = errors.New("系统钥匙串中找不到凭据密钥，无法读取或保存上游密钥；已保存的数据未被改动")
+var errMasterKeyMissing = errors.New("本地存储中找不到凭据密钥，无法读取或保存上游密钥；已保存的数据未被改动")
 
-// KeyStore 保存加密凭据用的主密钥。正式实现由桌面入口提供（系统钥匙串），业务模块不直接依赖系统凭据存储。
+// KeyStore 保存加密凭据用的主密钥。正式实现由桌面入口提供本地加密存储，业务模块不依赖桌面运行时。
 type KeyStore interface {
 	// Load 返回已保存的内容；尚未保存时返回 ErrNoMasterKey。
 	Load() ([]byte, error)
@@ -29,12 +29,12 @@ type KeyStore interface {
 }
 
 // vault 用一把主密钥加解密凭据：主密钥放在 KeyStore，密文放在数据库。
-// 系统钥匙串单条内容有长度上限，逐条读取还可能逐条向用户询问授权，因此只把主密钥交给钥匙串。
+// 上游密文仍保留在数据库，主密钥由桌面入口的本地凭据存储管理。
 type vault struct {
 	// mu 保护 key；store 是主密钥的保存位置。
 	mu    sync.Mutex
 	store KeyStore
-	// key 是已加载的主密钥，在进程内缓存，避免每次操作都访问系统钥匙串。
+	// key 是已加载的主密钥，在进程内缓存，避免每次操作都读取本地凭据文件。
 	key []byte
 }
 
@@ -54,7 +54,7 @@ func (v *vault) load() ([]byte, error) {
 	}
 	key, err := hex.DecodeString(strings.TrimSpace(string(raw)))
 	if err != nil || len(key) != masterKeySize {
-		return nil, errors.New("系统钥匙串中的凭据密钥格式不正确，已保存的数据未被改动")
+		return nil, errors.New("本地存储中的凭据密钥格式不正确，已保存的数据未被改动")
 	}
 	v.key = key
 	return key, nil
@@ -75,31 +75,14 @@ func (v *vault) generate() ([]byte, error) {
 	return key, nil
 }
 
-// newAEAD 用主密钥创建 AES-256-GCM；随机数由标准库生成并放在密文开头。
-func newAEAD(key []byte) (cipher.AEAD, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewGCMWithRandomNonce(block)
-}
-
 // seal 加密一项凭据。binding 标明密文所属的记录并参与认证，密文被挪到其他记录时解密会失败。
 func seal(key []byte, binding string, plaintext []byte) ([]byte, error) {
-	aead, err := newAEAD(key)
-	if err != nil {
-		return nil, err
-	}
-	return aead.Seal(nil, nil, plaintext, []byte(binding)), nil
+	return credentials.Encrypt(key, binding, plaintext)
 }
 
 // open 解密 seal 的结果；主密钥不匹配、密文被改动或 binding 不一致时返回错误。
 func open(key []byte, binding string, sealed []byte) ([]byte, error) {
-	aead, err := newAEAD(key)
-	if err != nil {
-		return nil, err
-	}
-	plaintext, err := aead.Open(nil, nil, sealed, []byte(binding))
+	plaintext, err := credentials.Decrypt(key, binding, sealed)
 	if err != nil {
 		return nil, errors.New("上游密钥解密失败：凭据密钥与已保存的数据不匹配；已保存的数据未被改动")
 	}

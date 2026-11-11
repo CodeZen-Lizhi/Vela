@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Search } from "@lucide/svelte";
+  import { LayoutGrid, Search } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Select from "$lib/components/ui/select";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -8,6 +8,21 @@
   import ModelCapabilities from "./ModelCapabilities.svelte";
   import PriceSummary from "./PriceSummary.svelte";
   import { kinds } from "./display";
+  import anthropicLogo from "$lib/assets/providers/anthropic.svg";
+  import openaiLogo from "$lib/assets/providers/openai.svg";
+  import googleLogo from "$lib/assets/providers/google.svg";
+  import xaiLogo from "$lib/assets/providers/xai.svg";
+  import metaLogo from "$lib/assets/providers/meta.svg";
+  import mistralLogo from "$lib/assets/providers/mistral.svg";
+  import deepseekLogo from "$lib/assets/providers/deepseek.svg";
+  import alibabaLogo from "$lib/assets/providers/alibaba.svg";
+  import moonshotLogo from "$lib/assets/providers/moonshotai.svg";
+  import zhipuLogo from "$lib/assets/providers/zhipuai.svg";
+  import minimaxLogo from "$lib/assets/providers/minimax.svg";
+  import volcengineLogo from "$lib/assets/providers/volcengine.svg";
+  import tencentLogo from "$lib/assets/providers/tencent-tokenhub.svg";
+  import stepfunLogo from "$lib/assets/providers/stepfun.svg";
+  import xiaomiLogo from "$lib/assets/providers/xiaomi.svg";
 
   /** 目录只负责筛选与选择；创建仍由父级通过真实 Go 服务完成。 */
   let {
@@ -26,25 +41,25 @@
     onselect: (entry: CatalogEntry) => void;
   } = $props();
   /**
-   * 厂商条只列热门官方厂商，顺序即展示顺序：id 为 models.dev 供应商标识，label 为界面名称。
+   * 厂商条只列热门官方厂商，顺序即展示顺序：id 为 models.dev 供应商标识，label 为界面名称，logo 为本地品牌图标。
    * 未列出的来源不在厂商条出现，仍可通过搜索选到。
    */
   const officialVendors = [
-    { id: "anthropic", label: "Anthropic" },
-    { id: "openai", label: "OpenAI" },
-    { id: "google", label: "Google" },
-    { id: "xai", label: "xAI" },
-    { id: "meta", label: "Meta" },
-    { id: "mistral", label: "Mistral" },
-    { id: "deepseek", label: "DeepSeek" },
-    { id: "alibaba", label: "阿里通义" },
-    { id: "moonshotai", label: "月之暗面" },
-    { id: "zhipuai", label: "智谱" },
-    { id: "minimax", label: "MiniMax" },
-    { id: "volcengine", label: "火山方舟" },
-    { id: "tencent-tokenhub", label: "腾讯混元" },
-    { id: "stepfun", label: "阶跃星辰" },
-    { id: "xiaomi", label: "小米" },
+    { id: "anthropic", label: "Anthropic", logo: anthropicLogo },
+    { id: "openai", label: "OpenAI", logo: openaiLogo },
+    { id: "google", label: "Google", logo: googleLogo },
+    { id: "xai", label: "xAI", logo: xaiLogo },
+    { id: "meta", label: "Meta", logo: metaLogo },
+    { id: "mistral", label: "Mistral", logo: mistralLogo },
+    { id: "deepseek", label: "DeepSeek", logo: deepseekLogo },
+    { id: "alibaba", label: "阿里通义", logo: alibabaLogo },
+    { id: "moonshotai", label: "月之暗面", logo: moonshotLogo },
+    { id: "zhipuai", label: "智谱", logo: zhipuLogo },
+    { id: "minimax", label: "MiniMax", logo: minimaxLogo },
+    { id: "volcengine", label: "火山方舟", logo: volcengineLogo },
+    { id: "tencent-tokenhub", label: "腾讯混元", logo: tencentLogo },
+    { id: "stepfun", label: "阶跃星辰", logo: stepfunLogo },
+    { id: "xiaomi", label: "小米", logo: xiaomiLogo },
   ];
   /** 搜索词、所选厂商（空值表示尚未选择）与类型筛选；类型筛选始终生效。 */
   let query = $state(""),
@@ -123,13 +138,18 @@
     </div>
   {:else}
     {#if vendors.length}<nav class="provider-nav" aria-label="按官方厂商筛选">
-        {#each [{ id: "all", label: "全部", count: vendors.reduce((sum, vendor) => sum + vendor.count, 0) }, ...vendors] as vendor (vendor.id)}
+        {#each [{ id: "all", label: "全部", logo: "", count: vendors.reduce((sum, vendor) => sum + vendor.count, 0) }, ...vendors] as vendor (vendor.id)}
           {@const active = !query.trim() && current === vendor.id}
           <Button
             variant={active ? "secondary" : "ghost"}
             aria-pressed={active}
             onclick={() => pick(vendor.id)}
-            ><span>{vendor.label}</span><small>{vendor.count}</small></Button
+            >{#if vendor.logo}<span
+                class="provider-logo"
+                style:--provider-logo={`url("${vendor.logo}")`}
+                aria-hidden="true"
+              ></span>{:else}<LayoutGrid aria-hidden="true" />{/if}<span
+              >{vendor.label}</span><small>{vendor.count}</small></Button
           >
         {/each}
       </nav>{/if}
@@ -202,23 +222,34 @@
     flex-shrink: 0;
   }
   .provider-nav {
+    --secondary: var(--accent);
+    --secondary-foreground: var(--primary);
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px 4px;
     flex-shrink: 0;
   }
   .provider-nav :global(button) {
-    gap: 6px;
+    gap: 8px;
     padding: 0 10px;
-    font-size: 12px;
-    height: 30px;
+    font-size: 13px;
+    height: 36px;
   }
   .provider-nav span {
     white-space: nowrap;
   }
+  /* 单色品牌图标跟随文字颜色，选中态与深色外观无需额外下载资源。 */
+  .provider-logo {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    background-color: currentColor;
+    mask: var(--provider-logo) center / contain no-repeat;
+    -webkit-mask: var(--provider-logo) center / contain no-repeat;
+  }
   .provider-nav small {
     color: var(--muted-foreground);
-    font-size: 10px;
+    font-size: 11px;
   }
   .result-caption {
     display: flex;

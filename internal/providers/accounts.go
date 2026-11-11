@@ -79,7 +79,7 @@ func (a *Accounts) provider(ctx context.Context, id string) (providerDocument, e
 		return providerDocument{}, err
 	}
 	var p providerDocument
-	err = json.Unmarshal([]byte(raw), &p)
+	err = a.store.decodeDocument([]byte(raw), &p)
 	return p, err
 }
 

@@ -26,7 +26,7 @@
   }: {
     /** 已保存的监听设置。 */
     saved: GatewaySettings;
-    /** 当前是否显示本分类；首次显示时才读取系统钥匙串。 */
+    /** 当前是否显示本分类；首次显示时才读取本地加密凭据。 */
     active: boolean;
     /** 是否运行在 Vela 桌面窗口内。 */
     desktop: boolean;
@@ -100,7 +100,7 @@
     }
   }
 
-  /** 显示时才向系统钥匙串读取密钥，隐藏后立即从页面清除。 */
+  /** 显示时才从本地加密存储读取密钥，隐藏后立即从页面清除。 */
   async function toggleReveal(): Promise<void> {
     if (revealed) {
       revealed = "";
@@ -157,7 +157,7 @@
       await VelaService.saveAccessKey(draft);
       keySet = true;
       closeEditor();
-      notify("访问密钥已保存到系统钥匙串");
+      notify("访问密钥已在本机加密保存");
     } catch (error) {
       draftError = errorMessage(error);
     } finally {
@@ -165,7 +165,7 @@
     }
   }
 
-  /** 钥匙串读取可能触发系统授权提示，只在用户进入本分类时发起一次；离开本分类时收起已显示的密钥。 */
+  /** 旧凭据首次迁移可能触发系统授权，只在用户进入本分类时读取；离开本分类时收起已显示的密钥。 */
   let keyRequested = false;
   $effect(() => {
     if (!active) {
@@ -286,8 +286,7 @@
         </div>
       </div>
       <p class="border-t py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-        密钥保存在 macOS
-        钥匙串，不写入配置文件、日志或导出文件。网关尚未接入，端口与密钥在网关上线后用于监听和鉴权。
+        密钥仅在本机加密保存，不上传给开发者，不写入普通配置、日志或默认导出文件。网关尚未接入，端口与密钥在网关上线后用于监听和鉴权。
       </p>
     </div>
   </section>

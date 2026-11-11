@@ -114,7 +114,7 @@ func (s *Store) migrateProxyCredentials(ctx context.Context) error {
 				return err
 			}
 			var data map[string]json.RawMessage
-			if err = json.Unmarshal([]byte(raw), &data); err != nil {
+			if err = s.decodeDocument([]byte(raw), &data); err != nil {
 				rows.Close()
 				return err
 			}
@@ -175,7 +175,7 @@ func (s *Store) migrateProxyCredentials(ctx context.Context) error {
 		} else {
 			item.data["proxy"] = raw
 		}
-		data, err := json.Marshal(item.data)
+		data, err := s.encodeDocument(item.data)
 		if err != nil {
 			return err
 		}
@@ -208,8 +208,56 @@ func (s *Store) storedKeyProxy(ctx context.Context, id string) (ProxyChoice, err
 		return ProxyChoice{}, err
 	}
 	var doc keyDocument
-	if err = json.Unmarshal([]byte(raw), &doc); err != nil {
+	if err = s.decodeDocument([]byte(raw), &doc); err != nil {
 		return ProxyChoice{}, err
 	}
 	return doc.Proxy, nil
+}
+
+// hasProxyCredentials 在完整文档解密后检查代理密文，不能对已加密 document 使用 SQLite JSON 函数。
+// 调用方持有 Store.mu；解密失败直接拒绝生成主密钥，保护已有密文。
+func (s *Store) hasProxyCredentials(ctx context.Context) (bool, error) {
+	for _, table := range []string{"providers", "provider_keys"} {
+		rows, err := s.db.QueryContext(ctx, "SELECT document FROM "+table)
+		if err != nil {
+			return false, err
+		}
+		found := false
+		for rows.Next() {
+			var raw string
+			if err = rows.Scan(&raw); err != nil {
+				rows.Close()
+				return false, err
+			}
+			var doc map[string]json.RawMessage
+			if err = s.decodeDocument([]byte(raw), &doc); err != nil {
+				rows.Close()
+				return false, err
+			}
+			var p ProxyChoice
+			if table == "providers" {
+				var request RequestPolicy
+				if err = json.Unmarshal(doc["request"], &request); err != nil {
+					rows.Close()
+					return false, err
+				}
+				p = request.Proxy
+			} else {
+				if err = json.Unmarshal(doc["proxy"], &p); err != nil {
+					rows.Close()
+					return false, err
+				}
+			}
+			found = found || strings.HasPrefix(p.URL, proxyCipherPrefix)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return false, err
+		}
+		if found {
+			return true, nil
+		}
+	}
+	return false, nil
 }

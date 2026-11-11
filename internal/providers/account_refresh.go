@@ -129,7 +129,7 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 		return err
 	}
 	var kd keyDocument
-	if err = json.Unmarshal([]byte(keyRaw), &kd); err != nil {
+	if err = a.store.decodeDocument([]byte(keyRaw), &kd); err != nil {
 		a.store.mu.Unlock()
 		return err
 	}
@@ -275,7 +275,7 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 			currentConfig.RefreshToken = h.rotated
 		}
 	}
-	doc, err := json.Marshal(kd)
+	doc, err := a.store.encodeDocument(kd)
 	if err != nil {
 		return err
 	}

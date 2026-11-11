@@ -729,7 +729,7 @@ export const VelaService = {
   runtimeInfo(): Promise<RuntimeInfo> {
     return call("VelaService.RuntimeInfo");
   },
-  /** SaveAccessKey 校验后把访问密钥写入系统凭据存储；失败时原密钥保持不变。 */
+  /** SaveAccessKey 校验后把访问密钥加密保存到本机；失败时原密钥保持不变。 */
   saveAccessKey(value: string): Promise<void> {
     return call("VelaService.SaveAccessKey", value);
   },

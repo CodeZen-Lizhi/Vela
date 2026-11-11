@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 )
 
@@ -26,7 +25,7 @@ func (s *Store) normalizeKeyUpdate(ctx context.Context, keyID string, draft Prov
 		return keyDocument{}, "", fmt.Errorf("读取上游 Key: %w", err)
 	}
 	var saved keyDocument
-	if err := json.Unmarshal([]byte(raw), &saved); err != nil {
+	if err := s.decodeDocument([]byte(raw), &saved); err != nil {
 		return keyDocument{}, "", err
 	}
 	placeholder := 0.0

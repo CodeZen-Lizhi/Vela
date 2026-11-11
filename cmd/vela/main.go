@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/CodeZen-Lizhi/vela/internal/app"
 	"github.com/CodeZen-Lizhi/vela/internal/buildinfo"
+	"github.com/CodeZen-Lizhi/vela/internal/credentials"
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
@@ -24,18 +23,6 @@ import (
 //
 //go:embed assets/tray.png
 var trayIconPNG []byte
-
-// accessKeyAccount 返回访问密钥在系统凭据存储中的账户名；隔离数据目录使用独立账户，不读写日常密钥。
-func accessKeyAccount(dataDir string, isolated bool) string {
-	if !isolated {
-		return "gateway-access-key"
-	}
-	if abs, err := filepath.Abs(dataDir); err == nil {
-		dataDir = abs
-	}
-	sum := sha256.Sum256([]byte(dataDir))
-	return "gateway-access-key@" + hex.EncodeToString(sum[:8])
-}
 
 // main 组装桌面宿主、模型、设置与调度模块，生成绑定时不打开用户数据库。
 func main() {
@@ -60,6 +47,10 @@ func main() {
 		// 隔离数据目录同时承载窗口状态，验收运行不改动日常窗口位置。
 		mygo.App.SetPath(mygo.PathUserData, dataDir)
 	}
+	secrets, err := credentials.New(dataDir, legacyCredentials(isolated))
+	if err != nil {
+		log.Fatal(err)
+	}
 	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, "https://models.dev/api.json")
 	if err != nil {
 		log.Fatal(err)
@@ -69,6 +60,9 @@ func main() {
 			log.Printf("关闭模型数据库失败: %v", err)
 		}
 	}()
+	if err := store.ProtectProxy(secrets); err != nil {
+		log.Fatal(err)
+	}
 	preferences, err := settings.New(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -77,7 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	upstreams, err := providers.New(store.DB(), keychainEntry{account: "provider-master@" + accessKeyAccount(dataDir, isolated)})
+	upstreams, err := providers.New(store.DB(), credentialEntry{store: secrets}, secrets)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -107,14 +101,14 @@ func main() {
 	}
 	mygo.Theme.SetSource(themeSource(general.Appearance))
 	mygo.Bind(app.NewVelaService(app.Options{
-		Version:          buildinfo.Version,
-		Models:           store,
-		Providers:        upstreams,
-		Accounts:         accounts,
-		Settings:         preferences,
-		Scheduling:       policies,
-		AccessKeyAccount: accessKeyAccount(dataDir, isolated),
-		ApplyGeneral:     applyGeneral,
+		Version:      buildinfo.Version,
+		Models:       store,
+		Providers:    upstreams,
+		Accounts:     accounts,
+		Settings:     preferences,
+		Scheduling:   policies,
+		Credentials:  secrets,
+		ApplyGeneral: applyGeneral,
 	}))
 
 	mygo.App.WhenReady(func() {

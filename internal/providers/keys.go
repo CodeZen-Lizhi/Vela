@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -134,7 +133,7 @@ func (s *Store) keyRows(ctx context.Context, providerID string) ([]keyRow, error
 		if err = rows.Scan(&row.id, &row.enabled, &row.allModels, &row.sealed, &data); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal([]byte(data), &row.doc); err != nil {
+		if err = s.decodeDocument([]byte(data), &row.doc); err != nil {
 			return nil, fmt.Errorf("上游 Key 的数据已损坏: %w", err)
 		}
 		result = append(result, row)
@@ -162,9 +161,9 @@ func (s *Store) sealingMasterKey(ctx context.Context) ([]byte, error) {
 	if err = s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM provider_keys WHERE secret IS NOT NULL)").Scan(&sealed); err != nil {
 		return nil, fmt.Errorf("检查已保存的凭据: %w", err)
 	}
-	var proxySealed bool
-	if err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM providers WHERE instr(json_extract(document,'$.request.proxy.url'),?)=1) OR EXISTS(SELECT 1 FROM provider_keys WHERE instr(json_extract(document,'$.proxy.url'),?)=1)`, proxyCipherPrefix, proxyCipherPrefix).Scan(&proxySealed); err != nil {
-		return nil, fmt.Errorf("检查代理认证: %w", err)
+	proxySealed, err := s.hasProxyCredentials(ctx)
+	if err != nil {
+		return nil, err
 	}
 	sealed = sealed || proxySealed
 	// 账户连接也含密文；即使全部 Key 已删除，丢失主密钥也不能生成另一把覆盖旧凭据。
@@ -273,7 +272,7 @@ func (s *Store) CreateKey(ctx context.Context, providerID string, draft Provider
 	if err != nil {
 		return ProviderKey{}, err
 	}
-	data, err := json.Marshal(doc)
+	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return ProviderKey{}, err
 	}
@@ -307,7 +306,7 @@ func (s *Store) UpdateKey(ctx context.Context, keyID string, draft ProviderKeyDr
 	if err != nil {
 		return ProviderKey{}, err
 	}
-	data, err := json.Marshal(doc)
+	data, err := s.encodeDocument(doc)
 	if err != nil {
 		return ProviderKey{}, err
 	}

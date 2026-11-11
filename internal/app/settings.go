@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/CodeZen-Lizhi/vela/internal/credentials"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
@@ -105,13 +106,13 @@ func (s *VelaService) SaveAttentionSettings(ctx context.Context, value settings.
 	return store.SaveAttention(ctx, value)
 }
 
-// accessKey 从系统凭据存储读取网关访问密钥；尚未设置时返回空字符串。
+// accessKey 从本机加密存储读取网关访问密钥；尚未设置时返回空字符串。
 func (s *VelaService) accessKey() (string, error) {
-	if s.accessKeyAccount == "" {
+	if s.credentials == nil {
 		return "", errors.New("访问密钥存储尚未初始化")
 	}
-	value, err := mygo.Secrets.Get(s.accessKeyAccount)
-	if errors.Is(err, mygo.ErrSecretNotFound) {
+	value, err := s.credentials.Get("gateway-access-key")
+	if errors.Is(err, credentials.ErrNotFound) {
 		return "", nil
 	}
 	if err != nil {
@@ -144,15 +145,15 @@ func (s *VelaService) CopyAccessKey() error {
 	return mygo.Clipboard.Write(transfer.TextData(value))
 }
 
-// SaveAccessKey 校验后把访问密钥写入系统凭据存储；失败时原密钥保持不变。
+// SaveAccessKey 校验后把访问密钥加密保存到本机；失败时原密钥保持不变。
 func (s *VelaService) SaveAccessKey(value string) error {
-	if s.accessKeyAccount == "" {
+	if s.credentials == nil {
 		return errors.New("访问密钥存储尚未初始化")
 	}
 	if err := settings.ValidateAccessKey(value); err != nil {
 		return err
 	}
-	if err := mygo.Secrets.Set(s.accessKeyAccount, []byte(value)); err != nil {
+	if err := s.credentials.Set("gateway-access-key", []byte(value)); err != nil {
 		return fmt.Errorf("访问密钥保存失败，原密钥保持不变: %w", err)
 	}
 	return nil

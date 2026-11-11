@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/CodeZen-Lizhi/vela/internal/credentials"
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
@@ -24,9 +25,9 @@ type VelaService struct {
 	accounts   *providers.Accounts
 	settings   *settings.Store
 	scheduling *scheduling.Store
-	// accessKeyAccount 是访问密钥在系统凭据存储中的账户名；applyGeneral 让常规设置在桌面宿主生效。
-	accessKeyAccount string
-	applyGeneral     func(settings.GeneralSettings)
+	// credentials 是本机加密凭据存储；applyGeneral 让常规设置在桌面宿主生效。
+	credentials  *credentials.Store
+	applyGeneral func(settings.GeneralSettings)
 }
 
 // Options 汇集桌面入口交给应用服务的依赖；生成绑定时只需要版本。
@@ -43,8 +44,8 @@ type Options struct {
 	Settings *settings.Store
 	// Scheduling 是与模型模块共用数据库的调度策略模块。
 	Scheduling *scheduling.Store
-	// AccessKeyAccount 是网关访问密钥在系统凭据存储中的账户名。
-	AccessKeyAccount string
+	// Credentials 是桌面入口初始化的本机加密凭据存储。
+	Credentials *credentials.Store
 	// ApplyGeneral 让保存后的常规设置在窗口、菜单栏与 Dock 立即生效。
 	ApplyGeneral func(settings.GeneralSettings)
 }
@@ -66,15 +67,15 @@ type RuntimeInfo struct {
 // NewVelaService 创建应用服务并接收入口已打开的模块。
 func NewVelaService(o Options) *VelaService {
 	return &VelaService{
-		startedAt:        time.Now(),
-		version:          o.Version,
-		models:           o.Models,
-		providers:        o.Providers,
-		accounts:         o.Accounts,
-		settings:         o.Settings,
-		scheduling:       o.Scheduling,
-		accessKeyAccount: o.AccessKeyAccount,
-		applyGeneral:     o.ApplyGeneral,
+		startedAt:    time.Now(),
+		version:      o.Version,
+		models:       o.Models,
+		providers:    o.Providers,
+		accounts:     o.Accounts,
+		settings:     o.Settings,
+		scheduling:   o.Scheduling,
+		credentials:  o.Credentials,
+		applyGeneral: o.ApplyGeneral,
 	}
 }
 

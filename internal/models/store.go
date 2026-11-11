@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CodeZen-Lizhi/vela/internal/credentials"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -24,6 +26,8 @@ type Store struct {
 	catalogURL string
 	mu         sync.Mutex
 	catalog    []CatalogEntry
+	// credentials 加密可能含账号密码的全局代理配置，桌面入口在启动时接入。
+	credentials *credentials.Store
 }
 
 // Open 打开本地 SQLite；client 和目录地址由入口提供，便于真实网络和隔离上游共用同一操作接口。
@@ -227,7 +231,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// GetProxy 返回全局网络设置；尚未保存时明确使用直连。
+// GetProxy 解密并返回全局网络设置；尚未保存时明确使用直连。
 func (s *Store) GetProxy(ctx context.Context) (Proxy, error) {
 	var p Proxy
 	var data string
@@ -238,11 +242,18 @@ func (s *Store) GetProxy(ctx context.Context) (Proxy, error) {
 	if err != nil {
 		return p, err
 	}
-	err = json.Unmarshal([]byte(data), &p)
+	plain := []byte(data)
+	if s.credentials != nil {
+		plain, err = s.credentials.DecodeDocument("global-proxy", data)
+		if err != nil {
+			return p, err
+		}
+	}
+	err = json.Unmarshal(plain, &p)
 	return p, err
 }
 
-// SetProxy 保存校验后的全局代理，目录请求在实际执行时读取最新配置。
+// SetProxy 保存校验后的全局代理；桌面环境加密落盘，目录请求在执行时读取最新配置。
 func (s *Store) SetProxy(ctx context.Context, p Proxy) error {
 	if _, err := proxyTransport(p); err != nil {
 		return err
@@ -250,6 +261,13 @@ func (s *Store) SetProxy(ctx context.Context, p Proxy) error {
 	data, err := json.Marshal(p)
 	if err != nil {
 		return err
+	}
+	if s.credentials != nil {
+		sealed, encodeErr := s.credentials.EncodeDocument("global-proxy", data)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		data = []byte(sealed)
 	}
 	_, err = s.db.ExecContext(ctx, "INSERT INTO settings(name,document) VALUES('proxy',?) ON CONFLICT(name) DO UPDATE SET document=excluded.document", string(data))
 	return err
