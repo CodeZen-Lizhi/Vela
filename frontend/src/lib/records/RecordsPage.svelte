@@ -530,7 +530,7 @@
               ><Table.Cell
                 ><Button
                   variant="link"
-                  size="inline"
+                  size="table-inline"
                   data-record-id={row.id}
                   onclick={() => (selected = row.id)}
                   >{date(row.startedAt)}</Button

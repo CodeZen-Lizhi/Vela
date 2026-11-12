@@ -16,6 +16,7 @@
     plan,
     providers,
     targets,
+    referenceModels,
     busy,
     error,
     onsave,
@@ -27,6 +28,8 @@
       label: string;
     }[];
     /** 当前完整目标快照，包括不可执行原因。 */ targets: VerificationTarget[];
+    /** 内置参考库的真实身份目录，仅在打开编辑器时读取。 */
+    referenceModels: { id: string; name: string }[];
     /** 保存中锁定输入；错误由父页保存流程提供。 */ busy: boolean;
     error: string;
     /** 保存真实计划及取消草稿的回调。 */ onsave: (
@@ -46,6 +49,7 @@
       keyId: "",
       protocol: "",
       effort: "auto",
+      referenceModel: "",
     };
   }
   /** 表单运行范围、线路与本地校验信息。 */
@@ -116,14 +120,15 @@
       ).values(),
     );
   }
-  /** 模型改变时清 Key 并沿用同模型强度；选择末行 Key 后保留空白尾行。 */
+  /** 模型改变时清 Key 和参考选择，沿用同模型强度；末行选 Key 后保留空白尾行。 */
   function change(
     line: Draft,
-    field: "modelId" | "keyId" | "protocol" | "effort",
+    field: "modelId" | "keyId" | "protocol" | "effort" | "referenceModel",
     value: string,
   ): void {
     if (field === "modelId") {
       line.keyId = "";
+      line.referenceModel = "";
       line.effort =
         lines.find((other) => other.id !== line.id && other.modelId === value)
           ?.effort ?? "auto";
@@ -181,11 +186,12 @@
       providerId,
       enabled,
       hours: Number(hours),
-      lines: configured.map(({ modelId, keyId, protocol, effort }) => ({
+      lines: configured.map(({ modelId, keyId, protocol, effort, referenceModel }) => ({
         modelId,
         keyId,
         protocol,
         effort,
+        referenceModel,
       })),
       nextAt: plan?.nextAt ?? 0,
       lastAt: plan?.lastAt ?? 0,
@@ -295,6 +301,14 @@
                   onValueChange={(value) => change(line, "effort", value)}
                 /></Field.Field
               >
+              {#if line.modelId}<Field.Field class="v-reference-field">
+                <Field.Label>预期参考模型（可选）</Field.Label>
+                <Choice value={line.referenceModel}
+                  options={[{ value: "", label: "自动对应原始模型 ID" }, ...referenceModels.map((model) => ({ value: model.id, label: model.name || model.id }))]}
+                  label={`第 ${index + 1} 行预期参考模型`}
+                  onValueChange={(value) => change(line, "referenceModel", value)} />
+                <small class="text-muted-foreground">未选择时按原始模型 ID：{scope.find((target) => target.modelId === line.modelId)?.originalModel || "未知"}。</small>
+              </Field.Field>{/if}
               <Button
                 type="button"
                 variant="ghost"

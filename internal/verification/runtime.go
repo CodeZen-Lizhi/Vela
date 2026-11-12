@@ -35,7 +35,7 @@ func (m *Manager) SetProgressHandler(fn func(VerificationProgress)) {
 	m.mu.Unlock()
 }
 
-// Start 接受一个计划或已有结果固定目标，进程只允许一轮，网络任务不继承短暂RPC上下文。
+// Start 接受计划或报告固定目标，复测沿用当前计划的参考选择；全局单轮，网络任务不继承短暂 RPC 上下文。
 func (m *Manager) Start(ctx context.Context, providerID, reportID string) error {
 	targets := []VerificationTarget{}
 	mode := "plan"
@@ -46,7 +46,19 @@ func (m *Manager) Start(ctx context.Context, providerID, reportID string) error 
 		}
 		for _, r := range snapshot.Reports {
 			if r.ID == reportID && r.Target.ProviderID == providerID {
-				t, err := m.resolve(ctx, providerID, r.Target.VerificationLine)
+				// 报告保留旧依据；复测同一执行组合时使用当前计划的参考选择。
+				line := r.Target.VerificationLine
+				for _, plan := range snapshot.Plans {
+					if plan.ProviderID != providerID {
+						continue
+					}
+					for _, current := range plan.Lines {
+						if current.ModelID == line.ModelID && current.KeyID == line.KeyID && current.Protocol == line.Protocol && current.Effort == line.Effort {
+							line.ReferenceModel = current.ReferenceModel
+						}
+					}
+				}
+				t, err := m.resolve(ctx, providerID, line)
 				if err != nil {
 					return err
 				}
@@ -185,7 +197,7 @@ func (m *Manager) runRound(ctx context.Context, targets []VerificationTarget) {
 	}
 }
 
-// detect 保持固定目标并合并上游真实评分；只有身份可确定且置信度不低于75%才产生比较结论。
+// detect 保持固定请求与上游评分；按显式参考身份或原始模型 ID 比较，置信度不低于75%且三样本有效才给出比较结论。
 func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target VerificationTarget) VerificationReport {
 	report := VerificationReport{ID: identity(target), Target: target, AlgorithmVersion: "lm-detector/a7e9d3056e019827904dd50722c20b4a0c896738", DataVersion: d.BuiltAt(), Conclusion: "insufficient", State: "complete", Candidates: []VerificationCandidate{}, Samples: make([]VerificationSample, 3)}
 	challenges, err := fingerprint.GenerateChallenges(3)
@@ -234,8 +246,12 @@ func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target Ve
 			}
 			if len(report.Candidates) > 0 && report.Candidates[0].Probability != nil && *report.Candidates[0].Probability >= 0.75 && analysis.Decision == "scored" && analysis.UsedOutputs == 3 {
 				expected := ""
+				reference := target.ReferenceModel
+				if reference == "" {
+					reference = target.OriginalModel
+				}
 				for _, c := range report.Candidates {
-					if c.Model == target.RequestModel {
+					if c.Model == reference {
 						expected = c.Model
 						break
 					}
@@ -246,8 +262,10 @@ func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target Ve
 						report.Conclusion = "match"
 					}
 				} else {
-					report.Reason = "预期请求模型无法对应参考库身份，仅展示候选排名"
+					report.Reason = "预期模型未对应参考库，请在检测计划中选择预期参考模型；本轮仅展示候选排名"
 				}
+			} else if len(report.Candidates) > 0 && report.Candidates[0].Probability != nil && *report.Candidates[0].Probability < 0.75 {
+				report.Reason = "候选置信度低于 75%，不足以支持与预期模型比较"
 			}
 		}
 	}

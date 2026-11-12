@@ -261,6 +261,7 @@ func TestLiveRoundScoring(t *testing.T) {
 	m.Records = history
 	ctx := context.Background()
 	p.Lines = p.Lines[:1]
+	p.Lines[0].ReferenceModel = "claude-haiku-4.5"
 	if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: p.Lines[0].ModelID, Mappings: []providers.ProviderModelMapping{{RequestName: "claude-haiku-4.5"}}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -295,8 +296,12 @@ func TestLiveRoundScoring(t *testing.T) {
 	}
 
 	// 同一组真实回答对不同预期身份只能改变比较结论，不改变真实排名。
-	for _, test := range []struct{ model, conclusion string }{{"gpt-4o", "difference"}, {"outside-reference-bank", "insufficient"}} {
-		if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: p.Lines[0].ModelID, Mappings: []providers.ProviderModelMapping{{RequestName: test.model}}}}); err != nil {
+	for _, test := range []struct{ model, conclusion string }{{"gpt-4o", "difference"}, {"", "insufficient"}} {
+		p.Lines[0].ReferenceModel = test.model
+		if err = m.SavePlan(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+		if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: p.Lines[0].ModelID, Mappings: []providers.ProviderModelMapping{{RequestName: "auto/vendor-alias"}}}}); err != nil {
 			t.Fatal(err)
 		}
 		if err = m.Start(ctx, p.ProviderID, ""); err != nil {
@@ -307,6 +312,26 @@ func TestLiveRoundScoring(t *testing.T) {
 		if err != nil || len(result.Reports) != 1 || result.Reports[0].Conclusion != test.conclusion || result.Reports[0].Candidates[0].Model != "claude-haiku-4.5" {
 			t.Fatalf("预期%s结论%s: %+v %v", test.model, test.conclusion, result.Reports, err)
 		}
+	}
+	p.Lines[0].ReferenceModel = "claude-haiku-4.5"
+	if err = m.SavePlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	// 选择参考身份后，旧报告保持原结论；从结果行复测应用新计划选择。
+	previous, err := m.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if previous.Reports[0].Conclusion != "insufficient" {
+		t.Fatal("编辑计划改写了旧报告")
+	}
+	if err = m.Start(ctx, p.ProviderID, previous.Reports[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	m.wg.Wait()
+	updated, err := m.Snapshot(ctx)
+	if err != nil || updated.Reports[0].Conclusion != "match" || updated.Reports[0].Target.ReferenceModel != "claude-haiku-4.5" {
+		t.Fatal("结果行复测未应用新参考选择", err)
 	}
 	if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: p.Lines[0].ModelID, Mappings: []providers.ProviderModelMapping{{RequestName: "claude-haiku-4.5"}}}}); err != nil {
 		t.Fatal(err)
@@ -325,9 +350,43 @@ func TestLiveRoundScoring(t *testing.T) {
 	}
 	m.wg.Wait()
 	snap, err = m.Snapshot(ctx)
-	if err != nil || len(snap.Reports) != 1 || snap.Reports[0].ID != oldID || calls.Load() != 16 {
+	if err != nil || len(snap.Reports) != 1 || snap.Reports[0].ID != oldID || calls.Load() != 19 {
 		t.Fatalf("复测未替换同一结果: %+v %v", snap.Reports, err)
 	}
+	// 原始模型 ID 命中参考库时，无需显式选择；请求别名和误导显示名不能改变比较身份。
+	original, err := m.catalog.Create(ctx, models.Create{ModelID: "claude-haiku-4.5", Name: "gpt-4o", Kind: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.vendors.SaveModels(ctx, p.ProviderID, providers.ProviderModelsDraft{ModelIDs: []string{p.Lines[0].ModelID, original.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	p.Lines[0].ModelID = original.ID
+	p.Lines[0].ReferenceModel = ""
+	if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: original.ID, Mappings: []providers.ProviderModelMapping{{RequestName: "auto/vendor-alias"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.SavePlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Start(ctx, p.ProviderID, ""); err != nil {
+		t.Fatal(err)
+	}
+	m.wg.Wait()
+	snap, err = m.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, report := range snap.Reports {
+		if report.Target.ModelID == original.ID {
+			found = report.Conclusion == "match" && report.Target.OriginalModel == "claude-haiku-4.5" && report.Target.RequestModel == "auto/vendor-alias"
+		}
+	}
+	if !found {
+		t.Fatal("未使用原始模型 ID 自动对应参考身份")
+	}
+
 }
 
 // TestSuspendCancelAndResumeNoCatchup 验证系统暂停取消真实在途HTTP，唤醒不会重新派发。
@@ -464,5 +523,54 @@ func TestVerificationMappingPriorityAndDefault(t *testing.T) {
 	candidate, _, err = m.credential(ctx, target)
 	if err != nil || candidate.Model != "model-0" {
 		t.Fatalf("默认执行目标不一致: %+v %v", candidate, err)
+	}
+}
+
+// TestReferencePlanMigrationAndValidation 验证旧表迁移、选择的持久化、取消选择及非法身份不覆盖旧计划。
+func TestReferencePlanMigrationAndValidation(t *testing.T) {
+	m, p := fixture(t, "https://example.invalid")
+	ctx := context.Background()
+	if err := m.SavePlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟旧版本表，保留真实计划、线路和外键。
+	if _, err := m.db.Exec("ALTER TABLE verification_lines DROP COLUMN reference_model"); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := New(m.db, m.vendors, m.catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := upgraded.Plans(ctx)
+	if err != nil || len(plans) != 1 || len(plans[0].Lines) != 2 || plans[0].Lines[0].ReferenceModel != "" {
+		t.Fatal("旧计划迁移失败", err)
+	}
+	p.Lines[0].ReferenceModel = "deepseek-v4.1-flash-1017"
+	if err = upgraded.SavePlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(m.db, m.vendors, m.catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err = reopened.Plans(ctx)
+	if err != nil || plans[0].Lines[0].ReferenceModel != p.Lines[0].ReferenceModel {
+		t.Fatal("参考选择未持久化", err)
+	}
+	p.Lines[0].ReferenceModel = "invalid-reference"
+	if err = reopened.SavePlan(ctx, p); err == nil {
+		t.Fatal("接受了非法参考身份")
+	}
+	plans, err = reopened.Plans(ctx)
+	if err != nil || plans[0].Lines[0].ReferenceModel != "deepseek-v4.1-flash-1017" {
+		t.Fatal("非法保存破坏旧选择", err)
+	}
+	p.Lines[0].ReferenceModel = ""
+	if err = reopened.SavePlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	plans, err = reopened.Plans(ctx)
+	if err != nil || plans[0].Lines[0].ReferenceModel != "" {
+		t.Fatal("取消参考选择未保存", err)
 	}
 }

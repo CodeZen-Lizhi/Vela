@@ -758,6 +758,13 @@ export interface RecordsRecord {
   client: Payload | null;
 }
 
+/** ReferenceModel 是计划编辑器可选的内置参考身份，不包含样本或评分参数。 */
+export interface ReferenceModel {
+  /** ID 为比较使用的稳定参考身份，Name 为参考库提供的展示名。 */
+  id: string;
+  name: string;
+}
+
 /** Request 是一次主动诊断配置；ID 由页面生成，用于取消本次请求。 */
 export interface Request {
   /** ID 是本次测试唯一标识，重复运行须重新生成。 */
@@ -956,6 +963,8 @@ export interface VerificationCandidate {
 
 /** VerificationLine 是一条固定模型、Key、协议和思考强度的绑定。 */
 export interface VerificationLine {
+  /** ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 精确对应。 */
+  referenceModel: string;
   /** ModelID、KeyID 是本地稳定身份；Protocol 取 chat_completions、responses、messages、gemini；Effort 取 auto、low、medium、high。 */
   modelId: string;
   keyId: string;
@@ -1026,11 +1035,15 @@ export interface VerificationSnapshot {
 
 /** VerificationTarget 是不含凭据的线路快照，Reason 非空时不可执行。 */
 export interface VerificationTarget {
+  /** ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 精确对应。 */
+  referenceModel: string;
   /** ModelID、KeyID 是本地稳定身份；Protocol 取 chat_completions、responses、messages、gemini；Effort 取 auto、low、medium、high。 */
   modelId: string;
   keyId: string;
   protocol: string;
   effort: string;
+  /** OriginalModel 是模型模块的原始模型 ID，不是显示名或供应商请求映射。 */
+  originalModel: string;
   /** ProviderID、ProviderName、KeyName、ModelName 是目标身份及显示名；RequestModel 和 URL 是实际出站快照。 */
   providerId: string;
   providerName: string;
@@ -1316,6 +1329,10 @@ export const VelaService = {
   /** Verification 读取本地计划、最近结果和进度，不触发采样或加载参考库。 */
   verification(): Promise<VerificationSnapshot> {
     return call("VelaService.Verification");
+  },
+  /** VerificationReferenceModels 供计划编辑器按需选择内置参考模型，不发出采样请求。 */
+  verificationReferenceModels(): Promise<ReferenceModel[]> {
+    return call("VelaService.VerificationReferenceModels");
   },
 } as const;
 

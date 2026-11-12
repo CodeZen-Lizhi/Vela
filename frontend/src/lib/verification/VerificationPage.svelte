@@ -7,7 +7,6 @@
     Search,
     Play,
     Eye,
-    Square,
     KeyRound,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
@@ -24,10 +23,12 @@
     type VerificationPlan,
     type VerificationReport,
     type ProviderOverview,
+    type ReferenceModel,
   } from "$lib/generated/mygo";
   import { errorMessage } from "$lib/settings/sections";
   import PlanEditor from "./PlanEditor.svelte";
   import Report from "./Report.svelte";
+  import VerificationActivity from "./VerificationActivity.svelte";
   import {
     conclusions,
     effort,
@@ -46,6 +47,8 @@
   const desktop = isMyGo();
   let snapshot = $state<VerificationSnapshot | null>(null),
     providers = $state<ProviderOverview[]>([]);
+  /** 按需获取参考目录，普通页面不加载检测器。 */
+  let referenceModels = $state<ReferenceModel[]>([]);
   /** 页面筛选与弹窗身份；草稿通过 keyed editor 独立保存。 */
   let tab = $state("results"),
     providerId = $state(""),
@@ -165,8 +168,18 @@
       document.removeEventListener("visibilitychange", refresh);
     };
   });
-  /** 打开独立计划草稿；新建默认使用当前供应商筛选。 */
-  function openPlan(plan?: VerificationPlan): void {
+  /** 按需读取内置参考目录再打开独立草稿；读取失败保留当前页面。 */
+  async function openPlan(plan?: VerificationPlan): Promise<void> {
+    busy = true;
+    try {
+      if (!referenceModels.length)
+        referenceModels = await VelaService.verificationReferenceModels();
+    } catch (cause) {
+      error = errorMessage(cause);
+      return;
+    } finally {
+      busy = false;
+    }
     tab = "plans";
     editing =
       plan ??
@@ -323,6 +336,7 @@
           options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
         />
         <Button
+          variant="outline"
           size="sm"
           disabled={!desktop || !snapshot || !providers.length}
           onclick={() => openPlan()}
@@ -352,28 +366,9 @@
           />
         </div>{/if}
     </div>
-    {#if running && snapshot}{@const progress = snapshot.progress}
-      <div class="v-job" role="status">
-        <FlaskConical class="size-5" />
-        <div>
-          <strong
-            >{progress.mode === "single" ? "固定目标复测中" : "计划检测进行中"} ·
-            {progress.done} / {progress.total} 条样本</strong
-          >
-          <p>
-            {progress.target.providerName} · {progress.target.keyName} · {progress
-              .target.modelName}
-          </p>
-          <progress
-            aria-label="检测样本进度"
-            value={progress.done}
-            max={Math.max(progress.total, 1)}
-          ></progress><small>停止后，已发出的请求仍可能产生费用。</small>
-        </div>
-        <Button variant="outline" size="sm" disabled={busy} onclick={stop}
-          ><Square data-icon="inline-start" />停止</Button
-        >
-      </div>{/if}
+    {#if running && snapshot}
+      <VerificationActivity progress={snapshot.progress} {busy} onstop={stop} />
+    {/if}
     {#if snapshot?.progress.error}<p role="alert" class="v-error">
         任务结束：{snapshot.progress.error}
       </p>{/if}
@@ -421,7 +416,7 @@
                     conclusions.insufficient}</Badge
                 >{#if report.state !== "complete"}<small
                     >{report.state === "cancelled" ? "已取消" : "执行失败"} · {report.reason}</small
-                  >{/if}</Table.Cell
+                  >{:else if report.conclusion === "insufficient"}<small>{report.reason}</small>{/if}</Table.Cell
               ><Table.Cell data-align="number"
                 ><strong
                   >{probability(report.candidates[0]?.probability)}</strong
@@ -559,6 +554,7 @@
             <FlaskConical class="size-6" /><strong>还没有检测计划</strong>
             <p>先为供应商选择要验证的模型、Key、协议与思考强度。</p>
             <Button
+              variant="outline"
               disabled={!desktop || !snapshot || !providers.length}
               onclick={() => openPlan()}
               ><Plus data-icon="inline-start" />创建检测计划</Button
@@ -595,6 +591,7 @@
             ]
           : providerOptions}
         targets={snapshot?.targets ?? []}
+        {referenceModels}
         {busy}
         error={formError}
         onsave={save}
@@ -607,9 +604,12 @@
   onOpenChange={(value) => {
     if (!value) reportID = "";
   }}
-  ><Dialog.Content class="v-report-drawer"
+  ><Dialog.Content class="flex max-h-[86dvh] w-[calc(100vw-48px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(920px,88vw)]"
     >{#if selectedReport}{#key `${selectedReport.id}:${selectedReport.time}`}<Report
           report={selectedReport}
-        />{/key}{/if}</Dialog.Content
+        />{/key}{/if}
+    <Dialog.Footer class="shrink-0 border-t px-6 py-3.5">
+      <Button variant="outline" onclick={() => (reportID = "")}>关闭</Button>
+    </Dialog.Footer></Dialog.Content
   ></Dialog.Root
 >
