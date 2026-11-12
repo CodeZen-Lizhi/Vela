@@ -14,6 +14,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/credentials"
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
 	"github.com/CodeZen-Lizhi/vela/internal/verification"
@@ -24,6 +25,9 @@ import (
 //
 //go:embed assets/tray.png
 var trayIconPNG []byte
+
+// windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。
+var windowVisible = mygo.NewEvent[bool]("window:visible")
 
 // verificationProgress 将合并后的检测样本进度推送给已打开页面。
 var verificationProgress = mygo.NewEvent[verification.VerificationProgress]("verification:progress")
@@ -82,7 +86,20 @@ func main() {
 	if err = upstreams.InitModels(); err != nil {
 		log.Fatal(err)
 	}
-	execution, err := app.NewSchedulingExecution(context.Background(), policies, upstreams, store)
+	history, err := records.New(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
+	historyContext, stopHistory := context.WithCancel(context.Background())
+	historyDone := make(chan struct{})
+	defer func() { stopHistory(); <-historyDone }()
+	go func() {
+		defer close(historyDone)
+		if err := history.Run(historyContext); err != nil && historyContext.Err() == nil {
+			log.Printf("请求记录到期清理停止: %v", err)
+		}
+	}()
+	execution, err := app.NewSchedulingExecution(context.Background(), policies, upstreams, store, history)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -91,6 +108,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	modelTests.Records = history
 	defer modelTests.Close()
 	accounts, err := providers.NewAccounts(upstreams, func(ctx context.Context) (bool, string, error) {
 		proxy, readErr := store.GetProxy(ctx)
@@ -114,6 +132,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	verifier.Records = history
 	verifier.SetProgressHandler(func(progress verification.VerificationProgress) {
 		if err := verificationProgress.Broadcast(progress); err != nil {
 			log.Printf("推送模型验证进度失败: %v", err)
@@ -134,6 +153,7 @@ func main() {
 	}()
 	mygo.Theme.SetSource(themeSource(general.Appearance))
 	mygo.Bind(app.NewVelaService(app.Options{
+		Records:      history,
 		Version:      buildinfo.Version,
 		Models:       store,
 		Providers:    upstreams,
@@ -147,6 +167,9 @@ func main() {
 	}))
 
 	refreshOnVisible = func() {
+		if err := windowVisible.Broadcast(true); err != nil {
+			log.Printf("推送窗口恢复事件失败: %v", err)
+		}
 		go func() {
 			config, err := preferences.AccountRefresh(queryContext)
 			if err == nil && config.OnVisible {

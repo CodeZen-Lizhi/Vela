@@ -14,7 +14,7 @@
   import InlineMultiplier from "./InlineMultiplier.svelte";
   import { queryConfigDraft } from "./query-defaults";
   /** 单个供应商详情始终附着在列表上方，数据刷新不关闭抽屉。 */
-  let { provider, defaults, onupdated, notify, refreshSeconds=60 }: {provider:Provider;defaults:ProviderDefaults;onupdated:()=>Promise<void>;notify:(message:string)=>void;/** 与列表共用本地状态更新周期，仅读取已保存数据。 */ refreshSeconds?:number}=$props();
+  let { provider, defaults, onupdated, notify, refreshSeconds=60,openRecords }: {provider:Provider;defaults:ProviderDefaults;onupdated:()=>Promise<void>;notify:(message:string)=>void;/** 与列表共用本地状态更新周期，仅读取已保存数据。 */ refreshSeconds?:number;/** 跳转记录并保留供应商筛选。 */openRecords:(providerID:string,recordID?:string)=>void}=$props();
   let tab=$state("keys"), query=$state(""), status=$state("all");
   let keys=$state<ProviderKey[]>([]), models=$state<ProviderModel[]>([]);
   /** 主动测试历史独立读取，失败保留已有列表与最近结果。 */
@@ -22,6 +22,7 @@
   let permissions=$state<Record<string,ProviderModelPermissions>>({});
   /** 列表中的来源与同步状态来自已保存查询配置，不从倍率数值猜测。 */
   let queries=$state<Record<string,ProviderKeyQuery>>({});
+  let recent=$state<Awaited<ReturnType<typeof VelaService.requestRecords>>|null>(null),recentError=$state("");
   let loading=$state(true), busy=$state(false), error=$state("");
   /** Key 编辑器错误独立于详情读取与删除错误，取消弹窗时不得泄漏到父页面。 */
   let keyEditorError=$state("");
@@ -32,7 +33,7 @@
   /** 读取页签、权限、倍率来源与最近测试；测试记录错误独立，来源失败禁止快捷切换。 */
   async function load():Promise<void>{
     error="";
-    try{const [nextKeys,nextModels]=await Promise.all([VelaService.providerKeys(provider.id),VelaService.providerModels(provider.id)]);keys=nextKeys;models=nextModels;await loadTestResults();const [entries,queryEntries]=await Promise.all([Promise.all(keys.filter((key)=>!key.allModels).map(async(key)=>[key.id,await VelaService.providerKeyModelPermissions(key.id)] as const)),Promise.all(keys.map(async(key)=>[key.id,await VelaService.providerKeyQuery(key.id)] as const))]);permissions=Object.fromEntries(entries);queries=Object.fromEntries(queryEntries);}
+    try{const [nextKeys,nextModels]=await Promise.all([VelaService.providerKeys(provider.id),VelaService.providerModels(provider.id)]);keys=nextKeys;models=nextModels;await loadTestResults();try{recent=await VelaService.requestRecords({search:"",start:0,end:0,before:0,modelId:"",providerId:provider.id,protocol:"",source:"",states:[],types:[],transports:[],executions:[],page:1,size:10});recentError="";}catch(cause){recentError=String(cause);}const [entries,queryEntries]=await Promise.all([Promise.all(keys.filter((key)=>!key.allModels).map(async(key)=>[key.id,await VelaService.providerKeyModelPermissions(key.id)] as const)),Promise.all(keys.map(async(key)=>[key.id,await VelaService.providerKeyQuery(key.id)] as const))]);permissions=Object.fromEntries(entries);queries=Object.fromEntries(queryEntries);}
     catch(cause){error=cause instanceof Error?cause.message:String(cause);}finally{loading=false;}
   }
   /** 测试历史不可用时独立提示，不使模型和 Key 列表进入失败状态。 */
@@ -100,6 +101,7 @@
     </tr>{/each}</tbody></table>{#if !filtered.length}<div class="provider-empty">{keys.length?"没有符合条件的 Key":"尚无 Key，添加第一把 Key 开始配置。"}{#if keys.length}<Button variant="outline" size="sm" onclick={()=>{query="";status="all";}}>清空筛选</Button>{/if}</div>{/if}</div>
   {:else}<ModelRelations providerID={provider.id} {models} {testResults} {testResultsError} mappingTab={tab==="mappings"} reload={updated} {notify}/>{/if}
 </div>
+<section class="mt-5 border-t pt-4"><div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold">最近调用</h3><Button variant="link" onclick={()=>openRecords(provider.id)}>查看全部记录</Button></div>{#if recentError}<p role="alert" class="text-xs text-destructive">{recentError}</p>{/if}{#if recent}<p class="mb-2 text-xs text-muted-foreground">保留期内 {recent.summary.total} 条请求</p>{#each recent.records.slice(0,5) as row}<div class="flex items-center justify-between gap-3 py-2 text-xs"><span class="min-w-0 truncate">{row.model} · {row.keyName||"未发上游"}</span><Button variant="link" onclick={()=>openRecords(provider.id,row.id)}>{row.state==="success"?"成功":row.state==="active"?"进行中":row.state==="local"?"未发上游":"失败"} · 详情</Button></div>{/each}{/if}</section>
 <Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy){editorOpen=value;if(!value)keyEditorError="";}}}><Dialog.Content class="provider-form-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{selected?"编辑 Key":"添加 Key"}</Dialog.Title><Dialog.Description>默认共用四种 API 格式，启停与模型权限在列表中维护。</Dialog.Description></Dialog.Header>{#if editorOpen}<KeyForm item={selected} {defaults} {nextPriority} {busy} error={keyEditorError} onsave={saveKey} onclose={()=>{editorOpen=false;keyEditorError="";}}/>{/if}</Dialog.Content></Dialog.Root>
 {#if permissionKey}<KeyPermissions item={permissionKey} {models} onclose={()=>permissionKey=null} onsaved={updated}/>{/if}
 

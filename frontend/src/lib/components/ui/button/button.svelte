@@ -15,6 +15,8 @@
 				link: "text-primary underline-offset-4 hover:underline underline",
 			},
 			size: {
+				// inline 用于表格文字入口，不占额外列宽，保留主题与焦点反馈。
+				inline: "h-auto gap-1 p-0 text-xs",
 				default: "h-9 gap-2 px-3.5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",
 				xs: "h-7 gap-1 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-9 gap-2 px-3.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",

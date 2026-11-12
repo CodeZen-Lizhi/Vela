@@ -378,3 +378,29 @@ func (s *Store) Secret(ctx context.Context, keyID string) (string, error) {
 	}
 	return row.revealed(master)
 }
+
+// KeyNames 只解析名称，不读取密钥明文；供删除配置前固定历史累计的最后名称。
+// providerID 或 keyID 可限定范围，至少指定一个稳定身份。
+func (s *Store) KeyNames(ctx context.Context, providerID, keyID string) (map[string]string, error) {
+	if providerID == "" && keyID == "" {
+		return nil, errors.New("请指定供应商或 Key")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id,document FROM provider_keys WHERE (?='' OR provider_id=?) AND (?='' OR id=?)`, providerID, providerID, keyID, keyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	names := map[string]string{}
+	for rows.Next() {
+		var id, raw string
+		var doc keyDocument
+		if err = rows.Scan(&id, &raw); err != nil {
+			return nil, err
+		}
+		if err = s.decodeDocument([]byte(raw), &doc); err != nil {
+			return nil, err
+		}
+		names[id] = doc.Name
+	}
+	return names, rows.Err()
+}

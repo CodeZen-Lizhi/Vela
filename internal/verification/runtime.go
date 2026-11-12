@@ -12,6 +12,7 @@ import (
 
 	"github.com/CodeZen-Lizhi/vela/internal/outbound"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"github.com/CodeZen-Lizhi/vela/internal/verification/fingerprint"
 )
 
@@ -256,6 +257,33 @@ func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target Ve
 
 // sample 每次尝试前复核固定目标和凭据，暂时性失败额外重试两次，不切换Key或协议。
 func (m *Manager) sample(ctx context.Context, t VerificationTarget, c fingerprint.Challenge) fingerprint.Sample {
+	if m.Records == nil {
+		return m.sampleRecorded(ctx, t, c)
+	}
+	ctx, finish, err := m.Records.Begin(ctx, records.Input{ModelID: t.ModelID, ProviderID: t.ProviderID, KeyID: t.KeyID, Source: "verification", Protocol: t.Protocol, Type: "chat", Stream: true})
+	if err != nil {
+		message := "无法创建检测请求记录: " + err.Error()
+		return fingerprint.Sample{State: "failed", Error: &message, ExpectedCount: c.ExpectedCount}
+	}
+	result := m.sampleRecorded(ctx, t, c)
+	var cause error
+	if result.State == "failed" || result.State == "cancelled" {
+		message := "检测请求未完成"
+		if result.Error != nil {
+			message = *result.Error
+		}
+		cause = errors.New(message)
+	}
+	if err = finish(cause); err != nil {
+		message := err.Error()
+		result.State = "failed"
+		result.Error = &message
+	}
+	return result
+}
+
+// sampleRecorded 执行原有固定目标与有限重试；记录层不改变评分和准入。
+func (m *Manager) sampleRecorded(ctx context.Context, t VerificationTarget, c fingerprint.Challenge) fingerprint.Sample {
 	failed := fingerprint.Sample{State: "failed", ExpectedCount: c.ExpectedCount}
 	for attempt := 0; attempt < 3; attempt++ {
 		if ctx.Err() != nil {
@@ -282,7 +310,8 @@ func (m *Manager) sample(ctx context.Context, t VerificationTarget, c fingerprin
 			failed.Error = &message
 			return failed
 		}
-		bounded, cancel := context.WithTimeout(ctx, 120*time.Second)
+		targetCtx := records.WithTarget(ctx, records.Target{ProviderID: candidate.Provider.ID, ProviderName: candidate.Provider.Name, KeyID: candidate.Key.ID, KeyName: candidate.Key.Name, Multiplier: candidate.Key.Multiplier})
+		bounded, cancel := context.WithTimeout(targetCtx, 120*time.Second)
 		failed = requestSample(bounded, client, t, secret, c)
 		cancel()
 		client.CloseIdleConnections()
@@ -347,7 +376,7 @@ func (m *Manager) client(ctx context.Context, c providers.ExecutionCandidate) (*
 	} else if choice.Mode != providers.ProxyDirect {
 		return nil, errors.New("无效网络代理方式")
 	}
-	return &http.Client{Transport: outbound.Transport(proxy), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
+	return &http.Client{Transport: &records.Transport{Base: outbound.Transport(proxy)}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }
 
 // saveReport 替换组合唯一最近报告，外键确保删除目标不会被重新创建。

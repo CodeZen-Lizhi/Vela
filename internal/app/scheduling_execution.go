@@ -11,6 +11,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/outbound"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 )
 
@@ -56,7 +57,7 @@ type SchedulingExecution struct {
 }
 
 // NewSchedulingExecution 组装调度并恢复健康；异常时拒绝启动执行，不伪造满分。
-func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendors *providers.Store, catalog *models.Store) (*SchedulingExecution, error) {
+func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendors *providers.Store, catalog *models.Store, history ...*records.Store) (*SchedulingExecution, error) {
 	if policy == nil || vendors == nil || catalog == nil {
 		return nil, errors.New("调度模块依赖尚未初始化")
 	}
@@ -72,6 +73,9 @@ func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendo
 	runner := scheduling.NewHTTPRunner()
 	runner.ClientFor = value.clientFor
 	value.Executor = &scheduling.Executor{Policies: policy, Runtime: runtime, Source: &schedulingSource{providers: vendors}, Runner: runner, Persist: func(ctx context.Context) error { return policy.SaveRuntime(ctx, runtime) }}
+	if len(history) > 0 {
+		value.Executor.Records = history[0]
+	}
 	return value, nil
 }
 
@@ -106,7 +110,7 @@ func (s *SchedulingExecution) clientFor(ctx context.Context, c scheduling.Candid
 	if client := s.clients[key]; client != nil {
 		return client, nil
 	}
-	client := &http.Client{Transport: outbound.Transport(proxy), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: &records.Transport{Base: outbound.Transport(proxy)}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	s.clients[key] = client
 	return client, nil
 }

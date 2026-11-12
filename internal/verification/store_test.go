@@ -16,6 +16,7 @@ import (
 
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
 // testKeys 用隔离内存主密钥替代系统钥匙串，仍走真实供应商密文存储。
@@ -253,6 +254,11 @@ func TestLiveRoundScoring(t *testing.T) {
 	}))
 	defer upstream.Close()
 	m, p := fixture(t, upstream.URL)
+	history, err := records.New(m.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Records = history
 	ctx := context.Background()
 	p.Lines = p.Lines[:1]
 	if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: p.Lines[0].ModelID, Mappings: []providers.ProviderModelMapping{{RequestName: "claude-haiku-4.5"}}}}); err != nil {
@@ -271,6 +277,21 @@ func TestLiveRoundScoring(t *testing.T) {
 	}
 	if len(snap.Reports) != 1 || snap.Reports[0].Conclusion != "match" || len(snap.Reports[0].Candidates) != 69 || snap.Reports[0].Candidates[0].Model != "claude-haiku-4.5" || calls.Load() != 4 {
 		t.Fatalf("真实评分/重试结果不符: reports=%+v calls=%d", snap.Reports, calls.Load())
+	}
+
+	page, err := history.Query(ctx, records.Query{Source: "verification"})
+	if err != nil || page.Summary.Total != 3 {
+		t.Fatal("采样未按逻辑请求记录", page.Summary, err)
+	}
+	attempts := 0
+	for _, record := range page.Records {
+		attempts += len(record.Attempts)
+		if record.ProviderID != p.ProviderID || record.KeyID != p.Lines[0].KeyID {
+			t.Fatal("诊断目标被记录层改变")
+		}
+	}
+	if attempts != 4 {
+		t.Fatal("采样重试次数不符", attempts)
 	}
 
 	// 同一组真实回答对不同预期身份只能改变比较结论，不改变真实排名。

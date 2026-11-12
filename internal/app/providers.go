@@ -59,6 +59,9 @@ func (s *VelaService) DeleteProvider(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	if err = s.rememberDeletedKeyNames(ctx, id, ""); err != nil {
+		return err
+	}
 	return store.Delete(ctx, id)
 }
 
@@ -111,6 +114,9 @@ func (s *VelaService) SetProviderKeyEnabled(ctx context.Context, keyID string, e
 func (s *VelaService) DeleteProviderKey(ctx context.Context, keyID string) error {
 	store, err := s.providerStore()
 	if err != nil {
+		return err
+	}
+	if err = s.rememberDeletedKeyNames(ctx, "", keyID); err != nil {
 		return err
 	}
 	return store.DeleteKey(ctx, keyID)

@@ -34,19 +34,52 @@ export interface AccountRefresh {
   onVisible: boolean;
 }
 
-/** Attempt 保存一次固定映射与 Key 组合的执行摘要，不保存明文认证。 */
+/** Aggregate 是独立于明细保留的日维度累计。 */
+export interface Aggregate {
+  /** Day、ProviderID、ModelID、Protocol 为固定统计时区的维度，名称在读取时解析。 */
+  day: string;
+  providerId: string;
+  modelId: string;
+  protocol: string;
+  /** ProviderName、ModelName 是当前名称或删除前最后名称，不合并同名重建身份。 */
+  providerName: string;
+  modelName: string;
+  /** Requests、Tokens、Cost 为请求数、已知 Token 和估算美元；未知值独立累计。 */
+  requests: number;
+  tokens: number;
+  cost: number;
+  unknownUsage: number;
+  unknownCost: number;
+}
+
+/** Attempt 保留每次真正调用的目标、HTTP 状态及耗时；内容独立受保留期限控制。 */
 export interface Attempt {
-  /** KeyID、KeyName、RequestModel 是实际尝试身份。 */
+  /** ProviderID、ProviderName、KeyID、KeyName 为稳定身份与当时名称。 */
+  providerId: string;
+  providerName: string;
   keyId: string;
   keyName: string;
-  requestModel: string;
-  /** State 取 success、failed、unused 或 cancelled；未使用组合不发请求。 */
-  state: string;
-  /** Status 是 HTTP 状态，未收到响应头时为零；DurationMillis 为本次耗时毫秒。 */
+  /** Multiplier 未知时不能当作一倍，零倍率有效。 */
+  multiplier: number | null;
+  /** Number 为从一开始的实际网络尝试顺序；Path 不包含认证查询参数。 */
+  number: number;
+  path: string;
+  /** Polling 标记视频任务状态查询；BillingPending 表示尚未完成的任务响应，不是另一笔消耗。 */
+  polling: boolean;
+  billingPending: boolean;
+  /** Status 为上游 HTTP 状态，零表示未收到响应；StartedAt、DurationMillis 为真实计时。 */
   status: number;
+  startedAt: number;
   durationMillis: number;
-  /** Error 为脱敏后的失败说明，成功或未使用时为空。 */
+  /** FirstByteMillis 未收到正文时为 nil；Error 只包含传输或执行错误，原始错误正文见 Payload。 */
+  firstByteMillis: number | null;
   error: string;
+  /** Usage、Cost、Charges 使用本次实际用量与倍率，未知价格不补零。 */
+  usage: Usage | null;
+  cost: number | null;
+  charges: Charge[];
+  /** Payload 只在详情读取，列表始终不加载正文。 */
+  payload: Payload | null;
 }
 
 /** AttentionSettings 是总览提醒的展示偏好，只控制展示，不启动采集或验证任务。 */
@@ -61,6 +94,19 @@ export interface AttentionSettings {
   rate: boolean;
   /** BalanceThreshold 余额低于该美元金额时提醒，零是有效阈值。 */
   balanceThreshold: number;
+}
+
+/** Candidate 记录本次排序快照及未执行原因，不能将候选枚举当作实际调用。 */
+export interface Candidate {
+  /** ProviderID、ProviderName、KeyID、KeyName 为稳定身份与当时名称。 */
+  providerId: string;
+  providerName: string;
+  keyId: string;
+  keyName: string;
+  /** Multiplier 未知时不能当作一倍，零倍率有效。 */
+  multiplier: number | null;
+  /** Reason 非空表示该候选在准入或凭据复核处跳过。 */
+  reason: string;
 }
 
 /** CatalogEntry 是搜索目录候选；非官方来源必须由用户主动选择。 */
@@ -89,6 +135,22 @@ export interface CatalogEntry {
   pricing: Pricing;
   /** Problem 该来源候选无法导入的原因；空值表示有效。 */
   problem: string;
+}
+
+/** Charge 是按历史快照计算的一项估算金额。 */
+export interface Charge {
+  /** Key、Quantity、Price、Amount 分别是维度、数量、美元单价和美元分项金额。 */
+  key: string;
+  quantity: number;
+  price: number;
+  amount: number;
+}
+
+/** CleanupPreview 固定截止时刻，确认时只清理此前预览过的已结束数据。 */
+export interface CleanupPreview {
+  /** Before 为结束截止时间毫秒；Count 为将删除明细数。 */
+  before: number;
+  count: number;
 }
 
 /** Create 提交创建草稿，目录资料由服务端读取，空来源表示手动创建。 */
@@ -153,6 +215,24 @@ export interface ImagePrice {
   price: number;
 }
 
+/** KeyAggregate 表达真实出站次数和 Key 消耗，不能作为逻辑请求数累加到页面摘要。 */
+export interface KeyAggregate {
+  /** Day、ProviderID、ModelID、Protocol、KeyID 为稳定归属维度。 */
+  day: string;
+  providerId: string;
+  modelId: string;
+  protocol: string;
+  keyId: string;
+  /** KeyName 保留最后已知名称，应用层优先解析当前配置名称。 */
+  keyName: string;
+  /** Attempts 为实际网络尝试次数；未知用量和费用单独计数。 */
+  attempts: number;
+  tokens: number;
+  cost: number;
+  unknownUsage: number;
+  unknownCost: number;
+}
+
 /** KeyOption 是经过模型权限和密钥存在性筛选的诊断 Key，不含认证信息。 */
 export interface KeyOption {
   /** Value 是 Key 稳定身份；Label 为名称，停用对象可主动诊断。 */
@@ -212,6 +292,28 @@ export interface Model {
   overrides: string[];
 }
 
+/** Attempt 保存一次固定映射与 Key 组合的执行摘要，不保存明文认证。 */
+export interface ModeltestAttempt {
+  /** KeyID、KeyName、RequestModel 是实际尝试身份。 */
+  keyId: string;
+  keyName: string;
+  requestModel: string;
+  /** State 取 success、failed、unused 或 cancelled；未使用组合不发请求。 */
+  state: string;
+  /** Status 是 HTTP 状态，未收到响应头时为零；DurationMillis 为本次耗时毫秒。 */
+  status: number;
+  durationMillis: number;
+  /** Error 为脱敏后的失败说明，成功或未使用时为空。 */
+  error: string;
+}
+
+/** Option 为历史记录中的稳定身份与标签，删除资源后仍可筛选。 */
+export interface Option {
+  /** Value 是稳定身份或协议；Label 为可显示名称。 */
+  value: string;
+  label: string;
+}
+
 /** Options 是前端预选测试配置所需的当前配置快照。 */
 export interface Options {
   /** ModelName、Kind 来自统一模型；不从展示名称推测模型类型。 */
@@ -221,6 +323,31 @@ export interface Options {
   keys: KeyOption[];
   /** Mappings 是按优先级排列的已配置请求名；无映射时为默认模型名。 */
   mappings: string[];
+}
+
+/** Page 包含一次查询同一事务内的分页、摘要及筛选候选。 */
+export interface Page {
+  /** Records 不含正文；Summary 覆盖整个匹配集合；Before 为数据库插入顺序快照。 */
+  records: RecordsRecord[];
+  summary: Summary;
+  before: number;
+  /** Models、Providers、Protocols、Types 为保留期内历史选项，不局限当前页。 */
+  models: Option[];
+  providers: Option[];
+  protocols: Option[];
+  types: Option[];
+}
+
+/** Payload 是脱敏后的头与正文；正文过期后保留明确状态。 */
+export interface Payload {
+  /** RequestHeaders、ResponseHeaders 是 JSON 格式脱敏头。 */
+  requestHeaders: string;
+  responseHeaders: string;
+  /** RequestBody、ResponseBody 只保留文本与媒体元信息，最多各一 MiB。 */
+  requestBody: string;
+  responseBody: string;
+  /** BodyState 为 available、expired、unavailable 或 truncated。 */
+  bodyState: string;
 }
 
 /** PreferredKey 是供应商列表展示的首选 Key：已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的。 */
@@ -511,6 +638,28 @@ export interface ProxyChoice {
 /** ProxyMode 是供应商或上游 Key 的出口方式。 */
 export type ProxyMode = "global" | "direct" | "provider";
 
+/** Query 在数据库内组合筛选、分页；Before 以数据库插入顺序锚定阅读快照，防止新记录挤动后续页。 */
+export interface Query {
+  /** Search 按空白分词，所有关键词同时满足；时间为 Unix 毫秒，零表示不限制。 */
+  search: string;
+  start: number;
+  end: number;
+  before: number;
+  /** ModelID、ProviderID、Protocol、Source 为单选，空值表示全部。 */
+  modelId: string;
+  providerId: string;
+  protocol: string;
+  source: string;
+  /** States、Types、Transports、Executions 在组内或、组间且；传输取 stream 或 standard。 */
+  states: string[];
+  types: string[];
+  transports: string[];
+  executions: string[];
+  /** Page 从一开始；Size 只允许 10、20、50、100。 */
+  page: number;
+  size: number;
+}
+
 /** QueryConfig 定义账户连接；秘密字段读取只返回 ***，保存空串或 *** 均保留原值。 */
 export interface QueryConfig {
   /** Mode 接入方式：sub2api、newapi、usage_api、custom；空表示未配置。 */
@@ -553,6 +702,60 @@ export interface Rate {
   price: number;
   /** Unit 价格单位，取 million_tokens、image、second 或 request。 */
   unit: string;
+}
+
+/** Record 是单个逻辑请求事实；名字快照与价格不随资源改名或删除变化。 */
+export interface RecordsRecord {
+  /** CurrentProviderName、CurrentKeyName、CurrentModelName 为当前名称或已删除标记，仅用于详情。 */
+  currentProviderName: string;
+  currentKeyName: string;
+  currentModelName: string;
+  /** ProviderID、ProviderName、KeyID、KeyName 为稳定身份与当时名称。 */
+  providerId: string;
+  providerName: string;
+  keyId: string;
+  keyName: string;
+  /** Multiplier 未知时不能当作一倍，零倍率有效。 */
+  multiplier: number | null;
+  /** ID 为随机稳定身份；时间为 Unix 毫秒，EndedAt 为零表示进行中。 */
+  id: string;
+  startedAt: number;
+  endedAt: number;
+  /** ModelID、Model、ModelName 分别是稳定身份、统一调用名与当时显示名。 */
+  modelId: string;
+  model: string;
+  modelName: string;
+  /** UpstreamModel、Effort、Tier 为实际请求模型、思考强度与处理层级。 */
+  upstreamModel: string;
+  effort: string;
+  tier: string;
+  /** Source、Protocol、Type、Stream 区分来源、格式、业务类型和客户端传输方式。 */
+  source: string;
+  protocol: string;
+  type: string;
+  stream: boolean;
+  /** State 为 active、success、failed 或 local；Execution 为 direct、retry、transfer 或 both。 */
+  state: string;
+  execution: string;
+  /** Error 为最终执行原因；CircuitSourceID 为已知熔断来源，不允许猜测。 */
+  error: string;
+  circuitSourceId: string;
+  /** DurationMillis、FirstByteMillis、OutputRate 为端到端计时和每秒输出 Token。 */
+  durationMillis: number;
+  firstByteMillis: number | null;
+  outputRate: number | null;
+  /** Usage 与 Cost 只在真实有数据且可计算时填写；UnknownCosts 标记有用量但无法计价的尝试。 */
+  usage: Usage | null;
+  cost: number | null;
+  unknownCosts: number;
+  /** Pricing 固定开始时完整模型规则；Charges 包含实际各尝试费用。 */
+  pricing: Pricing;
+  charges: Charge[];
+  /** Attempts 为实际出站尝试，Client 仅在详情中读取。 */
+  attempts: Attempt[];
+  /** Candidates 是调度排序快照，只有 Attempts 代表实际出站。 */
+  candidates: Candidate[];
+  client: Payload | null;
 }
 
 /** Request 是一次主动诊断配置；ID 由页面生成，用于取消本次请求。 */
@@ -614,7 +817,7 @@ export interface Result {
   requestHeaders: string;
   responseBody: string;
   /** Attempts 保留实际顺序及首个成功后未使用的组合。 */
-  attempts: Attempt[];
+  attempts: ModeltestAttempt[];
 }
 
 /** RuntimeInfo 是前端可读取的运行信息投影。 */
@@ -682,6 +885,27 @@ export interface SettingsSnapshot {
   attention: AttentionSettings;
 }
 
+/** Summary 是整个筛选集合的合计，未知数据独立计数而非补零。 */
+export interface Summary {
+  /** Total、Active、Success、Failed、Local 为各状态请求数。 */
+  total: number;
+  active: number;
+  success: number;
+  failed: number;
+  local: number;
+  /** Tokens、InputContext、CacheRead、Cost 为已知量合计，费用为估算美元。 */
+  tokens: number;
+  inputContext: number;
+  cacheRead: number;
+  cost: number;
+  /** UnknownUsage、UnknownCost 为结束但缺少实际用量或完整价格的请求数。 */
+  unknownUsage: number;
+  unknownCost: number;
+  /** AverageMillis 只计算已结束有效耗时；Timed 为分母。 */
+  averageMillis: number;
+  timed: number;
+}
+
 /** SyncResult 返回按模型提交的同步结果；Failures 同时包含保留原配置的原因。 */
 export interface SyncResult {
   /** Updated 本次已成功保存来源价格的模型数量。 */
@@ -696,6 +920,28 @@ export interface Tier {
   above: number;
   /** Rates 当前规则的显式单价；空集合表示未提供。 */
   rates: Rate[];
+}
+
+/** Usage 使用已归一化且不重复包含缓存的输入量；nil 用量表示上游没有提供。 */
+export interface Usage {
+  /** Quality 是媒体计价质量，空值表示请求未明确提供。 */
+  quality: string;
+  /** Input、Output、CacheRead、CacheWrite、CacheWrite1h 的单位为 Token；Context 为完整输入上下文。 */
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite1h: number;
+  context: number;
+  /** ImageInput、ImageOutput、AudioInput、AudioOutput 是包含在输入/输出总量内的媒体 Token。 */
+  imageInput: number;
+  imageOutput: number;
+  audioInput: number;
+  audioOutput: number;
+  /** Quantity、Unit、Specification 为真实媒体数量、单位及规格，不伪造 Token。 */
+  quantity: number;
+  unit: string;
+  specification: string;
 }
 
 /** VerificationCandidate 是上游真实候选，Probability 为空时不显示置信度。 */
@@ -807,6 +1053,10 @@ export interface VideoPrice {
 
 /** VelaService 提供运行信息、模型管理、供应商管理、调度策略和全局设置操作，由 MyGo 生成 TypeScript 客户端。 */
 export const VelaService = {
+  /** ActiveRequestRecords 只更新页面已经展示的身份，不插入其他新请求。 */
+  activeRequestRecords(ids: string[]): Promise<RecordsRecord[]> {
+    return call("VelaService.ActiveRequestRecords", ids);
+  },
   /** AddModel 根据来源身份添加模型，前端不能注入来源价格。 */
   addModel(providerID: string, modelID: string): Promise<Model> {
     return call("VelaService.AddModel", providerID, modelID);
@@ -814,6 +1064,10 @@ export const VelaService = {
   /** CancelProviderModelTest 取消指定请求及后续候选，已发出的上游消耗不可撤回。 */
   cancelProviderModelTest(id: string): Promise<void> {
     return call("VelaService.CancelProviderModelTest", id);
+  },
+  /** CleanupRequestRecords 仅在页面明确确认预览后调用，不影响长期累计和配置。 */
+  cleanupRequestRecords(before: number): Promise<number> {
+    return call("VelaService.CleanupRequestRecords", before);
   },
   /** CopyAccessKey 将访问密钥直接写入系统剪贴板，密钥不经过页面。 */
   copyAccessKey(): Promise<void> {
@@ -867,6 +1121,10 @@ export const VelaService = {
   modelCatalog(): Promise<CatalogEntry[]> {
     return call("VelaService.ModelCatalog");
   },
+  /** PreviewRequestCleanup 预览已结束请求清理数量与固定截止时刻。 */
+  previewRequestCleanup(days: number): Promise<CleanupPreview> {
+    return call("VelaService.PreviewRequestCleanup", days);
+  },
   /** ProviderAccount 只读取本地账户配置与结果，不访问上游。 */
   providerAccount(providerID: string): Promise<ProviderAccount> {
     return call("VelaService.ProviderAccount", providerID);
@@ -906,6 +1164,22 @@ export const VelaService = {
   /** RefreshProviderKey 用于创建或替换调用密钥后只同步受影响 Key。 */
   refreshProviderKey(keyID: string): Promise<ProviderKeyQuery> {
     return call("VelaService.RefreshProviderKey", keyID);
+  },
+  /** RequestKeyTotals 读取清理后仍保留的 Key 消耗归属，并通过凭据模块解析当前名称。 */
+  requestKeyTotals(q: Query): Promise<KeyAggregate[]> {
+    return call("VelaService.RequestKeyTotals", q);
+  },
+  /** RequestRecord 返回按独立保留期限读取的上下游详情。 */
+  requestRecord(id: string): Promise<RecordsRecord> {
+    return call("VelaService.RequestRecord", id);
+  },
+  /** RequestRecords 返回数据库内筛选、分页与整组摘要，不向前端加载全部历史。 */
+  requestRecords(q: Query): Promise<Page> {
+    return call("VelaService.RequestRecords", q);
+  },
+  /** RequestTotals 查询独立于明细清理的长期日维度统计。 */
+  requestTotals(q: Query): Promise<Aggregate[]> {
+    return call("VelaService.RequestTotals", q);
   },
   /** RevealAccessKey 在用户主动查看时返回访问密钥。 */
   revealAccessKey(): Promise<string> {
@@ -1049,6 +1323,8 @@ export const VelaService = {
 
 /** Events sent by the Go side. Subscribe with `events.name.on(listener)`. */
 export const events = {
+  /** windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。 */
+  windowVisible: event<boolean>("window:visible"),
   /** verificationProgress 将合并后的检测样本进度推送给已打开页面。 */
   verificationProgress: event<VerificationProgress>("verification:progress"),
 } as const;

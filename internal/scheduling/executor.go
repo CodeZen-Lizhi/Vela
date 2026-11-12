@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"io"
 	"net/http"
 	"time"
@@ -67,6 +68,8 @@ type ExecutionResult struct {
 
 // Executor 组合已保存策略、配置复核、运行准入和真实传输，供 HTTP/桌面宿主外的网关复用。
 type Executor struct {
+	// Records 接入真实请求记录；独立调度单元可不配置。
+	Records *records.Store
 	// Policies、Runtime、Source、Runner 由应用入口各创建一次，不允许请求间复制运行状态。
 	Policies *Store
 	Runtime  *Runtime
@@ -85,11 +88,20 @@ var ErrNoCandidates = errors.New("没有可用的调度候选")
 var ErrContinuation = errors.New("连续会话的原上游绑定无法验证")
 
 // Execute 按一次配置快照完成选路、有限重试和故障转移；写出结果后绝不重放。
-func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Writer) (ExecutionResult, error) {
-	var result ExecutionResult
+func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Writer) (result ExecutionResult, executionErr error) {
+	if e.Records != nil {
+		var finish func(error) error
+		var err error
+		ctx, finish, err = e.Records.Begin(ctx, records.Input{ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: "chat", Source: "business", Stream: req.Stream, Body: req.Body, Headers: req.Headers})
+		if err != nil {
+			return result, err
+		}
+		defer func() { executionErr = errors.Join(executionErr, finish(executionErr)) }()
+	}
 	if e.Policies == nil || e.Runtime == nil || e.Source == nil || e.Runner == nil {
 		return result, errors.New("调度执行依赖尚未初始化")
 	}
+	w = records.Writer(ctx, w)
 	accepted := time.Now()
 	var input map[string]json.RawMessage
 	if err := json.Unmarshal(req.Body, &input); err != nil || input == nil {
@@ -128,7 +140,35 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 			return result, ErrContinuation
 		}
 	}
+	allCandidates := candidates
 	candidates = e.Runtime.Rank(policy, req.Request, candidates)
+	targets := make([]records.Target, 0, len(candidates))
+	for _, c := range candidates {
+		targets = append(targets, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier})
+	}
+	for _, c := range allCandidates {
+		found := false
+		for _, ranked := range candidates {
+			if ranked.Key.ID == c.Key.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			targets = append(targets, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier})
+		}
+	}
+	if err := records.Candidates(ctx, targets); err != nil {
+		return result, err
+	}
+	for _, c := range allCandidates {
+		health := e.Runtime.Health(c.Key.ID, c.CredentialVersion)
+		if health.CircuitOpen && health.NextProbe.After(time.Now()) {
+			if err := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, ErrCircuit.Error(), true); err != nil {
+				return result, err
+			}
+		}
+	}
 	deadlineSet := false
 	lastErr := error(ErrNoCandidates)
 	for _, c := range candidates {
@@ -166,6 +206,9 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				}
 				if acquireErr != nil {
 					lastErr = acquireErr
+					if recordErr := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, acquireErr.Error(), errors.Is(acquireErr, ErrCircuit)); recordErr != nil {
+						return result, recordErr
+					}
 					break
 				}
 			}
@@ -188,8 +231,13 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 			result.ProviderID = c.Provider.ID
 			result.KeyID = c.Key.ID
 			result.Attempts++
-			outcome, runErr := e.Runner.Run(ctx, c, req, secret, w)
+			outcome, runErr := e.Runner.Run(records.WithTarget(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}), c, req, secret, w)
 			attempt.Finish(outcome.Outcome)
+			if e.Runtime.Health(c.Key.ID, c.CredentialVersion).CircuitOpen {
+				if err := records.MarkCircuit(ctx, c.Key.ID, c.CredentialVersion); err != nil {
+					return result, err
+				}
+			}
 			result.Result = outcome
 			if e.Persist != nil {
 				// 请求结束或取消也要落健康事实；持久化使用独立、有限的清理上下文。

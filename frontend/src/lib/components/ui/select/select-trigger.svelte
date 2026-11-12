@@ -8,9 +8,12 @@
 		class: className,
 		children,
 		size = "default",
+		variant = "default",
 		...restProps
 	}: WithoutChild<SelectPrimitive.TriggerProps> & {
 		size?: "sm" | "default";
+		/** column 用于密集表格列头，统一高度与主题，减少横向留白。 */
+		variant?: "default" | "column";
 	} = $props();
 </script>
 
@@ -20,10 +23,11 @@
 	data-size={size}
 	class={cn(
 		"border-input bg-background data-placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/15 aria-invalid:border-b-destructive dark:aria-invalid:border-b-destructive/50 gap-1.5 rounded-lg border py-2 px-3 text-sm transition-[color,border-color] data-[size=default]:h-9 data-[size=sm]:h-9 *:data-[slot=select-value]:flex *:data-[slot=select-value]:gap-1.5 [&_svg:not([class*='size-'])]:size-3.5 flex w-fit items-center justify-between whitespace-nowrap outline-none disabled:cursor-not-allowed disabled:opacity-50 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		variant === "column" && "border-transparent bg-transparent px-1 text-[11px] hover:bg-muted",
 		className
 	)}
 	{...restProps}
 >
 	{@render children?.()}
-	<ChevronDownIcon class="text-muted-foreground size-3.5 pointer-events-none" />
+	{#if variant !== "column"}<ChevronDownIcon class="text-muted-foreground size-3.5 pointer-events-none" />{/if}
 </SelectPrimitive.Trigger>

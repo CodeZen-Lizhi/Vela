@@ -13,6 +13,7 @@
   import { Button } from "$lib/components/ui/button";
   import VelaMark from "$lib/components/VelaMark.svelte";
   import VerificationPage from "$lib/verification/VerificationPage.svelte";
+  import RecordsPage from "$lib/records/RecordsPage.svelte";
   import ModelsPage from "$lib/models/ModelsPage.svelte";
   import ProvidersPage from "$lib/providers/ProvidersPage.svelte";
   import SchedulingPage from "$lib/scheduling/SchedulingPage.svelte";
@@ -20,6 +21,10 @@
   import { settingsSections, type SettingsSection } from "$lib/settings/sections";
   /** 当前显示的顶级页面，取导航项名称或“设置”。 */
   let page = $state("模型");
+ /** 供应商最近调用携带的一次性记录入口。 */
+ let recordsProvider=$state(""),recordsID=$state("");
+ /** 进入记录页时保留目标身份，普通导航清除定向范围。 */
+ function openRecords(providerID:string,recordID=""):void{recordsProvider=providerID;recordsID=recordID;page="使用记录";}
   /** 侧栏收起时只显示导航图标；切换页面和展开时保留当前页面及设置分类。 */
   let sidebarCollapsed = $state(false);
   /** 设置子分类由外壳持有，侧栏、面包屑与内容面板共用。 */
@@ -31,7 +36,7 @@
     { name: "模型", icon: Box, enabled: true },
     { name: "调度", icon: Waypoints, enabled: true },
     { name: "模型验证", icon: FlaskConical, enabled: true },
-    { name: "使用记录", icon: ScrollText, enabled: false },
+    { name: "使用记录", icon: ScrollText, enabled: true },
   ];
   /** 面包屑末级显示的设置分类名称。 */
   const sectionName = $derived(
@@ -90,7 +95,7 @@
           aria-current={page === item.name ? "page" : undefined}
           title={sidebarCollapsed ? item.name : undefined}
           disabled={!item.enabled}
-          onclick={() => (page = item.name)}
+          onclick={() => {recordsProvider="";recordsID="";page = item.name;}}
           ><item.icon class="size-4" aria-hidden="true" /><span>{item.name}</span></button
         >{/each}
     </nav>
@@ -132,10 +137,11 @@
       </p>
       <span class="tag">本地优先</span>
     </header>
-    <main class="mx-auto max-w-7xl p-5 lg:p-8">
-      {#if page === "供应商"}<ProvidersPage {notify} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
+    <!-- 请求记录保持固定页边距，缩放时不受外壳 lg 断点影响。 -->
+    <main class={page === "使用记录" ? "mx-auto max-w-7xl p-5" : "mx-auto max-w-7xl p-5 lg:p-8"}>
+      {#if page === "供应商"}<ProvidersPage {notify} {openRecords} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
           {notify}
-        />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
+        />{:else if page === "使用记录"}<RecordsPage {notify} initialProvider={recordsProvider} initialRecord={recordsID} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
           section={settingsSection}
           {notify}
         />{/if}

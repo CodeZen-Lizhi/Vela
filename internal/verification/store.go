@@ -14,6 +14,7 @@ import (
 
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
 // schema 以真实资源外键级联清理局部线路和报告；报告不依赖计划，允许计划外固定目标复测。
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS verification_reports(
 
 // Manager 维护共享数据库和单轮任务；运行取消及后台循环的生命周期由桌面宿主管理。
 type Manager struct {
+	// Records 由宿主运行前注入，采样费用独立于最新报告保留。
+	Records *records.Store
 	// db、vendors、catalog 复用现有模型、供应商、加密凭据及代理能力。
 	db      *sql.DB
 	vendors *providers.Store

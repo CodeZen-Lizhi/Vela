@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
 // schema 只保留每个供应商关联模型的最新诊断；解除关联或删除模型时同步清理。
@@ -31,6 +32,8 @@ type ClientFor func(context.Context, providers.ExecutionCandidate) (*http.Client
 
 // Manager 管理主动测试、取消及最近结果；不参与正式流量准入或健康结算。
 type Manager struct {
+	// Records 由宿主在运行前注入，独立请求明细不随最近诊断结果删除。
+	Records *records.Store
 	// db、providers、clientFor 由应用生命周期持有，退出前需先 Close 取消在途测试。
 	db        *sql.DB
 	providers *providers.Store
@@ -135,7 +138,28 @@ func (m *Manager) Close() {
 }
 
 // Run 按映射优先、Key 次序实际尝试，成功即停止；输入错误不发请求，最终结果脱敏持久化。
-func (m *Manager) Run(ctx context.Context, request Request) (Result, error) {
+func (m *Manager) Run(ctx context.Context, request Request) (result Result, err error) {
+	if m.Records == nil {
+		return m.run(ctx, request)
+	}
+	kind := request.Protocol
+	if slices.Contains([]string{"chat", "responses", "anthropic", "gemini"}, kind) {
+		kind = "chat"
+	}
+	ctx, finish, err := m.Records.Begin(ctx, records.Input{ModelID: request.ModelID, ProviderID: request.ProviderID, KeyID: request.KeyID, Source: "modeltest", Protocol: request.Protocol, Type: kind, Body: []byte(request.RequestBody)})
+	if err != nil {
+		return result, err
+	}
+	result, err = m.run(ctx, request)
+	cause := err
+	if cause == nil && result.State != "success" {
+		cause = errors.New(result.Error)
+	}
+	return result, errors.Join(err, finish(cause))
+}
+
+// run 保留主动诊断的权限复核、取消、映射顺序及最近结果保存契约。
+func (m *Manager) run(ctx context.Context, request Request) (Result, error) {
 	request.ID = strings.TrimSpace(request.ID)
 	if request.ID == "" || len(request.ID) > 128 {
 		return Result{}, errors.New("测试请求标识无效")
@@ -246,7 +270,7 @@ func (m *Manager) Run(ctx context.Context, request Request) (Result, error) {
 		result.RequestModel = attempt.RequestModel
 		result.KeyName = key.Key.Name
 		usedSecrets = append(usedSecrets, secret)
-		output := runHTTP(runCtx, client, request, fresh.Provider.URL, attempt.RequestModel, secret)
+		output := runHTTP(records.WithTarget(runCtx, records.Target{ProviderID: fresh.Provider.ID, ProviderName: fresh.Provider.Name, KeyID: key.Key.ID, KeyName: key.Key.Name, Multiplier: key.Key.Multiplier}), client, request, fresh.Provider.URL, attempt.RequestModel, secret)
 		attempt.Status = output.Status
 		attempt.DurationMillis = time.Since(attemptStarted).Milliseconds()
 		result.Status = output.Status
