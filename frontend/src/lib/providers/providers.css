@@ -99,8 +99,9 @@
 .provider-health { white-space:normal; }
 .provider-key-table code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:1100px) {
+ /* 窄窗口只改变排列方式，搜索框保持与正常窗口相同的最大宽度。 */
  .provider-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:14px 16px; }
- .provider-search { width:100%; max-width:none; min-width:0; }
+ .provider-search { width:100%; max-width:260px; min-width:0; }
  .provider-filter { justify-self:end; }
  .provider-table th,.provider-table td { padding:12px 6px; }
  .provider-identity { gap:6px; }

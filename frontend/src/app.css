@@ -565,7 +565,7 @@ input:not([data-slot]):focus-visible {
   --trait-accent: #a75a23;
 }
 @media (max-width: 1100px) {
-  /* 桌面窄窗口统一两行工具栏，筛选不与操作按钮争抢搜索空间。 */
+  /* 桌面窄窗口统一两行工具栏；搜索保持正常窗口宽度，不随剩余空间拉长。 */
   .model-toolbar {
     flex-wrap: wrap;
     gap: 12px;
@@ -574,8 +574,9 @@ input:not([data-slot]):focus-visible {
     flex: 1 0 100%;
   }
   .model-search {
-    width: auto;
-    flex: 1;
+    width: 260px;
+    max-width: 260px;
+    flex: 0 1 260px;
     min-width: 180px;
   }
   .model-table th:nth-child(1) {
