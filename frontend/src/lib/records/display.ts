@@ -40,23 +40,37 @@ export function protocol(value: string): string {
   return (
     (
       {
-        chat: "Chat Completions",
-        chat_completions: "Chat Completions",
-        messages: "Messages",
-        "openai:chat": "Chat Completions",
-        responses: "Responses",
-        "openai:responses": "Responses",
-        anthropic: "Messages",
-        "claude:messages": "Messages",
-        gemini: "Gemini",
-        "gemini:generate_content": "Gemini",
-        image: "Images",
-        video: "Videos",
-        embedding: "Embeddings",
+        chat: "OpenAI Chat Completions",
+        chat_completions: "OpenAI Chat Completions",
+        messages: "Anthropic Messages",
+        "openai:chat": "OpenAI Chat Completions",
+        responses: "OpenAI Responses",
+        "openai:responses": "OpenAI Responses",
+        anthropic: "Anthropic Messages",
+        "claude:messages": "Anthropic Messages",
+        gemini: "Gemini generateContent",
+        "gemini:generate_content": "Gemini generateContent",
+        image: "OpenAI Images",
+        video: "OpenAI Videos",
+        embedding: "OpenAI Embeddings",
         rerank: "Rerank",
       } as { [key: string]: string }
     )[value] ?? value
   );
+}
+/** 只统计实际尝试之间的重试和转移，视频轮询不构成新的执行路径。 */
+export function executionCounts(row: RecordsRecord): { retries: number; transfers: number } {
+  let previous: RecordsRecord["attempts"][number] | undefined;
+  let retries = 0, transfers = 0;
+  for (const current of row.attempts) {
+    if (current.polling) continue;
+    if (previous) {
+      if (previous.providerId === current.providerId && previous.keyId === current.keyId) retries++;
+      else transfers++;
+    }
+    previous = current;
+  }
+  return { retries, transfers };
 }
 /** 从固定选项读取标签，不把未知值当作默认成功。 */
 export function label(
@@ -102,10 +116,10 @@ export function cache(usage: Usage | null): string {
     ? `${((100 * usage.cacheRead) / usage.context).toFixed(2)}%`
     : "—";
 }
-/** 请求时间按本机显示，统计日的固定时区由后端独立维护。 */
+/** 请求时间按本机显示，日期使用 YYYY-MM-DD；统计日的固定时区由后端独立维护。 */
 export function date(value: number, part: "time" | "day" = "time"): string {
   return new Intl.DateTimeFormat(
-    "zh-CN",
+    part === "time" ? "zh-CN" : "sv-SE",
     part === "time"
       ? { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }
       : { year: "numeric", month: "2-digit", day: "2-digit" },

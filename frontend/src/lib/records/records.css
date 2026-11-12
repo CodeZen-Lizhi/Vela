@@ -28,7 +28,7 @@
 }
 .records-filters {
   display: grid;
-  grid-template-columns: minmax(90px, 220px) minmax(74px, 100px) minmax(74px, 100px) minmax(74px, 90px) minmax(68px, 84px) minmax(74px, 90px);
+  grid-template-columns: minmax(90px, 220px) minmax(74px, 100px) minmax(74px, 100px) minmax(74px, 90px) minmax(74px, 90px);
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
@@ -76,30 +76,23 @@
   text-transform: none;
   white-space: nowrap;
 }
-.records-table th:nth-child(1) {
-  width: 10%;
-}
-.records-table th:nth-child(2) {
-  width: 12%;
-}
-.records-table th:nth-child(3) {
-  width: 10%;
-}
-.records-table th:nth-child(4) {
-  width: 11%;
-}
-.records-table th:nth-child(5) {
-  width: 13%;
-}
-.records-table th:nth-child(6) {
-  width: 16%;
-}
-.records-table th:nth-child(7) {
-  width: 12%;
-}
-.records-table th:nth-child(8) {
-  width: 16%;
-}
+/* 九列保留现有单元格留白，宽度优先满足数字组与状态标签。 */
+.records-table th:nth-child(1) { width: 9%; }
+.records-table th:nth-child(2) { width: 14%; }
+.records-table th:nth-child(3) { width: 10%; }
+.records-table th:nth-child(4) { width: 10%; }
+.records-table th:nth-child(5) { width: 9%; }
+.records-table th:nth-child(6) { width: 7%; }
+.records-table th:nth-child(7) { width: 16%; }
+.records-table th:nth-child(8) { width: 10%; }
+.records-table th:nth-child(9) { width: 15%; }
+.record-column-heading { display: flex; align-items: center; gap: 6px; letter-spacing: normal; text-transform: none; }
+.record-column-heading > span:first-child { white-space: nowrap; }
+.record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
+.records-table th { height: 36px; padding-block: 3px; }
+.record-protocol { display: block; overflow-wrap: anywhere; line-height: 1.4; }
+.record-protocol > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-provider-line { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; min-width: 0; }
 .records-table th button {
   max-width: 100%;
 }
@@ -113,17 +106,18 @@
 .records-table strong {
   font-weight: 600;
 }
-.records-table td:nth-child(7) {
+.records-table td:nth-child(8) {
   white-space: nowrap;
 }
 .record-model {
   overflow-wrap: anywhere;
 }
-.records-badges {
-  display: inline-flex;
+.record-model-line {
+  display: flex;
+  align-items: baseline;
   flex-wrap: wrap;
-  gap: 3px;
-  margin-top: 3px;
+  gap: 3px 5px;
+  min-width: 0;
 }
 .records-pagination {
   display: flex;
@@ -201,7 +195,7 @@
   max-width: 100%;
 }
 
-/* 旧版用量两行按输入/输出、缓存/命中配对，表头直接标明顺序和单位。 */
+/* Token 数值固定两行配对，含义集中在表头说明，避免逐行重复名称。 */
 .records-token-usage {
   display: flex;
   flex-direction: column;
@@ -213,14 +207,19 @@
   align-items: baseline;
   gap: 4px;
   min-width: 0;
+}
+.records-token-usage > div > span {
   white-space: nowrap;
 }
-.records-token-usage .record-hit {
-  font-weight: 500;
+.record-input, .record-output {
+  color: var(--foreground);
+}
+.record-cache, .record-hit {
+  color: var(--muted-foreground);
 }
 .record-type-status { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
-.record-input, .record-total-time, .record-cost { color: var(--primary); }
-.record-output, .record-cache, .record-hit, .record-speed { color: var(--positive); }
+.record-total-time, .record-cost { color: var(--primary); }
+.record-speed { color: var(--positive); }
 .record-cost { font-weight: 650; }
 .record-first-byte { color: var(--caution); }
 .record-separator { color: var(--muted-foreground); }
@@ -237,10 +236,9 @@
   overflow: hidden;
 }
 .record-row { cursor: pointer; height: 72px; }
-/* 进行中整行保留稳定底色和左侧标记，仅状态标签呼吸，避免整行闪烁。 */
-.record-row[data-record-state="active"] { background: color-mix(in srgb, var(--primary) 5%, var(--card)); }
-.record-row[data-record-state="active"]:hover { background: color-mix(in srgb, var(--primary) 9%, var(--card)); }
-.record-row[data-record-state="active"] > td:first-child { box-shadow: inset 2px 0 var(--primary); }
+/* 进行中只强调边框，背景与普通记录一致；边框覆盖层不拦截行点击。 */
+.record-row[data-record-state="active"] { background: transparent; }
+.record-row[data-record-state="active"]:hover { background: transparent; }
 .record-row[data-record-state="active"] .record-model { color: var(--primary); }
 .record-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .record-detail-header {

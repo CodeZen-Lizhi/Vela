@@ -7,10 +7,8 @@
     Network,
     ScrollText,
     FlaskConical,
-    PanelLeftClose,
-    PanelLeftOpen,
   } from "@lucide/svelte";
-  import { Button } from "$lib/components/ui/button";
+  import * as Resizable from "$lib/components/ui/resizable";
   import VelaMark from "$lib/components/VelaMark.svelte";
   import VerificationPage from "$lib/verification/VerificationPage.svelte";
   import RecordsPage from "$lib/records/RecordsPage.svelte";
@@ -25,8 +23,47 @@
  let recordsProvider=$state(""),recordsID=$state("");
  /** 进入记录页时保留目标身份，普通导航清除定向范围。 */
  function openRecords(providerID:string,recordID=""):void{recordsProvider=providerID;recordsID=recordID;page="使用记录";}
-  /** 侧栏收起时只显示导航图标；切换页面和展开时保留当前页面及设置分类。 */
-  let sidebarCollapsed = $state(false);
+  /** 默认168、最大240；最小72并避让系统按钮组，分栏内部使用百分比。 */
+  const sidebarMax = 240, sidebarDefault = 168;
+  let sidebarMin = $state(72);
+  /** 容器与侧栏实测宽度，文字所需宽度按当前字体及实际菜单测量。 */
+  let shellWidth = $state(0), sidebarWidth = $state(sidebarDefault), labelWidth = $state(160);
+  /** 已挂载侧栏节点，用于观察实际宽度与文字尺寸，离开时释放观察。 */
+  let sidebarElement = $state<HTMLElement>();
+  /** 文字无法单行完整容纳时整体切换为图标，恢复时不改变当前页面。 */
+  const sidebarCollapsed = $derived(sidebarWidth + 0.5 < labelWidth);
+
+  $effect(() => {
+    const element = sidebarElement;
+    if (!element) return;
+    /** 按基础菜单完整单行所需空间决定模式，不让隐藏的设置子菜单改变阈值。 */
+    const measureSidebar = (): void => {
+      sidebarWidth = element.getBoundingClientRect().width;
+      const style = getComputedStyle(element);
+      const controlsWidth = parseFloat(style.getPropertyValue("--mygo-titlebar-inset-left")) || 0;
+      sidebarMin = Math.max(72, controlsWidth + 8);
+      const inset = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 1;
+      const widths = [...element.querySelectorAll<HTMLElement>(".nav-item")].map((item) => {
+        const text = item.querySelector<HTMLElement>("span");
+        const itemStyle = getComputedStyle(item);
+        return (text?.scrollWidth ?? 0) + (item.querySelector("svg")?.getBoundingClientRect().width ?? 16) + parseFloat(itemStyle.columnGap) + 2 * parseFloat(style.getPropertyValue("--sidebar-nav-inset"));
+      });
+      labelWidth = Math.ceil(inset + Math.max(...widths));
+    };
+    // 显隐文字会改变被观察节点的尺寸，下一轮事件测量避免同轮ResizeObserver反馈，也支持后台窗口。
+    let measurement: ReturnType<typeof setTimeout>;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(measurement);
+      measurement = setTimeout(measureSidebar, 0);
+    });
+    observer.observe(element);
+    for (const label of element.querySelectorAll(".nav-item span")) observer.observe(label);
+    measureSidebar();
+    return () => {
+      observer.disconnect();
+      clearTimeout(measurement);
+    };
+  });
   /** 设置子分类由外壳持有，侧栏、面包屑与内容面板共用。 */
   let settingsSection = $state<SettingsSection>("general");
   /** 已实现入口正常导航，其余模块保持明确的待开发状态。 */
@@ -63,29 +100,18 @@
 <svelte:head
   ><title>Vela · {page === "模型" ? "模型管理" : page}</title></svelte:head
 >
-<div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
-  <aside class="sidebar" id="app-sidebar" aria-label="侧栏">
-    <div class="sidebar-controls">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-        title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-        aria-expanded={!sidebarCollapsed}
-        aria-controls="app-sidebar"
-        onclick={() => (sidebarCollapsed = !sidebarCollapsed)}
-      >
-        {#if sidebarCollapsed}<PanelLeftOpen />{:else}<PanelLeftClose />{/if}
-      </Button>
-    </div>
-    <div class="sidebar-brand mb-8 flex items-center gap-3 px-2">
-      <span class="text-primary"><VelaMark class="size-9" /></span>
-      <div>
+<div class="app-shell" class:sidebar-collapsed={sidebarCollapsed} bind:clientWidth={shellWidth}>
+  {#if shellWidth > 0}
+  <Resizable.PaneGroup direction="horizontal" keyboardResizeBy={800 / shellWidth} class="app-panels">
+  <Resizable.Pane defaultSize={sidebarDefault / shellWidth * 100} minSize={sidebarMin / shellWidth * 100} maxSize={sidebarMax / shellWidth * 100}>
+
+  <aside class="sidebar" id="app-sidebar" aria-label="侧栏" bind:this={sidebarElement}>
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <span class="text-primary"><VelaMark class="size-7" /></span>
         <p class="text-xl font-bold tracking-tight">Vela</p>
-        <p class="text-[10px] tracking-widest text-muted-foreground">
-          AI GATEWAY
-        </p>
       </div>
+
     </div>
     <nav aria-label="主导航" class="flex flex-col gap-1">
       {#each navigation as item}<button
@@ -124,6 +150,9 @@
     </div>
     <p class="px-3 pt-4 text-xs text-muted-foreground">Vela 0.1.0</p>
   </aside>
+  </Resizable.Pane>
+  <Resizable.Handle aria-label="调整侧栏宽度" title="左右拖动调整侧栏宽度，方向键微调" />
+  <Resizable.Pane>
   <div class="app-workspace">
     <header class="app-titlebar">
       {#if page === "设置"}<p class="text-xs text-muted-foreground">
@@ -139,5 +168,8 @@
         />{/if}
     </main>
   </div>
+  </Resizable.Pane>
+  </Resizable.PaneGroup>
+  {/if}
 </div>
 {#if toast}<div class="toast" role="status">{toast}</div>{/if}

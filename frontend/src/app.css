@@ -36,6 +36,8 @@
   /* 用量、传输与计时共用语义色，浅深色均保持文字可读。 */
   --positive: #087f6b;
   --caution: #a65a13;
+  /* 模型参数沿认可原型使用紫色，独立于运行状态与主操作色。 */
+  --parameter: #5446b4;
   --border: #e2e8f0;
   --input: #d5dce6;
   --ring: #2563eb;
@@ -63,6 +65,7 @@
     --destructive-foreground: #1a0b0d;
     --positive: #60cfb2;
     --caution: #efb36a;
+    --parameter: #c7bdfa;
     --border: #28303c;
     --input: #343e4d;
     --ring: #6ea0ff;
@@ -88,6 +91,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-positive: var(--positive);
   --color-caution: var(--caution);
+  --color-parameter: var(--parameter);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -123,37 +127,96 @@
   background: color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
-/* 进行中文字缓慢明暗交替，最暗时仍有完整文字，不依赖透明度闪灭。 */
+/* 呼吸仅作用于状态点，文字保持可读，不让整行闪烁。 */
 @keyframes vela-status-breathe {
-  0%, 100% { color: var(--primary); }
-  50% { color: color-mix(in srgb, var(--primary) 35%, var(--foreground)); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 25%, transparent); }
+  50% { opacity: .45; box-shadow: 0 0 0 4px transparent; }
+}
+
+/* 旋转角度由浏览器插值；共享遮罩只绘制边框，不覆盖内容和底色。 */
+@property --vela-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes vela-border-orbit {
+  to { --vela-border-angle: 360deg; }
+}
+@keyframes vela-text-flow {
+  to { background-position: -200% center; }
+}
+.vela-running-border { position: relative; }
+.vela-running-border::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(from var(--vela-border-angle), var(--primary), color-mix(in srgb, var(--primary) 15%, transparent) 25%, var(--positive) 50%, color-mix(in srgb, var(--positive) 15%, transparent) 75%, var(--primary));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.vela-live-indicator {
+  width: 8px;
+  height: 8px;
+  margin-inline: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.vela-processing-label {
+  color: var(--primary);
+  background: linear-gradient(90deg, var(--primary), var(--positive), var(--primary));
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vela-running-border::after { animation: vela-border-orbit 3s linear infinite; }
+  .vela-live-indicator { animation: vela-status-breathe 1.8s ease-in-out infinite; }
+  .vela-processing-label { animation: vela-text-flow 3s linear infinite; }
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
   background: var(--muted);
 }
-.app-shell.sidebar-collapsed {
-  grid-template-columns: 64px minmax(0, 1fr);
-}
-.sidebar-controls {
+.app-panels { height: 100%; }
+.app-panels > [data-pane] { min-width: 0; }
+.app-panels .app-workspace { height: 100%; }
+/* 分隔线保持轻量，命中区由官方Resizable手柄提供。 */
+.app-panels > [data-slot="resizable-handle"] { --app-region: no-drag; }
+/* 品牌区不再放收缩按钮，导航起点不随文字模式切换。 */
+.sidebar-header {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 44px;
+  flex-shrink: 0;
+  margin-bottom: 20px;
   color: var(--muted-foreground);
 }
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--foreground);
+}
 .sidebar {
+  /* 导航左右留白用于文字容纳阈值测量，图标模式不改变这一基准。 */
+  --sidebar-nav-inset: 14px;
   position: sticky;
   top: 0;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
   background: var(--muted);
-  padding: calc(var(--mygo-titlebar-height, 0px) + 26px) 14px 18px;
+  padding: calc(var(--mygo-titlebar-height, 28px) + 8px) 14px 18px;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -161,7 +224,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 14px;
+  padding: 11px var(--sidebar-nav-inset);
   border-radius: 8px;
   text-align: left;
   font-size: 13px;
@@ -180,21 +243,21 @@
 .nav-item svg {
   flex-shrink: 0;
 }
-.sidebar-collapsed .sidebar {
-  padding-inline: 6px;
-}
-.sidebar-collapsed .sidebar-controls,
+.sidebar-collapsed .sidebar-header,
 .sidebar-collapsed .nav-item {
   justify-content: center;
 }
-.sidebar-collapsed .nav-item {
-  padding-inline: 12px;
-}
-.sidebar-collapsed .sidebar-brand,
+/* 保留隐藏文字的固有宽度用于测量，避免图标/文字模式切换改变阈值。 */
+.nav-item span, .sidebar-brand p { white-space: nowrap; flex-shrink: 0; }
+.sidebar-collapsed .sidebar-brand p,
 .sidebar-collapsed .sidebar > p,
 .sidebar-collapsed .nav-item span {
-  display: none;
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
 }
+.sidebar-collapsed .nav-item { padding-inline: 0; }
+.sidebar-collapsed .sidebar-brand { justify-content: center; }
 .nav-item:disabled {
   opacity: 0.55;
   cursor: default;
@@ -288,7 +351,7 @@ input:not([data-slot]):focus-visible {
 .app-titlebar {
   --app-region: drag;
   background: var(--muted);
-  height: max(36px, var(--mygo-titlebar-height, 0px));
+  height: var(--mygo-titlebar-height, 28px);
   display: flex;
   align-items: center;
   padding-inline: 28px;
@@ -578,7 +641,6 @@ input:not([data-slot]):focus-visible {
 .settings-nav {
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid var(--border);
 }
 .settings-subnav {
   display: flex;
@@ -825,7 +887,7 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
   max-width: 1280px;
   min-height: 0;
   margin-inline: auto;
-  padding: 16px 28px 24px;
+  padding: 8px 28px 24px;
   overflow-y: auto;
 }
 .app-main.list-workspace {

@@ -13,7 +13,7 @@
 		...restProps
 	}: WithoutChild<SelectPrimitive.TriggerProps> & {
 		size?: "sm" | "default";
-		/** column 显示筛选图标并按 data-filter-active 高亮；ghost 用于无边框次要选择器。 */
+		/** column 使用28px紧凑列头并显示筛选图标，按 data-filter-active 高亮；ghost 用于无边框次要选择器。 */
 		variant?: "default" | "column" | "ghost";
 	} = $props();
 </script>
@@ -24,7 +24,7 @@
 	data-size={size}
 	class={cn(
 		"border-input bg-background data-placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/15 aria-invalid:border-b-destructive dark:aria-invalid:border-b-destructive/50 gap-1.5 rounded-lg border py-2 px-3 text-sm transition-[color,border-color] data-[size=default]:h-9 data-[size=sm]:h-9 *:data-[slot=select-value]:flex *:data-[slot=select-value]:gap-1.5 [&_svg:not([class*='size-'])]:size-3.5 flex w-fit items-center justify-between whitespace-nowrap outline-none disabled:cursor-not-allowed disabled:opacity-50 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center [&_svg]:pointer-events-none [&_svg]:shrink-0",
-		variant === "column" && "border-transparent bg-transparent px-0 gap-1 text-[11px] tracking-normal hover:bg-muted data-[state=open]:bg-accent data-[state=open]:text-primary data-[filter-active=true]:bg-accent data-[filter-active=true]:text-primary [&_svg:not([class*='size-'])]:size-3",
+		variant === "column" && "data-[size=default]:h-7 data-[size=sm]:h-7 py-1 border-transparent bg-transparent px-0 gap-1 text-[11px] tracking-normal hover:bg-muted data-[state=open]:bg-accent data-[state=open]:text-primary data-[filter-active=true]:bg-accent data-[filter-active=true]:text-primary [&_svg:not([class*='size-'])]:size-3",
 		variant === "ghost" && "border-transparent bg-transparent px-2 text-xs hover:bg-muted",
 		className
 	)}

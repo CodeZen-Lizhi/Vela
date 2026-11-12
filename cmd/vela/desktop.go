@@ -38,7 +38,7 @@ func applyGeneral(value settings.GeneralSettings) {
 	})
 }
 
-// createMainWindow 创建主窗口，隐藏系统标题底色并保留窗口按钮；底色随浅深外观切换。
+// createMainWindow 使用紧凑隐藏标题栏，保留系统窗口按钮，避免 Inset 模式额外占用顶部空间。
 func createMainWindow() *mygo.Window {
 	return mygo.NewWindow(mygo.WindowOptions{
 		Title:           "Vela",
@@ -47,9 +47,11 @@ func createMainWindow() *mygo.Window {
 		MinWidth:        820,
 		MinHeight:       600,
 		BackgroundColor: "light-dark(#f4f6f9, #10151c)",
-		TitleBarStyle:   mygo.TitleBarHiddenInset,
-		StateKey:        "main",
-		URL:             "/",
+		TitleBarStyle:   mygo.TitleBarHidden,
+		// 系统按钮组向左上收紧，侧栏通过宿主提供的按钮占位保留右侧间距。
+		TrafficLightPosition: &mygo.Point{X: 8, Y: 8},
+		StateKey:             "main",
+		URL:                  "/",
 	})
 }
 

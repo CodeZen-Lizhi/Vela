@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from "$lib/components/PageHeader.svelte";
+  import { cn } from "$lib/utils";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
@@ -13,6 +14,7 @@
     ArrowRightLeft,
     Cable,
     Check,
+    Shuffle,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
@@ -48,6 +50,7 @@
     cache,
     date,
     emptyQuery,
+    executionCounts,
   } from "./display";
   import "./records.css";
   /** 使用记录工作台读取真实分页；浏览器预览不生成演示请求或伪造空数据库。 */
@@ -246,11 +249,11 @@
     {#snippet actions()}
     <div class="records-actions">
       <Button
-        variant={realtime ? "secondary" : "outline"}
+        variant={realtime ? "live" : "outline"}
         disabled={!desktop}
         aria-pressed={realtime}
         onclick={() => (realtime = !realtime)}
-        ><Radio />{realtime ? "实时刷新中" : "实时刷新"}</Button
+        >{#if realtime}<span class="vela-live-indicator" aria-hidden="true"></span>{:else}<Radio aria-hidden="true" />{/if}{realtime ? "实时刷新已开启" : "实时刷新"}</Button
       ><Button
         variant="outline"
         disabled={!desktop || loading}
@@ -303,15 +306,6 @@
           options={transports}
           multiple
           bind:values={q.transports}
-          bind:openID
-          disabled={!desktop}
-        />
-        <Filter
-          id="status"
-          title="状态"
-          options={states}
-          multiple
-          bind:values={q.states}
           bind:openID
           disabled={!desktop}
         />
@@ -377,25 +371,26 @@
                 bind:openID
                 disabled={!desktop}
               /></Table.Head
+            ><Table.Head><Filter id="status" column title="状态" options={states} multiple bind:values={q.states} bind:openID disabled={!desktop} /></Table.Head
             ><Table.Head
               ><Filter
                 id="type"
                 column
-                title="类型 / 状态"
+                title="类型"
                 options={types}
                 multiple
                 bind:values={q.types}
                 bind:openID
                 disabled={!desktop}
               /></Table.Head
-            ><Table.Head class="normal-case" title="第一行：输入 / 输出 Token；第二行：缓存读取 Token / 命中率">Token</Table.Head
+            ><Table.Head class="normal-case" title="第一行：输入 / 输出 Token；第二行：缓存读取 / 命中率"><div class="record-column-heading"><span>Token</span><span class="record-column-help">输入 / 输出<br />缓存 / 命中</span></div></Table.Head
             ><Table.Head>估算费用</Table.Head><Table.Head
-              >端到端<small>首字 / 总耗时</small><small>输出速度</small></Table.Head
+              ><div class="record-column-heading"><span>端到端</span><span class="record-column-help">首字 / 总耗时<br />输出速度</span></div></Table.Head
             >
           </Table.Row></Table.Header
         ><Table.Body
           >{#each result?.records ?? [] as row (row.id)}<Table.Row
-              class="record-row"
+              class={cn("record-row", row.state === "active" && "vela-running-border")}
               data-record-id={row.id}
               data-record-state={row.state}
               role="button"
@@ -410,18 +405,17 @@
                 }
               }}
               ><Table.Cell
-                ><span class="record-value">{date(row.startedAt)}</span
+                ><strong class="record-value">{date(row.startedAt)}</strong
                 ><small>{date(row.startedAt, "day")}</small></Table.Cell
               ><Table.Cell>{@render modelCell(row)}</Table.Cell><Table.Cell
                 >{@render providerCell(row)}</Table.Cell
               ><Table.Cell
-                ><span class="record-truncate" title={protocol(row.protocol)}
-                  >{protocol(row.protocol)}</span
+                ><span class="record-protocol" title={protocol(row.protocol)}><span>{protocol(row.protocol).split(" ")[0]}</span><span>{protocol(row.protocol).split(" ").slice(1).join(" ")}</span></span
                 ></Table.Cell
-              ><Table.Cell>{@render stateCell(row)}</Table.Cell
+              ><Table.Cell>{@render stateCell(row)}</Table.Cell><Table.Cell>{@render typeCell(row)}</Table.Cell
               ><Table.Cell>{@render usageCell(row)}</Table.Cell><Table.Cell
-                ><span class="record-value record-cost" class:record-missing={row.cost == null || row.cost === 0} title={`${money(row.cost)} · 本地估算`}
-                  >{money(row.cost)}</span
+                ><span class="record-value record-cost" class:record-missing={row.state === "active" || row.cost == null || row.cost === 0} title={row.state === "active" ? "请求进行中，结束后展示用量与估算费用" : `${money(row.cost)} · 本地估算`}
+                  >{row.state === "active" ? "—" : money(row.cost)}</span
                 ></Table.Cell
               ><Table.Cell>{@render timingCell(row)}</Table.Cell></Table.Row
             >{/each}</Table.Body
@@ -479,43 +473,43 @@
     </footer>
   </section>
 </div>
-{#snippet modelCell(row: RecordsRecord)}<strong
-    class="record-model record-truncate"
-    title={row.model || "未知模型"}>{row.model || "未知模型"}</strong
-  >
-  <div class="records-badges">
-    {#if row.effort}<Badge variant="parameter">{row.effort}</Badge
-      >{/if}{#if row.tier && row.tier !== "standard"}<Badge variant="parameter"
-        >{row.tier}</Badge
-      >{/if}
+<!-- 参数按原型自然换行；上游映射始终保留独立信息行，缺失时不猜测。 -->
+{#snippet modelCell(row: RecordsRecord)}
+  <div class="record-model-line">
+    <strong class="record-model" title={row.model || "未知模型"}>{row.model || "未知模型"}</strong>
+    {#if row.effort}<Badge variant="parameter">{row.effort}</Badge>{/if}
+    {#if row.tier && row.tier.toLowerCase() !== "standard"}<Badge variant="parameter">{row.tier}</Badge>{/if}
   </div>
-  {#if row.upstreamModel && row.upstreamModel !== row.model}<small
-      >→ {row.upstreamModel}</small
-    >{/if}{/snippet}
-{#snippet providerCell(row: RecordsRecord)}<span
-    class="record-truncate"
-    title={row.providerName || "未发上游"}
-    >{row.providerName ||
-      (row.state === "local" ? "本地响应" : "未知供应商")}</span
-  ><small class="record-truncate" title={row.keyName || "—"}
-    >{row.keyName || "—"}</small
-  >{#if row.execution !== "direct"}<Badge variant="neutral"
-      >{label(executions, row.execution)}</Badge
-    >{/if}{/snippet}
-<!-- 类型与生命周期沿用旧版同列堆叠，成功不重复添加状态标签。 -->
-{#snippet stateCell(row: RecordsRecord)}<div class="record-type-status" role="group" aria-label={`请求状态：${label(states, row.state)}`} title={`请求状态：${label(states, row.state)}`}>
-    {#if row.state === "active"}<Badge variant="processing">进行中</Badge>
-    {:else}
-      <Badge variant={row.state === "success" ? "positive" : "info"}>{#if row.state === "success"}<Check aria-hidden="true" />{/if}{label(types, row.type)}</Badge>
-      {#if row.state !== "success"}<Badge variant={row.state === "failed" ? "negative" : row.state === "local" ? "warning" : "neutral"}>{label(states, row.state)}</Badge>{/if}
-      <Badge variant={row.transport === "websocket" || row.stream ? "transport" : "metadata"}>
-        {#if row.transport === "websocket"}<Cable aria-hidden="true" />WS{:else if row.stream}<Waves aria-hidden="true" />流式{:else}<ArrowRightLeft aria-hidden="true" />标准{/if}
-      </Badge>
-    {/if}
-  </div>{/snippet}
-{#snippet usageCell(row: RecordsRecord)}{#if row.state === "local"}<span
+  <small class="record-truncate" title={`上游模型：${row.upstreamModel || "未记录"}`}>→ {row.upstreamModel || "—"}</small>
+{/snippet}
+<!-- 供应商名称与真实重试/转移次数同组，Key 名称固定在下方。 -->
+{#snippet providerCell(row: RecordsRecord)}
+  {@const activity = executionCounts(row)}
+  <div class="record-provider-line"><strong class="record-truncate" title={row.providerName || "未发上游"}>{row.providerName || (row.state === "local" ? "本地响应" : "未知供应商")}</strong>
+    {#if activity.transfers}<Badge variant="warning" title={`转移 ${activity.transfers} 次`} aria-label={`转移 ${activity.transfers} 次`}><Shuffle aria-hidden="true" />{activity.transfers}</Badge>{/if}
+    {#if activity.retries}<Badge variant="info" title={`重试 ${activity.retries} 次`} aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/if}
+  </div>
+  <small class="record-truncate" title={row.keyName || "—"}>{row.keyName || "—"}</small>
+{/snippet}
+<!-- 状态单独显示和筛选，进行中保留既定动画。 -->
+{#snippet stateCell(row: RecordsRecord)}
+  {#if row.state === "active"}<Badge variant="processing"><span class="vela-processing-label">进行中</span></Badge>
+  {:else}<Badge variant={row.state === "success" ? "positive" : row.state === "failed" ? "negative" : row.state === "local" ? "warning" : "neutral"}>{#if row.state === "success"}<Check aria-hidden="true" />{/if}{label(states, row.state)}</Badge>{/if}
+{/snippet}
+<!-- 类型与客户端传输独立于最终状态，未知类型保留原值。 -->
+{#snippet typeCell(row: RecordsRecord)}<div class="record-type-status">
+  <Badge variant="info">{label(types, row.type)}</Badge>
+  <Badge variant={row.transport === "websocket" || row.stream ? "transport" : "metadata"}>
+    {#if row.transport === "websocket"}<Cable aria-hidden="true" />WS{:else if row.stream}<Waves aria-hidden="true" />流式{:else}<ArrowRightLeft aria-hidden="true" />标准{/if}
+  </Badge>
+</div>{/snippet}
+<!-- 进行中及整项未知只显示一个短横线，结束后区分真实零值、媒体和 Token 用量。 -->
+{#snippet usageCell(row: RecordsRecord)}{#if row.state === "active"}<span
+      class="text-muted-foreground" title="请求进行中，结束后展示用量与估算费用" aria-label="用量待请求结束后展示">—</span
+    >{:else if row.state === "local"}<span
       class="text-muted-foreground">— 无用量</span
-    >{:else if row.usage?.unit}<strong
+    >{:else if !row.usage}<span class="text-muted-foreground" title="未获得用量数据" aria-label="用量未知">—</span
+    >{:else if row.usage.unit}<strong
       >{number(row.usage.quantity)}
       {row.usage.unit === "image" ? "张" : "秒"}</strong
     ><small
@@ -524,7 +518,7 @@
         : "按时长"}</small
     >{:else}<div class="records-token-usage" aria-label="Token 用量" title={`输入 ${row.usage?.input ?? "未知"} Token；输出 ${row.usage?.output ?? "未知"} Token；缓存读取 ${row.usage?.cacheRead ?? "未知"} Token；缓存写入 ${row.usage ? row.usage.cacheWrite + row.usage.cacheWrite1h : "未知"} Token；命中 ${cache(row.usage)}`}>
       <div><span class="record-input" class:record-missing={!row.usage} aria-label={`输入 ${row.usage?.input ?? "未知"} Token`}>{compact(row.usage?.input)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-output" class:record-missing={!row.usage} aria-label={`输出 ${row.usage?.output ?? "未知"} Token`}>{compact(row.usage?.output)}</span></div>
-      <div><span class="record-cache" class:record-missing={!row.usage || row.usage.cacheRead === 0} aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" class:record-missing={!row.usage || !row.usage.context} aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
+      <div><span class="record-cache" aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
     </div>{/if}{/snippet}
 {#snippet timingCell(row: RecordsRecord)}{#if row.state === "local"}<span
       >本地响应</span
