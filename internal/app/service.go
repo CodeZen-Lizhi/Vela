@@ -2,6 +2,7 @@
 package app
 
 import (
+	"context"
 	"runtime"
 	"time"
 
@@ -34,9 +35,10 @@ type VelaService struct {
 	modelTests *modeltest.Manager
 	// verification 管理独立固定目标的指纹检测，不参与调度健康。
 	verification *verification.Manager
-	// credentials 是本机加密凭据存储；applyGeneral 让常规设置在桌面宿主生效。
+	// credentials 是本机加密凭据存储；applyGeneral、applyGateway 让设置在桌面宿主立即生效。
 	credentials  *credentials.Store
 	applyGeneral func(settings.GeneralSettings)
+	applyGateway func(context.Context, settings.GatewaySettings) error
 }
 
 // Options 汇集桌面入口交给应用服务的依赖；生成绑定时只需要版本。
@@ -63,6 +65,8 @@ type Options struct {
 	Credentials *credentials.Store
 	// ApplyGeneral 让保存后的常规设置在窗口、菜单栏与 Dock 立即生效。
 	ApplyGeneral func(settings.GeneralSettings)
+	// ApplyGateway 让保存后的监听端口与访问密钥立即作用于本机网关。
+	ApplyGateway func(context.Context, settings.GatewaySettings) error
 }
 
 // RuntimeInfo 是前端可读取的运行信息投影。
@@ -94,6 +98,7 @@ func NewVelaService(o Options) *VelaService {
 		modelTests:   o.ModelTests,
 		credentials:  o.Credentials,
 		applyGeneral: o.ApplyGeneral,
+		applyGateway: o.ApplyGateway,
 	}
 }
 

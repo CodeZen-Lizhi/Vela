@@ -239,7 +239,7 @@
     </Field.Group>
     <div class="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-4 text-xs text-muted-foreground">
       <p>仅接受本机连接，访问密钥在本机加密保存</p>
-      <p>网关尚未接入，当前仅保存配置</p>
+      <p>网关仅在应用运行期间监听本机，修改密钥后客户端需同步更新</p>
     </div>
   </section>
 

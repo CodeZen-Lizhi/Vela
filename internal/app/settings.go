@@ -79,13 +79,28 @@ func (s *VelaService) SetOpenAtLogin(enabled bool) (bool, error) {
 	return mygo.App.OpenAtLogin(), nil
 }
 
-// SaveGatewaySettings 保存网关监听端口；网关接入后按此端口监听。
+// SaveGatewaySettings 先让新端口实际开始监听，成功后再保存；绑定失败保留原配置和监听。
 func (s *VelaService) SaveGatewaySettings(ctx context.Context, value settings.GatewaySettings) error {
 	store, err := s.settingsStore()
 	if err != nil {
 		return err
 	}
-	return store.SaveGateway(ctx, value)
+	previous, err := store.Gateway(ctx)
+	if err != nil {
+		return err
+	}
+	if s.applyGateway != nil {
+		if err = s.applyGateway(ctx, value); err != nil {
+			return fmt.Errorf("监听端口未生效，已保留原配置: %w", err)
+		}
+	}
+	if err = store.SaveGateway(ctx, value); err != nil {
+		if s.applyGateway != nil {
+			_ = s.applyGateway(ctx, previous)
+		}
+		return err
+	}
+	return nil
 }
 
 // SaveAccountRefresh 保存全局账户刷新设置。
@@ -145,7 +160,7 @@ func (s *VelaService) CopyAccessKey() error {
 	return mygo.Clipboard.Write(transfer.TextData(value))
 }
 
-// SaveAccessKey 校验后把访问密钥加密保存到本机；失败时原密钥保持不变。
+// SaveAccessKey 校验后把访问密钥加密保存，并立即更新正在监听的本机网关。
 func (s *VelaService) SaveAccessKey(value string) error {
 	if s.credentials == nil {
 		return errors.New("访问密钥存储尚未初始化")
@@ -155,6 +170,15 @@ func (s *VelaService) SaveAccessKey(value string) error {
 	}
 	if err := s.credentials.Set("gateway-access-key", []byte(value)); err != nil {
 		return fmt.Errorf("访问密钥保存失败，原密钥保持不变: %w", err)
+	}
+	if s.applyGateway != nil && s.settings != nil {
+		gateway, err := s.settings.Gateway(context.Background())
+		if err != nil {
+			return fmt.Errorf("访问密钥已保存，但读取监听设置失败: %w", err)
+		}
+		if err = s.applyGateway(context.Background(), gateway); err != nil {
+			return fmt.Errorf("访问密钥已保存，但网关未生效: %w", err)
+		}
 	}
 	return nil
 }

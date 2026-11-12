@@ -5,15 +5,17 @@ import (
 	"log"
 	"time"
 
+	"github.com/CodeZen-Lizhi/vela/internal/gateway"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
 	"github.com/egoist/mygo"
 )
 
 // 主窗口、菜单栏图标与当前生效的常规设置；启动后只在主线程读写。
 var (
-	mainWindow *mygo.Window
-	appTray    *mygo.Tray
-	general    = settings.DefaultGeneral()
+	mainWindow    *mygo.Window
+	appTray       *mygo.Tray
+	general       = settings.DefaultGeneral()
+	gatewayServer *gateway.Server
 )
 
 // themeSource 把保存的浅色、深色或跟随系统选项映射为宿主外观，页面通过 prefers-color-scheme 跟随。
@@ -96,22 +98,46 @@ func syncTray() {
 		log.Printf("创建菜单栏图标失败: %v", err)
 		return
 	}
-	menu := mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "打开 Vela", Click: func(*mygo.MenuItem, *mygo.Window) { openMainWindow() }},
-		mygo.Separator(),
-		// 网关监听尚未接入，接通真实暂停/恢复能力后再启用。
-		{Label: "暂停网关", Disabled: true},
-		mygo.Separator(),
-		{Label: "退出 Vela", Role: mygo.RoleQuit},
-	})
 	tray.OnClick(openMainWindow)
 	tray.OnRightClick(func() {
 		// macOS 常驻菜单会截获点击；仅在右键弹出期间挂载，关闭后恢复左键事件。
-		tray.SetMenu(menu)
+		tray.SetMenu(gatewayMenu())
 		defer tray.SetMenu(nil)
 		tray.PopUpMenu()
 	})
 	appTray = tray
+}
+
+// gatewayMenu 每次右键时按真实监听状态构造菜单，确保暂停后再次打开即显示“恢复网关”。
+func gatewayMenu() *mygo.Menu {
+	pauseLabel := "暂停网关"
+	pauseDisabled := gatewayServer == nil || !gatewayServer.Configured()
+	if gatewayServer != nil && gatewayServer.Paused() {
+		pauseLabel = "恢复网关"
+	}
+	return mygo.NewMenu([]*mygo.MenuItem{
+		{Label: "打开 Vela", Click: func(*mygo.MenuItem, *mygo.Window) { openMainWindow() }},
+		mygo.Separator(),
+		{Label: pauseLabel, Disabled: pauseDisabled, Click: func(*mygo.MenuItem, *mygo.Window) { toggleGateway() }},
+		mygo.Separator(),
+		{Label: "退出 Vela", Role: mygo.RoleQuit},
+	})
+}
+
+// toggleGateway 按当前菜单文字暂停或恢复真实监听；失败保留原状态原因供日志定位。
+func toggleGateway() {
+	if gatewayServer == nil || !gatewayServer.Configured() {
+		return
+	}
+	var err error
+	if gatewayServer.Paused() {
+		err = gatewayServer.Resume(context.Background())
+	} else {
+		err = gatewayServer.Pause(context.Background())
+	}
+	if err != nil {
+		log.Printf("切换本机网关状态失败: %v", err)
+	}
 }
 
 // refreshOnVisible 由入口装配全局静默刷新；主线程只发起异步工作，不等待网络。

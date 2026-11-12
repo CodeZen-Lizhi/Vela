@@ -6,7 +6,7 @@
 
 Vela 是 Aether 重构后的新项目。它把多家 AI 供应商、不同协议、模型映射、调度、额度和请求诊断收束到一个本机入口，桌面宿主使用 MyGo，业务核心使用 Go，界面使用 Svelte。
 
-当前已提供桌面壳、类型化前后端绑定和模型管理第一阶段：真实目录添加、完整价格配置、本地修改保护、同步与恢复来源值。供应商配置、Key、模型关联/权限/映射和账户查询已接入真实持久化；请求记录已接入现有调度与独立诊断执行链；正式网关监听仍待后续实现。
+当前已提供桌面壳、类型化前后端绑定和模型管理第一阶段：真实目录添加、完整价格配置、本地修改保护、同步与恢复来源值。供应商配置、Key、模型关联/权限/映射和账户查询已接入真实持久化；请求记录已接入现有调度与独立诊断执行链；仅监听本机的 OpenAI Chat 兼容网关已接入真实模型清单、访问密钥、流式调用、暂停/恢复与端口热切换。
 
 ## 技术栈
 
@@ -27,6 +27,7 @@ Vela 是 Aether 重构后的新项目。它把多家 AI 供应商、不同协议
 ├── internal/app/             最小类型化应用服务
 ├── internal/models/          模型目录、价格规则与 SQLite 持久化
 ├── internal/providers/       供应商、加密凭据、模型关联与账户查询
+├── internal/gateway/         仅监听本机的 OpenAI Chat 兼容入口
 ├── internal/records/         请求诊断、用量估算、长期累计与保留清理
 ├── internal/buildinfo/       构建信息
 ├── frontend/                 Svelte 前端
@@ -63,6 +64,14 @@ npm run build
 
 桌面应用构建产物位于 `build/`。
 
+## 本机网关
+
+应用运行期间在 `127.0.0.1` 监听，默认端口为 `18080`。设置页可修改端口和唯一访问密钥；新端口先实际绑定成功再保存，绑定失败保留原配置和原监听。菜单栏“暂停网关/恢复网关”直接控制同一监听生命周期。
+
+当前提供 `GET /v1/health`、`GET /v1/models` 和 `POST /v1/chat/completions`。所有接口使用 Bearer 访问密钥鉴权；模型清单只公开“模型”页中的对话模型。聊天请求复用现有供应商、Key 权限、调度、健康与请求记录链路，支持普通响应和 SSE 流式响应，不向客户端转发 `Authorization`、Cookie 或代理认证头。
+
+当前网关只实现 OpenAI Chat Completions 兼容入口；OpenAI Responses、Anthropic Messages、Gemini `generateContent`、WebSocket 与媒体专用执行路径仍待接入。网关随桌面应用退出而停止，不是独立系统服务。
+
 ## 模型管理
 
 打开“模型”页，通过“在线添加”从 models.dev 目录选择模型并确认创建，或通过“手动创建”填写目录外的模型；在线目录的厂商条只列热门官方厂商，其他来源通过搜索选取。列表提供搜索、类型筛选、详情、编辑和确认删除。价格编辑按基础、上下文阶梯、Fast、峰谷、图片和视频分组；同步保留本地修改，恢复来源值随表单保存生效，取消不写入。来源下架保留配置，单模型同步失败不阻止其他模型更新。
@@ -83,9 +92,9 @@ npm run build
 
 ## 当前边界
 
-“使用记录”模块的独立需求与验收见 [请求记录需求草稿](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md)。功能以旧 Aether 为迁移基线，界面参考已认可 Svelte 原型；筛选布局与实时阅读规则已确认，其他待定项见需求正文；当前仅完成需求整理，尚未接入正式记录页面与清理能力。
+“使用记录”模块的独立需求与验收见 [请求记录需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md)。功能以旧 Aether 为迁移基线，界面参考已认可 Svelte 原型；筛选布局与实时阅读规则已确认，真实记录页面与清理能力已接入本机网关、模型测试和模型验证链路。
 
-本阶段维护价格配置，供应商映射可配置，尚未接入网关公开模型、普通模型调用测试或费用计算；模型指纹验证已提供独立计划及真实采样评分。分时例外日期可手动维护，自动法定节假日日历未接入；目录未提供的媒体矩阵、缓存或价格字段保持未知，可本地补充。详情与编辑参考原型，使用白底蓝色和 shadcn-svelte 控件。
+本机网关已公开模型页中的全部对话模型并支持普通 Chat Completions 调用；其他客户端协议和媒体专用执行路径仍未接入。费用记录按本地价格规则估算，不代表供应商实际账单。模型指纹验证已提供独立计划及真实采样评分。分时例外日期可手动维护，自动法定节假日日历未接入；目录未提供的媒体矩阵、缓存或价格字段保持未知，可本地补充。详情与编辑参考原型，使用白底蓝色和 shadcn-svelte 控件。
 
 ## 本地凭据与隐私
 
@@ -101,7 +110,7 @@ npm run build
 
 `internal/scheduling` 提供排序、5分钟会话亲和、实际准入、同Key重试、候选故障转移、整Key健康与恢复试探；`app.NewSchedulingExecution` 将其与SQLite、加密凭据、模型权限及同格式HTTP/SSE执行接通。健康与冷却跨重启保留，亲和按旧版只存进程内。首次响应默认30秒、HTTP聊天流式总期限默认120秒、熔断等待上限默认10分钟。
 
-该Go入口已通过可控本地上游验证；仓库尚无正式HTTP网关监听，不能把内部调度调用称为四协议网关交付。供应商模型/权限编辑复用已有供应商模块；余额提醒、跨机整份配置搬运及WebSocket/媒体独立执行路径仍需对应模块接入。迁移依据、测试与集成边界见 [调度迁移记录](docs/tasks/scheduling-migration.md)。
+该 Go 入口及本机 OpenAI Chat 网关已通过真实 Aether 供应商链路验证。当前不能把该入口称为四协议网关交付：Responses、Anthropic Messages、Gemini 和 WebSocket/媒体独立执行路径仍需对应模块接入。供应商模型/权限编辑复用已有供应商模块；余额提醒与跨机整份配置搬运仍需对应模块接入。迁移依据、测试与集成边界见 [调度迁移记录](docs/tasks/scheduling-migration.md)。
 
 ## 模型验证
 
@@ -113,4 +122,4 @@ npm run build
 
 “使用记录”提供真实请求查询、组合筛选、默认每页 20 条、五项摘要、可选实时刷新，以及按模型/供应商折叠的长期用量分析。详情展示逐次上游尝试、熔断来源、历史价格、脱敏头/正文、JSON/对话切换和安全 cURL 复制。供应商最近调用可跳到对应记录。
 
-记录来自现有内部调度、模型测试和模型验证的实际 HTTP 调用；正文结束后保留 7 天，明细保留 30 天，设置中的清理须预览确认，长期累计独立保留。尚无正式 HTTP/WebSocket 网关入口。需求以 [RR：请求记录](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md) 为准，验证覆盖和限制见 [交付记录](docs/request-records-delivery.md)。
+记录来自本机 HTTP 网关、内部模型测试和模型验证的实际调用；正文结束后保留 7 天，明细保留 30 天，设置中的清理须预览确认，长期累计独立保留。WebSocket 网关入口仍未接入。需求以 [RR：请求记录](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md) 为准，验证覆盖和限制见 [交付记录](docs/request-records-delivery.md)。

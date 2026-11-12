@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/app"
 	"github.com/CodeZen-Lizhi/vela/internal/buildinfo"
 	"github.com/CodeZen-Lizhi/vela/internal/credentials"
+	"github.com/CodeZen-Lizhi/vela/internal/gateway"
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 	"github.com/CodeZen-Lizhi/vela/internal/records"
@@ -104,6 +106,28 @@ func main() {
 		log.Fatal(err)
 	}
 	defer execution.Close()
+	gatewayServer = gateway.New(store, execution.Executor)
+	applyGateway := func(ctx context.Context, desired settings.GatewaySettings) error {
+		key, readErr := secrets.Get("gateway-access-key")
+		if errors.Is(readErr, credentials.ErrNotFound) {
+			return gateway.ErrAccessKeyRequired
+		}
+		if readErr != nil {
+			return readErr
+		}
+		gatewayServer.SetAccessKey(string(key))
+		return gatewayServer.Listen(ctx, desired.Port)
+	}
+	if gatewaySettings, readErr := preferences.Gateway(context.Background()); readErr != nil {
+		log.Printf("读取网关监听设置失败，本机网关未启动: %v", readErr)
+	} else if applyErr := applyGateway(context.Background(), gatewaySettings); applyErr != nil {
+		log.Printf("本机网关未启动: %v", applyErr)
+	}
+	defer func() {
+		if closeErr := gatewayServer.Close(context.Background()); closeErr != nil {
+			log.Printf("关闭本机网关失败: %v", closeErr)
+		}
+	}()
 	modelTests, err := app.NewModelTests(store, upstreams, execution)
 	if err != nil {
 		log.Fatal(err)
@@ -164,6 +188,7 @@ func main() {
 		ModelTests:   modelTests,
 		Credentials:  secrets,
 		ApplyGeneral: applyGeneral,
+		ApplyGateway: applyGateway,
 	}))
 
 	refreshOnVisible = func() {

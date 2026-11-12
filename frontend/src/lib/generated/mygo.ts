@@ -1206,7 +1206,7 @@ export const VelaService = {
   runtimeInfo(): Promise<RuntimeInfo> {
     return call("VelaService.RuntimeInfo");
   },
-  /** SaveAccessKey 校验后把访问密钥加密保存到本机；失败时原密钥保持不变。 */
+  /** SaveAccessKey 校验后把访问密钥加密保存，并立即更新正在监听的本机网关。 */
   saveAccessKey(value: string): Promise<void> {
     return call("VelaService.SaveAccessKey", value);
   },
@@ -1218,7 +1218,7 @@ export const VelaService = {
   saveAttentionSettings(value: AttentionSettings): Promise<void> {
     return call("VelaService.SaveAttentionSettings", value);
   },
-  /** SaveGatewaySettings 保存网关监听端口；网关接入后按此端口监听。 */
+  /** SaveGatewaySettings 先让新端口实际开始监听，成功后再保存；绑定失败保留原配置和监听。 */
   saveGatewaySettings(value: GatewaySettings): Promise<void> {
     return call("VelaService.SaveGatewaySettings", value);
   },
