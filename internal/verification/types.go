@@ -3,6 +3,8 @@ package verification
 
 // VerificationLine 是一条固定模型、Key、协议和思考强度的绑定。
 type VerificationLine struct {
+	// ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 精确对应。
+	ReferenceModel string `json:"referenceModel"`
 	// ModelID、KeyID 是本地稳定身份；Protocol 取 chat_completions、responses、messages、gemini；Effort 取 auto、low、medium、high。
 	ModelID  string `json:"modelId"`
 	KeyID    string `json:"keyId"`
@@ -25,6 +27,8 @@ type VerificationPlan struct {
 // VerificationTarget 是不含凭据的线路快照，Reason 非空时不可执行。
 type VerificationTarget struct {
 	VerificationLine
+	// OriginalModel 是模型模块的原始模型 ID，不是显示名或供应商请求映射。
+	OriginalModel string `json:"originalModel"`
 	// ProviderID、ProviderName、KeyName、ModelName 是目标身份及显示名；RequestModel 和 URL 是实际出站快照。
 	ProviderID   string `json:"providerId"`
 	ProviderName string `json:"providerName"`
@@ -92,4 +96,11 @@ type VerificationSnapshot struct {
 	Reports  []VerificationReport `json:"reports"`
 	Targets  []VerificationTarget `json:"targets"`
 	Progress VerificationProgress `json:"progress"`
+}
+
+// ReferenceModel 是计划编辑器可选的内置参考身份，不包含样本或评分参数。
+type ReferenceModel struct {
+	// ID 为比较使用的稳定参考身份，Name 为参考库提供的展示名。
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

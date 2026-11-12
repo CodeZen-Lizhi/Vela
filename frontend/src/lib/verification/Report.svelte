@@ -1,6 +1,10 @@
 <script lang="ts">
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import * as Accordion from "$lib/components/ui/accordion";
+  import * as Table from "$lib/components/ui/table";
+  import { Separator } from "$lib/components/ui/separator";
+  import { Info, CircleCheck, CircleAlert } from "@lucide/svelte";
   import { Badge } from "$lib/components/ui/badge";
   import type { VerificationReport } from "$lib/generated/mygo";
   import { conclusions, effort, probability, protocols, time } from "./display";
@@ -54,95 +58,154 @@
   };
 </script>
 
-<Dialog.Header
-  ><Dialog.Title>模型验证报告</Dialog.Title><Dialog.Description
-    >仅保留本组合最近一轮结果及原始回答。</Dialog.Description
-  ></Dialog.Header
->
-<div class="v-report">
-  <header class="v-report-heading">
-    <span class="v-avatar">{report.target.providerName.slice(0, 1)}</span>
-    <div>
+<Dialog.Header class="shrink-0 border-b px-6 py-5 pr-16">
+  <Dialog.Title>验证结果详情</Dialog.Title>
+  <Dialog.Description class="sr-only">当前固定组合最近一轮的验证结论、候选排名与原始样本。</Dialog.Description>
+</Dialog.Header>
+<div class="report-body scroll-quiet">
+  <header class="report-identity">
+    <span class="v-avatar" aria-hidden="true">{report.target.providerName.slice(0, 1)}</span>
+    <div class="report-model">
       <h2>{report.target.modelName}</h2>
-      <p>
-        {report.target.providerName} · {report.target.keyName} · 思考{effort(
-          report.target.effort,
-        )}
-      </p>
+      <p>{report.target.providerName} · {report.target.keyName} · 思考{effort(report.target.effort)}</p>
     </div>
-    <Badge
-      variant={report.conclusion === "difference" ? "destructive" : "secondary"}
-      >{conclusions[report.conclusion] ?? conclusions.insufficient}</Badge
-    >
+    <Badge variant={report.conclusion === "difference" ? "destructive" : "secondary"}>
+      {#if report.conclusion === "match"}<CircleCheck />{:else}<CircleAlert />{/if}
+      {conclusions[report.conclusion] ?? conclusions.insufficient}
+    </Badge>
   </header>
-  <section class="v-report-score">
-    <small>实际最接近的候选模型 · 参考库内</small>
-    <h3>
-      {report.candidates[0]?.name || report.candidates[0]?.model || "无法判断"}
-    </h3>
-    <strong>{probability(report.candidates[0]?.probability)}</strong>
-    <p>{diagnosis(report.reason)}</p>
-    {#if report.reason}<details class="v-sample">
-        <summary>原始诊断</summary>
-        <pre>{report.reason}</pre>
-      </details>{/if}
-    <p>执行状态：{states[report.state] ?? report.state}</p>
+
+  <section class="report-overview" aria-label="验证结论">
+    <div class="report-confidence">
+      <span>参考库内置信度</span>
+      <strong>{probability(report.candidates[0]?.probability)}</strong>
+      <small>仅限当前候选集合</small>
+    </div>
+    <div class="report-verdict">
+      <span>最接近的候选模型</span>
+      <h3>{report.candidates[0]?.name || report.candidates[0]?.model || "无法判断"}</h3>
+      <p>{diagnosis(report.reason)}</p>
+    </div>
   </section>
-  <section>
-    <h3>固定执行目标</h3>
-    <dl class="v-facts">
-      {#each [{ name: "预期模型", value: report.target.modelName }, { name: "实际请求模型", value: report.target.requestModel }, { name: "请求协议", value: protocols.find((item) => item.value === report.target.protocol)?.label ?? report.target.protocol }, { name: "固定端点", value: report.target.url }, { name: "检测时间", value: time(report.time) }, { name: "算法版本", value: report.algorithmVersion }, { name: "参考数据版本", value: report.dataVersion }] as item}<div
-        >
-          <dt>{item.name}</dt>
-          <dd>{item.value || "未知"}</dd>
-        </div>{/each}
+
+  <section aria-labelledby="report-target-title">
+    <div class="report-section-heading">
+      <h3 id="report-target-title">执行目标</h3>
+      <Badge variant={report.state === "failed" ? "destructive" : "secondary"}>执行{states[report.state] ?? report.state}</Badge>
+    </div>
+    <dl class="report-facts">
+      {#each [{ name: "预期模型", value: report.target.modelName }, { name: "预期参考模型", value: report.target.referenceModel || report.target.originalModel }, { name: "实际请求模型", value: report.target.requestModel }, { name: "请求协议", value: protocols.find((item) => item.value === report.target.protocol)?.label ?? report.target.protocol }, { name: "检测时间", value: time(report.time) }, { name: "算法版本", value: report.algorithmVersion }, { name: "参考数据版本", value: report.dataVersion }, { name: "固定端点", value: report.target.url }] as item}
+        <div class:report-fact-wide={item.name === "固定端点"}>
+          <dt>{item.name}</dt><dd>{item.value || "未知"}</dd>
+        </div>
+      {/each}
     </dl>
   </section>
-  <section>
-    <h3>真实候选排名</h3>
-    <p class="v-note">
-      置信度仅表示当前参考库候选集合内的相对可能性，不是身份真实性概率。
-    </p>
-    {#if report.candidates.length}<div class="v-candidates">
-        {#each visibleCandidates as candidate, index}<div>
-            <span>{index + 1}</span>
-            <div>
-              <strong>{candidate.name || candidate.model}</strong><small
-                >{candidate.model} · {candidate.family || "家族未知"}</small
-              >
-            </div>
-            <div>
-              <strong>{probability(candidate.probability)}</strong><small
-                title={`完整排名分：${candidate.score}`}
-                >排名分 {rankScore(candidate.score)}</small
-              >
-            </div>
-          </div>{/each}
+
+  <Separator />
+
+  <section aria-labelledby="report-ranking-title">
+    <div class="report-section-heading">
+      <h3 id="report-ranking-title">候选排名</h3>
+      <Badge variant="secondary">{report.candidates.length} 个候选</Badge>
+    </div>
+    <p class="report-caption">置信度表示参考库内的相对可能性，不代表模型身份真实性。</p>
+    {#if report.candidates.length}
+      <div class="report-ranking">
+        <Table.Root class="table-fixed">
+          <Table.Header><Table.Row>
+            <Table.Head class="w-12">排名</Table.Head><Table.Head>候选模型</Table.Head>
+            <Table.Head class="w-24 text-right">置信度</Table.Head><Table.Head class="w-24 text-right">排名分</Table.Head>
+          </Table.Row></Table.Header>
+          <Table.Body>
+            {#each visibleCandidates as candidate, index}
+              <Table.Row>
+                <Table.Cell><span class="report-rank">{String(index + 1).padStart(2, "0")}</span></Table.Cell>
+                <Table.Cell class="whitespace-normal break-words">
+                  <strong class="report-candidate-name">{candidate.name || candidate.model}</strong>
+                  <small class="report-candidate-id">{candidate.model} · {candidate.family || "家族未知"}</small>
+                </Table.Cell>
+                <Table.Cell class="text-right tabular-nums">{probability(candidate.probability)}</Table.Cell>
+                <Table.Cell class="text-right tabular-nums" title={`完整排名分：${candidate.score}`}>{rankScore(candidate.score)}</Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
       </div>
-      {#if report.candidates.length > 8}<Button
-          variant="ghost"
-          size="sm"
-          aria-expanded={expanded}
-          onclick={() => (expanded = !expanded)}
-          >{expanded
-            ? "收起为前 8 名"
-            : `展开全部 ${report.candidates.length} 个候选`}</Button
-        >{/if}
-    {:else}<p class="v-note">没有可用候选；请检查诊断原因与样本。</p>{/if}
+      {#if report.candidates.length > 8}
+        <div class="report-expand"><Button variant="ghost" size="sm" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>{expanded ? "收起为前 8 名" : `展开全部 ${report.candidates.length} 个候选`}</Button></div>
+      {/if}
+    {:else}<p class="report-empty">本轮没有可用候选，请查看下方诊断与样本。</p>{/if}
   </section>
-  <section>
-    <h3>样本解析与原始回答</h3>
-    {#each report.samples as sample, index}<details class="v-sample">
-        <summary
-          >样本 {index + 1} · {states[sample.state] ?? sample.state} · 有效数字 {sample.count}
-          / {sample.expectedCount}</summary
-        >{#if sample.error}<p class="v-error">{sample.error}</p>{/if}
-        <pre>{sample.text || "未收到回答"}</pre>
-      </details>{/each}{#if !report.samples.length}<p class="v-note">
-        本轮没有返回样本。
-      </p>{/if}
+
+  <Separator />
+
+  <section aria-labelledby="report-samples-title">
+    <div class="report-section-heading">
+      <h3 id="report-samples-title">样本与诊断</h3>
+      <Badge variant="secondary">{report.samples.length} 条样本</Badge>
+    </div>
+    <p class="report-caption">保留本轮原始回答，展开查看解析结果及失败原因。</p>
+    <Accordion.Root type="multiple">
+      {#each report.samples as sample, index}
+        <Accordion.Item value={`sample-${index}`}>
+          <Accordion.Trigger>
+            <span class="report-sample-title"><span class="report-rank">{String(index + 1).padStart(2, "0")}</span><span>样本 {index + 1}</span><span class="report-sample-count">有效数字 {sample.count} / {sample.expectedCount}</span><Badge variant={sample.state === "failed" || sample.state === "truncated" ? "destructive" : "secondary"}>{states[sample.state] ?? sample.state}</Badge></span>
+          </Accordion.Trigger>
+          <Accordion.Content>
+            {#if sample.error}<p class="v-error">{sample.error}</p>{/if}
+            <pre class="report-raw scroll-quiet">{sample.text || "未收到回答"}</pre>
+          </Accordion.Content>
+        </Accordion.Item>
+      {/each}
+      {#if report.reason}
+        <Accordion.Item value="diagnosis"><Accordion.Trigger>原始诊断</Accordion.Trigger><Accordion.Content><pre class="report-raw scroll-quiet">{report.reason}</pre></Accordion.Content></Accordion.Item>
+      {/if}
+    </Accordion.Root>
+    {#if !report.samples.length}<p class="report-empty">本轮没有返回样本。</p>{/if}
   </section>
-  <p class="v-note">
-    差异只提示进一步检查，不能单凭结果认定渠道造假或模型能力下降。结论只描述该固定组合在检测时刻的统计相似性。
-  </p>
+
+  <aside class="report-notice"><Info class="size-4 shrink-0" aria-hidden="true" /><p>结论仅描述该固定组合在检测时刻的统计相似性。差异只提示进一步检查，不能单凭结果认定渠道造假或模型能力下降。</p></aside>
 </div>
+
+<style>
+  .report-body { display:flex; flex-direction:column; gap:24px; min-height:0; overflow-y:auto; padding:24px; }
+  .report-identity { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .report-model { flex:1; min-width:160px; }
+  .report-model h2 { font-size:20px; font-weight:600; letter-spacing:-.025em; overflow-wrap:anywhere; }
+  .report-model p { margin-top:5px; color:var(--muted-foreground); font-size:12px; overflow-wrap:anywhere; }
+  .report-overview { display:grid; grid-template-columns:180px minmax(0,1fr); border:1px solid var(--border); border-radius:10px; background:var(--muted); }
+  .report-confidence { display:flex; flex-direction:column; justify-content:center; gap:8px; padding:20px; border-right:1px solid var(--border); }
+  .report-confidence > span, .report-verdict > span { font-size:12px; color:var(--muted-foreground); }
+  .report-confidence strong { font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-.04em; font-variant-numeric:tabular-nums; color:var(--primary); }
+  .report-confidence small { font-size:11px; color:var(--muted-foreground); }
+  .report-verdict { min-width:0; padding:20px; }
+  .report-verdict h3 { margin-top:6px; font-size:16px; font-weight:600; overflow-wrap:anywhere; }
+  .report-verdict p { margin-top:10px; font-size:12px; line-height:1.7; color:var(--muted-foreground); overflow-wrap:anywhere; }
+  .report-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .report-section-heading h3 { font-size:14px; font-weight:600; }
+  .report-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 32px; margin-top:18px; }
+  .report-facts > div { min-width:0; }
+  .report-fact-wide { grid-column:1/-1; }
+  .report-facts dt { font-size:12px; color:var(--muted-foreground); }
+  .report-facts dd { margin-top:5px; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+  .report-caption { margin-top:6px; color:var(--muted-foreground); font-size:12px; line-height:1.7; }
+  .report-ranking { margin-top:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .report-candidate-name { display:block; font-weight:500; font-size:13px; overflow-wrap:anywhere; }
+  .report-candidate-id { display:block; margin-top:4px; font-size:11px; color:var(--muted-foreground); overflow-wrap:anywhere; }
+  .report-rank { color:var(--muted-foreground); font-size:12px; font-variant-numeric:tabular-nums; }
+  .report-expand { display:flex; justify-content:center; margin-top:8px; }
+  .report-empty { padding:20px 0; color:var(--muted-foreground); font-size:12px; }
+  .report-sample-title { display:flex; flex:1; align-items:center; flex-wrap:wrap; gap:12px; min-width:0; }
+  .report-sample-count { margin-left:auto; color:var(--muted-foreground); font-size:12px; font-weight:400; }
+  .report-raw { max-height:240px; margin-top:8px; padding:14px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:8px; background:var(--muted); font-size:12px; line-height:1.8; }
+  .report-notice { display:flex; align-items:flex-start; gap:10px; color:var(--muted-foreground); font-size:12px; line-height:1.7; }
+  .report-notice > :global(svg) { margin-top:2px; }
+  @media (max-width:600px) {
+    .report-body { padding:20px; gap:20px; }
+    .report-overview { grid-template-columns:1fr; }
+    .report-confidence { border-right:0; border-bottom:1px solid var(--border); }
+    .report-facts { grid-template-columns:1fr; gap:14px; }
+    .report-sample-count { margin-left:0; }
+  }
+</style>

@@ -38,7 +38,7 @@ export function probability(value: number | null | undefined): string {
 export function effort(value: string): string {
   return efforts.find((item) => item.value === value)?.label ?? value;
 }
-/** 精确比较配置线路；供应商由调用方先限定。 */
+/** 精确比较执行线路与参考选择，避免新选择沿用旧报告覆盖；旧报告缺失选择视为空。 */
 export function sameLine(
   left: VerificationLine,
   right: VerificationLine,
@@ -47,7 +47,8 @@ export function sameLine(
     left.modelId === right.modelId &&
     left.keyId === right.keyId &&
     left.protocol === right.protocol &&
-    left.effort === right.effort
+    left.effort === right.effort &&
+    (left.referenceModel ?? "") === (right.referenceModel ?? "")
   );
 }
 /** 复测必须仍能找到相同出站模型和地址，不把旧报告静默替换为新目标。 */

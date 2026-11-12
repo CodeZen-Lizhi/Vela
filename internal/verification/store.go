@@ -14,6 +14,7 @@ import (
 
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/verification/fingerprint"
 )
 
 // schema 以真实资源外键级联清理局部线路和报告；报告不依赖计划，允许计划外固定目标复测。
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS verification_lines(
  provider_id TEXT NOT NULL REFERENCES verification_plans(provider_id) ON DELETE CASCADE,
  model_id TEXT NOT NULL, key_id TEXT NOT NULL, protocol TEXT NOT NULL, effort TEXT NOT NULL,
  position INTEGER NOT NULL,
+ reference_model TEXT NOT NULL DEFAULT '', -- 可选参考身份；空串按模型原始 ID 对应。
  PRIMARY KEY(provider_id,model_id,key_id),
  FOREIGN KEY(provider_id,model_id) REFERENCES provider_models(provider_id,model_id) ON DELETE CASCADE,
  FOREIGN KEY(key_id,provider_id) REFERENCES provider_keys(id,provider_id) ON DELETE CASCADE
@@ -66,10 +68,20 @@ func New(db *sql.DB, vendors *providers.Store, catalog *models.Store) (*Manager,
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("初始化模型验证: %w", err)
 	}
+	// 旧计划增加可选参考身份，空值保留按原始模型 ID 对应的默认行为。
+	var hasReference bool
+	if err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM pragma_table_info('verification_lines') WHERE name='reference_model')").Scan(&hasReference); err != nil {
+		return nil, fmt.Errorf("检查验证线路版本: %w", err)
+	}
+	if !hasReference {
+		if _, err := db.Exec("ALTER TABLE verification_lines ADD COLUMN reference_model TEXT NOT NULL DEFAULT ''"); err != nil {
+			return nil, fmt.Errorf("升级验证线路: %w", err)
+		}
+	}
 	return &Manager{db: db, vendors: vendors, catalog: catalog, now: time.Now}, nil
 }
 
-// identity 绑定完整执行目标，地址或实际映射变化不会复用旧目标身份。
+// identity 绑定完整执行目标；参考选择只改变比较依据，复测仍替换同一组合的最近报告。
 func identity(t VerificationTarget) string {
 	data, _ := json.Marshal([]string{t.ProviderID, t.KeyID, t.ModelID, t.RequestModel, t.URL, t.Protocol, t.Effort})
 	sum := sha256.Sum256(data)
@@ -103,7 +115,7 @@ func (m *Manager) Targets(ctx context.Context) ([]VerificationTarget, error) {
 					continue
 				}
 				request := providers.ResolveModelRequestName(model.ModelName, model.Mappings)
-				t := VerificationTarget{VerificationLine: VerificationLine{ModelID: model.ModelID, KeyID: key.ID}, ProviderID: p.ID, ProviderName: p.Name, KeyName: key.Name, ModelName: model.Name, RequestModel: request, URL: p.URL}
+				t := VerificationTarget{VerificationLine: VerificationLine{ModelID: model.ModelID, KeyID: key.ID}, ProviderID: p.ID, ProviderName: p.Name, KeyName: key.Name, ModelName: model.Name, OriginalModel: model.ModelName, RequestModel: request, URL: p.URL}
 				switch {
 				case !p.Enabled:
 					t.Reason = "供应商已停用"
@@ -141,7 +153,7 @@ func (m *Manager) resolve(ctx context.Context, providerID string, line Verificat
 	return VerificationTarget{}, errors.New("检测目标已删除或不再关联")
 }
 
-// SavePlan 原子保存显式线路与计时，兼容性失败不覆盖原计划，手动执行不经过此方法。
+// SavePlan 校验参考身份与线路兼容性后原子保存配置及计时；失败保留旧计划，手动执行不经过此方法。
 func (m *Manager) SavePlan(ctx context.Context, p VerificationPlan) error {
 	if !slices.Contains([]int{1, 6, 12, 24}, p.Hours) {
 		return errors.New("检测周期只支持 1、6、12、24 小时")
@@ -149,9 +161,23 @@ func (m *Manager) SavePlan(ctx context.Context, p VerificationPlan) error {
 	if len(p.Lines) == 0 {
 		return errors.New("至少配置一条完整验证线路")
 	}
+	// 只在保存显式参考选择时加载目录，普通页面和启动不加载参考数据。
+	references := map[string]bool{}
+	if slices.ContainsFunc(p.Lines, func(line VerificationLine) bool { return line.ReferenceModel != "" }) {
+		options, err := m.ReferenceModels()
+		if err != nil {
+			return err
+		}
+		for _, option := range options {
+			references[option.ID] = true
+		}
+	}
 	seen := map[string]bool{}
 	efforts := map[string]string{}
 	for _, line := range p.Lines {
+		if line.ReferenceModel != "" && !references[line.ReferenceModel] {
+			return errors.New("预期参考模型不在当前参考库中，请重新选择")
+		}
 		if !slices.Contains([]string{"chat_completions", "responses", "messages", "gemini"}, line.Protocol) {
 			return errors.New("请选择请求协议")
 		}
@@ -193,7 +219,7 @@ func (m *Manager) SavePlan(ctx context.Context, p VerificationPlan) error {
 		return err
 	}
 	for i, line := range p.Lines {
-		if _, err = tx.ExecContext(ctx, "INSERT INTO verification_lines VALUES(?,?,?,?,?,?)", p.ProviderID, line.ModelID, line.KeyID, line.Protocol, line.Effort, i); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO verification_lines(provider_id,model_id,key_id,protocol,effort,position,reference_model) VALUES(?,?,?,?,?,?,?)", p.ProviderID, line.ModelID, line.KeyID, line.Protocol, line.Effort, i, line.ReferenceModel); err != nil {
 			return err
 		}
 	}
@@ -222,13 +248,13 @@ func (m *Manager) Plans(ctx context.Context) ([]VerificationPlan, error) {
 		return nil, err
 	}
 	for i := range result {
-		rows, err = m.db.QueryContext(ctx, "SELECT model_id,key_id,protocol,effort FROM verification_lines WHERE provider_id=? ORDER BY position", result[i].ProviderID)
+		rows, err = m.db.QueryContext(ctx, "SELECT model_id,key_id,protocol,effort,reference_model FROM verification_lines WHERE provider_id=? ORDER BY position", result[i].ProviderID)
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			var line VerificationLine
-			if err = rows.Scan(&line.ModelID, &line.KeyID, &line.Protocol, &line.Effort); err != nil {
+			if err = rows.Scan(&line.ModelID, &line.KeyID, &line.Protocol, &line.Effort, &line.ReferenceModel); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -352,5 +378,18 @@ func (m *Manager) Snapshot(ctx context.Context) (VerificationSnapshot, error) {
 	m.mu.Lock()
 	result.Progress = m.progress
 	m.mu.Unlock()
+	return result, nil
+}
+
+// ReferenceModels 按编辑器请求读取内置参考身份，不访问网络，不保留全局评分器。
+func (m *Manager) ReferenceModels() ([]ReferenceModel, error) {
+	detector, err := fingerprint.LoadBundled()
+	if err != nil {
+		return nil, err
+	}
+	result := []ReferenceModel{}
+	for _, model := range detector.Models() {
+		result = append(result, ReferenceModel{ID: model.ID, Name: model.DisplayName})
+	}
 	return result, nil
 }

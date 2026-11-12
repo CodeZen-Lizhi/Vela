@@ -60,3 +60,12 @@ func (s *VelaService) StopVerification() error {
 	manager.Stop()
 	return nil
 }
+
+// VerificationReferenceModels 供计划编辑器按需选择内置参考模型，不发出采样请求。
+func (s *VelaService) VerificationReferenceModels() ([]verification.ReferenceModel, error) {
+	manager, err := s.verificationManager()
+	if err != nil {
+		return nil, err
+	}
+	return manager.ReferenceModels()
+}

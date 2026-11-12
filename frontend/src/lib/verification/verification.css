@@ -59,33 +59,6 @@
   flex: 1;
   min-width: 180px;
 }
-.v-job {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 16px 20px;
-  padding: 16px;
-  background: var(--accent);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--primary);
-}
-.v-job > div {
-  flex: 1;
-  min-width: 0;
-}
-.v-job p,
-.v-job small {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  margin-top: 6px;
-}
-.v-job strong {
-  font-size: 13px;
-}
-.v-job progress {
-  margin-top: 10px;
-}
 .v-page progress {
   display: block;
   width: 100%;
@@ -323,28 +296,9 @@
   padding: clamp(16px, 2vw, 24px);
   overflow: hidden;
 }
-.v-wide-dialog > [data-slot="dialog-header"],
-.v-report-drawer > [data-slot="dialog-header"] {
+.v-wide-dialog > [data-slot="dialog-header"] {
   flex-shrink: 0;
   padding-right: 40px;
-}
-.v-report-drawer {
-  position: fixed !important;
-  top: 8dvh !important;
-  right: 7vw !important;
-  bottom: 8dvh !important;
-  left: auto !important;
-  translate: none !important;
-  transform: none !important;
-  width: min(680px, 86vw) !important;
-  max-width: 86vw !important;
-  height: 84dvh;
-  max-height: 84dvh;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow: hidden;
-  padding: clamp(16px, 2vw, 24px) !important;
 }
 .v-editor {
   display: flex;
@@ -482,147 +436,6 @@
   color: var(--muted-foreground);
   margin-top: 6px;
 }
-.v-report {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-.v-report h3 {
-  font-size: 14px;
-  font-weight: 600;
-}
-.v-report-heading {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.v-report-heading > div {
-  flex: 1;
-  min-width: 140px;
-}
-.v-report-heading h2 {
-  font-size: 18px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.v-report-heading p {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  margin-top: 6px;
-}
-.v-report-score {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 16px;
-  padding: 16px;
-  background: var(--accent);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.v-report-score > small {
-  grid-column: 1;
-  font-size: 11px;
-  color: var(--muted-foreground);
-}
-.v-report-score h3 {
-  grid-column: 1;
-  overflow-wrap: anywhere;
-}
-.v-report-score > strong {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  align-self: center;
-  font-size: 28px;
-  color: var(--primary);
-}
-.v-report-score p {
-  grid-column: 1 / -1;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.v-report-score > .v-sample {
-  grid-column: 1 / -1;
-  margin-top: 0;
-  padding: 10px 12px;
-}
-.v-facts {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-size: 12px;
-}
-.v-facts > div {
-  display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  gap: 16px;
-}
-.v-facts dt {
-  color: var(--muted-foreground);
-}
-.v-facts dd {
-  overflow-wrap: anywhere;
-}
-.v-candidates {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-top: 14px;
-}
-.v-candidates > div {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-}
-.v-candidates > div > div:nth-child(2) {
-  flex: 1;
-  min-width: 0;
-}
-.v-candidates strong {
-  overflow-wrap: anywhere;
-}
-.v-candidates small {
-  display: block;
-  font-size: 11px;
-  color: var(--muted-foreground);
-  margin-top: 5px;
-  overflow-wrap: anywhere;
-}
-.v-sample {
-  margin-top: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
-  font-size: 12px;
-}
-.v-sample summary {
-  cursor: pointer;
-  line-height: 1.6;
-}
-.v-sample summary:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 4px;
-}
-.v-sample pre {
-  max-height: 320px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: var(--muted);
-  padding: 12px;
-  margin-top: 12px;
-  border-radius: 6px;
-  font-size: 11px;
-  line-height: 1.7;
-}
 /* 两个桌面窄窗口使用相同列数与工具栏分行，所有结果列和操作直接可见。 */
 @media (max-width: 1100px) {
   .v-toolbar { gap:12px; padding:14px 16px; }
@@ -661,4 +474,12 @@
   .v-run-settings { grid-template-columns: 1fr; }
   .v-editor-footer { grid-template-columns: 1fr; }
   .v-editor-footer > .v-actions { justify-content: flex-end; }
+}
+
+/* 参考身份独占线路第二行，保持既有四列控件宽度与移除按钮位置。 */
+.v-line .v-reference-field { grid-column:2/6; grid-row:2; padding-bottom:10px; }
+.v-line > button { grid-column:6; grid-row:1; }
+@media (max-width:600px) {
+ .v-line .v-reference-field { grid-column:2/4; grid-row:auto; }
+ .v-line > button { grid-column:2/4; grid-row:auto; }
 }
