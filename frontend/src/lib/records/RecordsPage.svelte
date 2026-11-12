@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from "$lib/components/PageHeader.svelte";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
@@ -305,12 +306,9 @@
   });
 </script>
 
-<div class="records-page">
-  <header class="records-heading">
-    <div>
-      <h1>使用记录</h1>
-      <p>请求明细 · 摘要、诊断、估算费用与执行路径</p>
-    </div>
+<div class="records-page list-page">
+  <PageHeader title="使用记录" description="请求明细 · 摘要、诊断、估算费用与执行路径">
+    {#snippet actions()}
     <div class="records-actions">
       <Button
         variant={realtime ? "secondary" : "outline"}
@@ -324,7 +322,8 @@
         onclick={refresh}><RefreshCw />刷新</Button
       >
     </div>
-  </header>
+    {/snippet}
+  </PageHeader>
   {#if !desktop}<p class="records-notice" role="status">
       浏览器预览：请在 Vela 桌面应用中查询真实请求记录。
     </p>{/if}
@@ -385,16 +384,7 @@
       </div>
     </article>
   </section>
-  <section class="records-surface" aria-labelledby="records-title">
-    <div class="records-list-heading">
-      <div>
-        <h2 id="records-title">请求记录</h2>
-        <p>明细保留 30 天 · 正文保留 7 天</p>
-      </div>
-      <Button variant="ghost" disabled={!desktop} onclick={clear}
-        >清除筛选</Button
-      >
-    </div>
+  <section class="records-surface list-surface" aria-label="请求记录">
     <div class="records-filters">
       <div class="records-query">
         <InputGroup.Root class="records-search"
@@ -455,8 +445,12 @@
           bind:openID
           disabled={!desktop}
         />
+        <Button variant="ghost" size="sm" disabled={!desktop} onclick={clear}>清除筛选</Button>
       </div>
     </div>
+    <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="list-scroll" role="region" aria-label="使用记录列表内容" tabindex="0">
     {#if loading && !result}<p class="records-empty" role="status">
         正在读取请求记录…
       </p>{:else if result && !result.records.length}<div class="records-empty">
@@ -554,8 +548,9 @@
         ></Table.Root
       >
     </div>
-    <footer class="records-pagination">
-      <span>共 {number(summary?.total)} 条 · 第 {q.page} / {pages} 页</span>
+    </div>
+    <footer class="records-pagination list-footer">
+      <span>共 {number(summary?.total)} 条 · 第 {q.page} / {pages} 页<small class="block">明细保留 30 天 · 正文保留 7 天</small></span>
       <div class="records-actions">
         <Choice
           bind:value={pageSize}
@@ -582,6 +577,7 @@
     </footer>
   </section>
   <Collapsible.Root
+    class="records-analysis-panel"
     bind:open={analysisOpen}
     onOpenChange={(open) => {
       if (open) void readAnalysis();

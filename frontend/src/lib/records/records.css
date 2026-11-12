@@ -2,26 +2,8 @@
 .records-page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-}
-.records-heading,
-.records-list-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: 16px;
-}
-.records-heading h1 {
-  font-size: 24px;
-  font-weight: 650;
-  letter-spacing: -0.6px;
-}
-.records-heading p,
-.records-list-heading p {
-  margin-top: 6px;
-  color: var(--muted-foreground);
-  font-size: 12px;
+  min-width: 0;
 }
 .records-actions {
   display: flex;
@@ -41,7 +23,7 @@
   grid-template-columns: 17px minmax(0, 1fr);
   align-content: start;
   column-gap: 6px;
-  padding: 16px 10px;
+  padding: 10px;
   min-width: 0;
 }
 .records-stats article > div {
@@ -81,7 +63,7 @@
   white-space: nowrap;
 }
 .records-stats small {
-  min-height: 34px;
+  min-height: 0;
   font-size: 10px;
   color: var(--muted-foreground);
   line-height: 1.7;
@@ -93,24 +75,23 @@
   border-radius: 12px;
   background: var(--card);
 }
-.records-list-heading {
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--border);
-}
-.records-list-heading h2,
 .records-analysis h2 {
   font-size: 14px;
   font-weight: 600;
 }
 .records-filters {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
 }
 /* 查询组保持紧凑且左对齐：搜索最多 320px，不随宽屏填满剩余空间。 */
 .records-query {
   display: grid;
   width: min(100%, 576px);
+  flex-shrink: 0;
   grid-template-columns: minmax(0, 320px) 120px 120px;
   gap: 8px;
 }
@@ -207,7 +188,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 10px 16px;
   border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--muted-foreground);
@@ -418,3 +399,19 @@
 .records-token-usage > small {
   margin-top: 0;
 }
+
+/* 分析展开时限制占高，筛选与分页仍保持可见。 */
+.records-page.list-page > .records-analysis-panel {
+  flex: 0 1 auto;
+  max-height: 30%;
+  overflow-y: auto;
+  min-height: 0;
+}
+@media (max-width: 900px) {
+  .records-stats article { padding: 8px; }
+  .records-stats strong { font-size: 18px; margin-block: 3px; }
+  .records-stats small { line-height: 1.4; }
+}
+
+/* 预留筛选、分页和至少一行记录，分析区在剩余空间内收缩。 */
+.records-surface.list-surface { flex-basis: 260px; flex-shrink: 0; }

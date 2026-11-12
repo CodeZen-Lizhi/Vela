@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from "$lib/components/PageHeader.svelte";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
@@ -100,12 +101,7 @@
 </script>
 
 <div class="flex flex-col gap-5">
-  <div>
-    <h1 class="text-2xl font-semibold tracking-tight">调度</h1>
-    <p class="mt-2 text-sm text-muted-foreground">
-      选择调度策略并调整供应商优先顺序。
-    </p>
-  </div>
+  <PageHeader title="调度" description="选择调度策略并调整供应商优先顺序。" />
   {#if !desktop}<p class="feedback">
       浏览器预览 · 调度策略的读取与保存请在 Vela 桌面窗口中进行。
     </p>{/if}

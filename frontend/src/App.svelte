@@ -124,21 +124,13 @@
     </div>
     <p class="px-3 pt-4 text-xs text-muted-foreground">Vela 0.1.0</p>
   </aside>
-  <div class="min-w-0">
-    <header
-      class="app-titlebar flex h-16 items-center justify-between px-7"
-    >
-      <p class="text-sm text-muted-foreground">
-        工作空间 <span class="mx-3 text-border">/</span><span
-          class="text-foreground">{page}</span
-        >{#if page === "设置"}<span class="mx-3 text-border">/</span><span
-            class="text-foreground">{sectionName}</span
-          >{/if}
-      </p>
-      <span class="tag">本地优先</span>
+  <div class="app-workspace">
+    <header class="app-titlebar">
+      {#if page === "设置"}<p class="text-xs text-muted-foreground">
+        设置 <span class="mx-2 text-border">/</span><span class="text-foreground">{sectionName}</span>
+      </p>{/if}
     </header>
-    <!-- 请求记录保持固定页边距，缩放时不受外壳 lg 断点影响。 -->
-    <main class={page === "使用记录" ? "mx-auto max-w-7xl p-5" : "mx-auto max-w-7xl p-5 lg:p-8"}>
+    <main class="app-main" class:list-workspace={["供应商", "模型", "使用记录", "模型验证"].includes(page)}>
       {#if page === "供应商"}<ProvidersPage {notify} {openRecords} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
           {notify}
         />{:else if page === "使用记录"}<RecordsPage {notify} initialProvider={recordsProvider} initialRecord={recordsID} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage

@@ -9,6 +9,8 @@
     Eye,
     KeyRound,
   } from "@lucide/svelte";
+  import PageHeader from "$lib/components/PageHeader.svelte";
+  import * as Tabs from "$lib/components/ui/tabs";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { Switch } from "$lib/components/ui/switch";
@@ -298,45 +300,10 @@
   }
 </script>
 
-<section class="v-page">
-  <header class="v-heading">
-    <div>
-      <h1>模型验证</h1>
-      <p>按供应商、模型、Key 与思考强度追踪固定线路的覆盖和差异。</p>
-    </div>
-  </header>
-  {#if !desktop}<p class="feedback">
-      浏览器预览 · 计划、检测及报告请在 Vela
-      桌面窗口中使用；此处不生成演示结果。
-    </p>{/if}
-  {#if error}<div class="v-error" role="alert">
-      {error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button>
-    </div>{/if}
-  <section class="v-surface" aria-label="模型验证工作台">
-    <div class="v-toolbar">
-      <div class="v-tabs" aria-label="模型验证视图">
-        <Button
-          variant="ghost"
-          aria-pressed={tab === "results"}
-          onclick={() => (tab = "results")}
-          >验证结果 <Badge variant="secondary">{scopedReports.length}</Badge
-          ></Button
-        ><Button
-          variant="ghost"
-          aria-pressed={tab === "plans"}
-          onclick={() => (tab = "plans")}
-          >检测计划 <Badge variant="secondary">{scopedPlans.length}</Badge
-          ></Button
-        >
-      </div>
-      <div class="v-filters">
-        <Choice
-          bind:value={providerId}
-          label="验证供应商"
-          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
-        />
-        <Button
-          variant="outline"
+<section class="v-page list-page">
+  <PageHeader title="模型验证" description="按供应商、模型、Key 与思考强度追踪固定线路的覆盖和差异。">
+    {#snippet actions()}
+      <Button
           size="sm"
           disabled={!desktop || !snapshot || !providers.length}
           onclick={() => openPlan()}
@@ -345,6 +312,27 @@
             ? "编辑当前计划"
             : "创建检测计划"}</Button
         >
+    {/snippet}
+  </PageHeader>
+  {#if !desktop}<p class="feedback">
+      浏览器预览 · 计划、检测及报告请在 Vela
+      桌面窗口中使用；此处不生成演示结果。
+    </p>{/if}
+  {#if error}<div class="v-error" role="alert">
+      {error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button>
+    </div>{/if}
+  <Tabs.Root bind:value={tab} class="v-surface list-surface" aria-label="模型验证工作台">
+    <div class="v-toolbar">
+        <Tabs.List aria-label="模型验证视图">
+          <Tabs.Trigger value="results">验证结果 <span>{scopedReports.length}</span></Tabs.Trigger>
+          <Tabs.Trigger value="plans">检测计划 <span>{scopedPlans.length}</span></Tabs.Trigger>
+        </Tabs.List>
+      <div class="v-filters">
+        <Choice
+          bind:value={providerId}
+          label="验证供应商"
+          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
+        />
       </div>
       {#if tab === "results"}<div class="v-result-filters">
           <InputGroup.Root class="v-search"
@@ -372,6 +360,7 @@
     {#if snapshot?.progress.error}<p role="alert" class="v-error">
         任务结束：{snapshot.progress.error}
       </p>{/if}
+    <Tabs.Content value={tab} class="list-scroll" aria-label={tab === "results" ? "验证结果列表内容" : "检测计划列表内容"}>
     {#if loading}<div class="v-empty" role="status">
         正在读取本地验证数据…
       </div>{:else if desktop && !snapshot}<div class="v-empty">
@@ -466,11 +455,6 @@
               >查看检测计划</Button
             >{/if}
         </div>{/if}
-      <footer class="v-surface-footer">
-        <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span
-          >检测会产生上游消耗；结果不是身份认证。</span
-        >
-      </footer>
     {:else}<div class="v-plans">
         {#each scopedPlans as plan (plan.providerId)}{@const covered =
             coverage(plan)}{@const name =
@@ -561,7 +545,15 @@
             >
           </div>{/if}
       </div>{/if}
-  </section>
+    </Tabs.Content>
+    {#if tab === "results"}
+      <footer class="v-surface-footer">
+        <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span
+          >检测会产生上游消耗；结果不是身份认证。</span
+        >
+      </footer>
+    {/if}
+  </Tabs.Root>
 </section>
 <Dialog.Root
   open={editor}

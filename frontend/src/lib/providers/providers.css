@@ -1,18 +1,10 @@
 /* 供应商页面沿用已认可的紧凑列表和单层抽屉；所有颜色来自项目主题。 */
-.provider-page { display:flex; flex-direction:column; gap:22px; }
-.provider-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.provider-heading h1 { font-size:23px; font-weight:650; letter-spacing:-.035em; }
-.provider-heading p { margin-top:6px; color:var(--muted-foreground); font-size:12px; }
+.provider-page { display:flex; flex-direction:column; gap:20px; }
 .provider-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.provider-surface { border:1px solid var(--border); border-radius:12px; background:var(--card); overflow-x:auto; }
-.provider-toolbar { display:flex; gap:12px; padding:17px 20px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.provider-surface { border:1px solid var(--border); border-radius:12px; background:var(--card); overflow:hidden; }
+.provider-toolbar { display:flex; gap:12px; padding:12px 16px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); }
 .provider-search { max-width:260px; flex:1; min-width:150px; }
 .provider-filter { width:160px; }
-/* 操作区跟随筛选栏靠右，窄窗口自然换行，保持刷新和添加相邻。 */
-.provider-toolbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
-.provider-status { display:flex; gap:3px; padding:3px; border-radius:8px; background:var(--muted); }
-.provider-status button { padding:6px 10px; color:var(--muted-foreground); font-size:12px; border-radius:6px; }
-.provider-status button[aria-pressed=true] { color:var(--foreground); background:var(--background); box-shadow:0 1px 3px #0000000b; }
 .provider-table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; font-size:12px; }
 .provider-table th { background:var(--muted); color:var(--muted-foreground); font-size:11px; font-weight:500; padding:12px 16px; white-space:nowrap; }
 .provider-table td { padding:18px 16px; border-top:1px solid var(--border); vertical-align:middle; }
@@ -90,7 +82,7 @@
 .provider-selection { max-height:45dvh; overflow:auto; border:1px solid var(--border); border-radius:9px; }
 .provider-check-row { display:flex; align-items:center; gap:12px; padding:13px 15px; border-bottom:1px solid var(--border); font-size:12px; }
 .provider-check-row:last-child { border-bottom:0; }
-.provider-query-layout { display:grid; grid-template-columns:170px minmax(0,1fr); gap:22px; }
+.provider-query-layout { display:grid; grid-template-columns:170px minmax(0,1fr); gap:20px; }
 .provider-methods { display:flex; flex-direction:column; gap:7px; }
 .provider-methods button { text-align:left; border:1px solid var(--border); padding:12px; border-radius:8px; font-size:12px; }
 .provider-methods button[aria-checked=true] { border-color:var(--primary); color:var(--primary); background:var(--accent); }
@@ -110,8 +102,6 @@
  .provider-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:14px 16px; }
  .provider-search { width:100%; max-width:none; min-width:0; }
  .provider-filter { justify-self:end; }
- .provider-status { justify-self:start; }
- .provider-toolbar-actions { justify-self:end; }
  .provider-table th,.provider-table td { padding:12px 6px; }
  .provider-identity { gap:6px; }
  .provider-key-summary { gap:4px; }
@@ -120,7 +110,6 @@
  .provider-tabs { padding-inline:20px; }
 }
 @media(max-width:760px) {
- .provider-heading { align-items:flex-start; flex-wrap:wrap; }
  .provider-drawer-heading { padding:20px 64px 20px 20px; }
  .provider-drawer-body { padding:20px; }
  .provider-tabs { padding:0 20px; gap:20px; }
@@ -134,7 +123,6 @@
  .provider-table:not(.provider-key-table) td.provider-main::before { display:none; }
  .provider-actions { justify-content:flex-start; }
  .provider-toolbar { padding:14px; }
- .provider-status { overflow:auto; max-width:100%; }
 }
 @media(max-width:600px) {
  .provider-fields-grid[data-slot=field-group],.provider-query-layout { grid-template-columns:1fr; }

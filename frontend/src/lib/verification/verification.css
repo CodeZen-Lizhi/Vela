@@ -3,16 +3,6 @@
   flex-direction: column;
   gap: 20px;
 }
-.v-heading h1 {
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-.v-heading p {
-  margin-top: 8px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
 .v-surface {
   background: var(--card);
   border: 1px solid var(--border);
@@ -24,11 +14,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.v-tabs,
 .v-filters,
 .v-result-filters,
 .v-actions,
@@ -36,10 +25,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.v-tabs button[aria-pressed="true"] {
-  color: var(--primary);
-  background: var(--accent);
 }
 .v-filters {
   margin-left: auto;
@@ -56,7 +41,7 @@
   flex-shrink: 0;
 }
 .v-search {
-  flex: 1;
+  width: min(100%, 360px);
   min-width: 180px;
 }
 .v-page progress {
@@ -439,8 +424,7 @@
 /* 两个桌面窄窗口使用相同列数与工具栏分行，所有结果列和操作直接可见。 */
 @media (max-width: 1100px) {
   .v-toolbar { gap:12px; padding:14px 16px; }
-  .v-tabs { flex-basis:100%; }
-  .v-filters { width:100%; justify-content:space-between; }
+  .v-filters { width:auto; justify-content:flex-end; }
   .v-table th,.v-table td { padding:12px 6px; }
   .v-table .v-identity { gap:6px; }
   .v-plans { grid-template-columns:repeat(2,minmax(0,1fr)); }

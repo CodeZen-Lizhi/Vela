@@ -14,6 +14,7 @@
     Check,
     ArrowLeft,
   } from "@lucide/svelte";
+  import PageHeader from "$lib/components/PageHeader.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Select from "$lib/components/ui/select";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -271,15 +272,29 @@
   });
 </script>
 
-<div class="flex flex-col gap-5">
-  <div class="flex flex-wrap items-start justify-between gap-4">
-    <div>
-      <h1 class="text-2xl font-semibold tracking-tight">模型</h1>
-      <p class="mt-2 text-sm text-muted-foreground">
-        统一管理模型与标准价格，调用成本按本地规则估算。
-      </p>
-    </div>
-  </div>
+<div class="list-page models-page">
+  <PageHeader title="模型" description="统一管理模型与标准价格，调用成本按本地规则估算。">
+    {#snippet actions()}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || catalogLoading || !isMyGo() || !models.length}
+          onclick={() => void sync()}
+          ><RefreshCw class={busy ? "animate-spin" : ""} />同步全部价格</Button
+        >
+        <Button
+          size="sm"
+          disabled={busy || !isMyGo()}
+          onclick={() => void openCatalog()}><CloudDownload />在线添加</Button
+        >
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !isMyGo()}
+          onclick={openManual}><PencilLine />手动创建</Button
+        >
+    {/snippet}
+  </PageHeader>
   {#if !isMyGo()}<p class="feedback">
       浏览器预览 · 数据操作请在 Vela 桌面窗口中进行。
     </p>{/if}
@@ -288,7 +303,7 @@
         >重试</Button
       >
     </div>{/if}
-  <section class="overflow-hidden rounded-xl border bg-card">
+  <section class="list-surface" aria-label="模型列表">
     <div class="model-toolbar">
       <div class="model-filters">
         <InputGroup.Root class="model-search">
@@ -315,28 +330,10 @@
           >
         </Select.Root>
       </div>
-      <div class="model-toolbar-actions">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || catalogLoading || !isMyGo() || !models.length}
-          onclick={() => void sync()}
-          ><RefreshCw class={busy ? "animate-spin" : ""} />同步全部价格</Button
-        >
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || !isMyGo()}
-          onclick={() => void openCatalog()}><CloudDownload />在线添加</Button
-        >
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || !isMyGo()}
-          onclick={openManual}><PencilLine />手动创建</Button
-        >
-      </div>
     </div>
+    <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="list-scroll" role="region" aria-label="模型列表内容" tabindex="0">
     {#if loading}<p class="p-16 text-center text-muted-foreground">
         正在读取模型…
       </p>
@@ -442,7 +439,8 @@
             >{/each}</Table.Body
         ></Table.Root
       >{/if}
-    <div class="border-t px-4 py-3 text-xs text-muted-foreground">
+    </div>
+    <div class="list-footer border-t px-4 py-3 text-xs text-muted-foreground">
       来源 models.dev · 最近同步 {dateLabel(lastSync)}
     </div>
   </section>
