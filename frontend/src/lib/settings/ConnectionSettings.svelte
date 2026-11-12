@@ -260,7 +260,7 @@
       搬运供应商、上游 Key 配置、模型映射与调度方案。
     </p>
     <div class="flex flex-wrap gap-2.5">
-      <Button size="sm" disabled><ArrowUpFromLine />导出配置</Button>
+      <Button variant="outline" size="sm" disabled><ArrowUpFromLine />导出配置</Button>
       <Button variant="outline" size="sm" disabled><ArrowDownToLine />导入配置</Button>
     </div>
     <p class="mt-5 border-t pt-4 text-[11px] leading-relaxed text-muted-foreground">

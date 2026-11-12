@@ -11,6 +11,9 @@
 				outline: "text-foreground [a]:hover:text-foreground/70",
 				ghost: "text-muted-foreground hover:text-foreground",
 				link: "text-foreground underline-offset-4 hover:underline",
+				/** 配置状态只表达启停，不代表连通性或健康度。 */
+				enabled: "rounded-full bg-accent px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-primary",
+				disabled: "rounded-full bg-muted px-2.5 py-1 text-xs font-medium normal-case tracking-normal text-muted-foreground",
 			},
 		},
 		defaultVariants: {

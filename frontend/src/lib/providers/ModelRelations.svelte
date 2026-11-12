@@ -117,7 +117,7 @@
   /** 模型 ID 复制使用桌面剪贴板，不生成业务数据。 */
   async function copy(value: string): Promise<void> { try { await VelaService.copyText(value); notify("已复制模型 ID"); } catch (cause) { notify(message(cause)); } }
 </script>
-<div class="provider-section-heading"><h3>{mappingTab ? "模型映射" : "模型列表"}</h3><Button size="sm" onclick={() => mappingTab ? editMappings() : associate()}><Plus data-icon="inline-start" />{mappingTab ? "管理映射" : "关联模型"}</Button></div>
+<div class="provider-section-heading"><h3>{mappingTab ? "模型映射" : "模型列表"}</h3><Button variant="outline" size="sm" onclick={() => mappingTab ? editMappings() : associate()}><Plus data-icon="inline-start" />{mappingTab ? "管理映射" : "关联模型"}</Button></div>
 <div class="provider-surface provider-model-list">
   {#each models as model (model.modelId)}
     <div class="provider-model-row">

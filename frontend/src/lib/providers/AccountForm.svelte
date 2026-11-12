@@ -113,7 +113,7 @@
   {/if}
   {#if feedback}<p class="status" role="status">{feedback}</p>{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <footer><Button type="button" variant="outline" disabled={loading || saving} onclick={close}>{feedback ? "完成" : "取消"}</Button>{#if !account && !loading}<Button type="button" onclick={() => void load()}>重新读取</Button>{:else}<Button type="submit" disabled={loading || saving || !account}>{saving ? "保存并查询中…" : "保存更改"}</Button>{/if}</footer>
+  <footer><Button type="button" variant="outline" disabled={loading || saving} onclick={close}>{feedback ? "完成" : "取消"}</Button>{#if !account && !loading}<Button type="button" variant="outline" onclick={() => void load()}>重新读取</Button>{:else}<Button type="submit" disabled={loading || saving || !account}>{saving ? "保存并查询中…" : "保存更改"}</Button>{/if}</footer>
 </form>
 
 <style>

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Plus, Pencil, Copy, Trash2, ShieldCheck, ExternalLink } from "@lucide/svelte";
+  import { Plus, Pencil, Copy, Trash2, ShieldCheck } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
+  import { Badge } from "$lib/components/ui/badge";
   import { Input } from "$lib/components/ui/input";
   import { Switch } from "$lib/components/ui/switch";
   import * as Dialog from "$lib/components/ui/dialog";
@@ -66,6 +67,11 @@
   async function deleteKey():Promise<void>{if(!deleting)return;busy=true;error="";try{await VelaService.deleteProviderKey(deleting.id);deleting=null;await updated();notify("Key 已删除");}catch(cause){error=String(cause);}finally{busy=false;}}
   /** 完整密钥从后端直接写剪贴板，页面只接收操作结果。 */
   async function copy(key:ProviderKey):Promise<void>{try{await VelaService.copyProviderKeySecret(key.id);notify("已复制完整密钥");}catch(cause){notify(String(cause));}}
+  /** 复制完整服务地址，只有系统剪贴板写入成功后才提示成功。 */
+  async function copyServiceAddress():Promise<void>{
+    try{await VelaService.copyText(provider.url);notify("已复制服务地址");}
+    catch(cause){notify(`复制服务地址失败：${cause instanceof Error?cause.message:String(cause)}`);}
+  }
   /** 行内只提交倍率，不重存 Key 草稿或查询连接；失败交由本行保留输入并提示。 */
   async function saveMultiplier(key:ProviderKey,value:number):Promise<void>{
     if(busy)throw new Error("正在保存，请稍后重试");
@@ -86,12 +92,21 @@
     finally{busy=false;}
   }
 </script>
-<header class="provider-drawer-heading"><div class="provider-identity"><span class="provider-avatar">{provider.name.slice(0,1).toUpperCase()}</span><Dialog.Title>{provider.name}</Dialog.Title>{#if provider.website}<a href={provider.website} target="_blank" rel="noreferrer" aria-label={`打开 ${provider.name} 主站`}><ExternalLink class="size-3.5 text-muted-foreground"/></a>{/if}</div><Dialog.Description class="sr-only">管理供应商密钥、关联模型与模型映射。</Dialog.Description></header>
+<header class="provider-drawer-heading">
+  <div class="provider-identity">
+    <span class="provider-avatar">{provider.name.slice(0,1).toUpperCase()}</span>
+    <div class="provider-detail-identity">
+      <div class="provider-detail-title"><Dialog.Title class="min-w-0 break-all">{provider.name}</Dialog.Title><Badge variant={provider.enabled?"enabled":"disabled"}>{provider.enabled?"已启用":"已禁用"}</Badge></div>
+      <Button variant="text" size="inline" class="max-w-full justify-start whitespace-normal break-all text-left" aria-label={`复制服务地址 ${provider.url}`} title="点击复制服务地址" onclick={copyServiceAddress}>{provider.url}</Button>
+    </div>
+  </div>
+  <Dialog.Description class="sr-only">管理供应商密钥、关联模型与模型映射。</Dialog.Description>
+</header>
 <div class="provider-tabs" role="tablist" aria-label="供应商详情页签">{#each [{id:"keys",label:"密钥管理",count:keys.length},{id:"models",label:"模型列表",count:models.length},{id:"mappings",label:"模型映射",count:models.filter((model)=>model.mappings.length).length}] as item}<button role="tab" aria-selected={tab===item.id} onclick={()=>tab=item.id}>{item.label}<small>{item.count}</small></button>{/each}</div>
 <div class="provider-drawer-body">
   {#if error&&!editorOpen&&!deleting}<p class="provider-error" role="alert">{error}<Button size="sm" variant="ghost" onclick={load}>重试</Button></p>{/if}
   {#if loading}<p class="text-xs text-muted-foreground">正在读取供应商配置…</p>{:else if tab==="keys"}
-    <div class="provider-section-heading"><div class="provider-tools provider-key-filters"><Input class="max-w-56" aria-label="搜索 Key" placeholder="搜索 Key 名称" bind:value={query}/><div class="provider-key-status"><Choice bind:value={status} label="Key 状态" options={[{value:"all",label:"全部状态"},{value:"enabled",label:"已启用"},{value:"disabled",label:"已停用"},{value:"cooling",label:"冷却中"}]}/></div></div><Button size="sm" onclick={()=>{selected=null;keyEditorError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加 Key</Button></div>
+    <div class="provider-section-heading"><div class="provider-tools provider-key-filters"><Input class="max-w-56" aria-label="搜索 Key" placeholder="搜索 Key 名称" bind:value={query}/><div class="provider-key-status"><Choice bind:value={status} label="Key 状态" options={[{value:"all",label:"全部状态"},{value:"enabled",label:"已启用"},{value:"disabled",label:"已停用"},{value:"cooling",label:"冷却中"}]}/></div></div><Button variant="outline" size="sm" onclick={()=>{selected=null;keyEditorError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加 Key</Button></div>
     <div class="provider-surface"><table class="provider-table provider-key-table"><colgroup><col style="width:26%"/><col style="width:28%"/><col style="width:14%"/><col style="width:11%"/><col style="width:21%"/></colgroup><thead><tr><th>Key</th><th>倍率</th><th>模型权限</th><th data-align="number">健康度</th><th data-align="control">操作</th></tr></thead><tbody>{#each filtered as key(key.id)}{@const queryState=queries[key.id]}<tr data-disabled={!key.enabled}>
       <td class="provider-main" data-label="Key"><div class="provider-key-identity"><span title={key.name}>{key.name}</span>{#if key.hasSecret}<Button size="icon-xs" variant="ghost" title="复制完整密钥" aria-label={`复制 ${key.name} 完整密钥`} onclick={()=>copy(key)}><Copy/></Button>{/if}</div><code class="mt-1 block text-[11px] text-muted-foreground">{key.secretMask||"未设置"}</code></td>
       <td data-label="倍率"><div class="provider-multiplier"><InlineMultiplier value={key.multiplier} editable={queryState?.multiplierSource==="manual"} disabled={busy} label={key.name} onsave={(value)=>saveMultiplier(key,value)}/>{#if queryState}<MultiplierSource value={queryState.multiplierSource} label={`${key.name} 倍率来源`} disabled={busy} onchange={(source)=>setMultiplierSource(key,source)}/>{:else}<span class="text-[10px] text-muted-foreground">来源未读取</span>{/if}</div><small class="provider-multiplier-error" title={queryState?.multiplierSource==="upstream"&&queryState.multiplierStatus.state==="failed"?queryState.multiplierStatus.error:undefined}>{#if queryState?.multiplierSource==="upstream"&&queryState.multiplierStatus.state==="failed"}同步失败 · 保留当前值{/if}</small></td>

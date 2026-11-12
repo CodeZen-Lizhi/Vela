@@ -13,6 +13,8 @@
 				ghost: "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground",
 				destructive: "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30",
 				link: "text-primary underline-offset-4 hover:underline underline",
+				/** 无底色的次要文本操作，悬停时强调可点击性。 */
+				text: "text-muted-foreground hover:text-primary underline-offset-4 hover:underline",
 			},
 			size: {
 				// table-inline 用于表格文字入口，不占额外列宽，保留主题与焦点反馈。
@@ -25,6 +27,8 @@
 				"icon-xs": "size-7 [&_svg:not([class*='size-'])]:size-3",
 				"icon-sm": "size-9",
 				"icon-lg": "size-11",
+				/** 随正文排布，不引入按钮内边距或固定高度。 */
+				inline: "h-auto gap-1 rounded-sm p-0 font-normal",
 			},
 		},
 		defaultVariants: {
