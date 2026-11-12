@@ -89,6 +89,15 @@ func (s *VelaService) UpdateProviderKey(ctx context.Context, keyID string, draft
 	return store.UpdateKey(ctx, keyID, draft)
 }
 
+// SetProviderKeyMultiplier 仅修改当前 Key 的手动倍率；自动来源由后端拒绝写入。
+func (s *VelaService) SetProviderKeyMultiplier(ctx context.Context, keyID string, value float64) error {
+	store, err := s.providerStore()
+	if err != nil {
+		return err
+	}
+	return store.SetKeyMultiplier(ctx, keyID, value)
+}
+
 // SetProviderKeyEnabled 启用或停用一把上游 Key。
 func (s *VelaService) SetProviderKeyEnabled(ctx context.Context, keyID string, enabled bool) error {
 	store, err := s.providerStore()

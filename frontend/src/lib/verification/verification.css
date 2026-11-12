@@ -3,12 +3,6 @@
   flex-direction: column;
   gap: 20px;
 }
-.v-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
 .v-heading h1 {
   font-size: 24px;
   font-weight: 600;
@@ -36,6 +30,7 @@
 }
 .v-tabs,
 .v-filters,
+.v-result-filters,
 .v-actions,
 .v-identity {
   display: flex;
@@ -47,15 +42,21 @@
   background: var(--accent);
 }
 .v-filters {
-  flex: 1;
+  margin-left: auto;
+  min-width: 0;
   justify-content: flex-end;
 }
-.v-filters > [data-slot="select-trigger"] {
+.v-result-filters {
+  flex-basis: 100%;
+  min-width: 0;
+}
+.v-filters > [data-slot="select-trigger"],
+.v-result-filters > [data-slot="select-trigger"] {
   width: 160px;
   flex-shrink: 0;
 }
 .v-search {
-  max-width: 320px;
+  flex: 1;
   min-width: 180px;
 }
 .v-job {
@@ -102,6 +103,7 @@
 }
 .v-table {
   font-size: 12px;
+  min-width: 900px;
 }
 .v-table th {
   height: 44px;
@@ -169,19 +171,17 @@
 }
 .v-plans {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  padding: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  gap: 12px;
+  padding: 16px;
   background: var(--muted);
 }
 .v-plan {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   min-width: 0;
-  min-height: 350px;
-  aspect-ratio: 1/1;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card);
@@ -191,6 +191,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+.v-plan .v-identity,
+.v-plan .v-identity > div {
+  min-width: 0;
+}
+.v-plan .v-identity strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .v-plan strong {
   font-size: 13px;
@@ -209,7 +219,7 @@
 }
 .v-plan-facts strong {
   display: block;
-  font-size: 24px;
+  font-size: 20px;
   margin-top: 3px;
   font-variant-numeric: tabular-nums;
 }
@@ -236,8 +246,8 @@
 .v-bindings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-top: 16px;
+  gap: 10px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
 }
 .v-bindings > div:not(:first-child) {
@@ -273,7 +283,7 @@
   flex-wrap: wrap;
   margin-top: auto;
   border-top: 1px solid var(--border);
-  padding-top: 16px;
+  padding-top: 12px;
 }
 .v-plan-empty {
   grid-column: 1/-1;
@@ -289,69 +299,88 @@
   overflow-wrap: anywhere;
 }
 .v-wide-dialog {
-  width: 1040px !important;
-  max-width: calc(100vw - 48px) !important;
-  max-height: 90dvh;
-  overflow: auto;
+  width: min(1040px, 86vw) !important;
+  max-width: 86vw !important;
+  max-height: 84dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: clamp(16px, 2vw, 24px);
+  overflow: hidden;
+}
+.v-wide-dialog > [data-slot="dialog-header"],
+.v-report-drawer > [data-slot="dialog-header"] {
+  flex-shrink: 0;
+  padding-right: 40px;
 }
 .v-report-drawer {
   position: fixed !important;
-  top: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
+  top: 8dvh !important;
+  right: 7vw !important;
+  bottom: 8dvh !important;
   left: auto !important;
   translate: none !important;
   transform: none !important;
-  width: 680px !important;
-  max-width: 100vw !important;
-  height: 100dvh;
-  max-height: 100dvh;
-  border-radius: 0 !important;
-  overflow: auto;
-  align-content: start;
-  padding: 28px !important;
+  width: min(680px, 86vw) !important;
+  max-width: 86vw !important;
+  height: 84dvh;
+  max-height: 84dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  padding: clamp(16px, 2vw, 24px) !important;
 }
 .v-editor {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+/* 仅长线路列表滚动，窗口缩小时标题和保存操作始终可见。 */
+.v-editor-body {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.v-editor-body > .v-error {
+  margin-top: 12px;
 }
 .v-fieldset {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
-.v-form-card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px;
+.v-editor-scope {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
-.v-form-card h3 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
+.v-editor-scope > .v-note {
+  margin-top: 8px;
+}
+.v-editor-lines h3 {
+  font-size: 13px;
   font-weight: 600;
-  margin-bottom: 20px;
-}
-.v-form-card h3 > span {
-  font-size: 11px;
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--primary);
+  margin-bottom: 8px;
 }
 .v-run-settings {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr 1fr !important;
-  gap: 20px !important;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.85fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.v-run-settings > [data-slot="field"] {
+  min-width: 0;
+  gap: 6px;
 }
 .v-mode {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* 容纳共享开关向外扩展的点击区域，避免表单横向滚动。 */
+  padding-inline-end: 12px;
   height: 36px;
   font-size: 12px;
 }
@@ -361,15 +390,23 @@
   line-height: 1.7;
   margin-top: 12px;
 }
+.v-line-head,
 .v-line {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1.2fr) minmax(0, 1fr) minmax(
+  grid-template-columns: 18px minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(
       0,
       1.25fr
-    ) minmax(0, 0.7fr) 54px;
-  gap: 10px;
+    ) minmax(0, 0.7fr) 36px;
+  gap: 8px;
+}
+.v-line-head {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  padding-bottom: 4px;
+}
+.v-line {
   align-items: start;
-  padding: 12px 0;
+  padding: 4px 0;
   border-top: 1px solid var(--border);
 }
 .v-line:first-child {
@@ -378,16 +415,11 @@
 .v-line-number {
   font-size: 11px;
   color: var(--muted-foreground);
-  padding-top: 31px;
-}
-.v-line > button {
-  margin-top: 24px;
+  padding-top: 10px;
 }
 .v-line [data-slot="field"] {
+  min-width: 0;
   gap: 7px;
-}
-.v-line [data-slot="field-label"] {
-  font-size: 11px;
 }
 .v-line [data-slot="select-trigger"] {
   min-width: 0;
@@ -397,10 +429,10 @@
 }
 .v-math {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  padding: 18px;
-  margin-top: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
   border-radius: 8px;
   background: var(--muted);
 }
@@ -408,17 +440,25 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+.v-math > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
 .v-math strong {
-  display: block;
-  font-size: 22px;
-  margin-top: 5px;
+  font-size: 16px;
   font-weight: 600;
 }
 .v-editor-footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  flex-shrink: 0;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
   font-size: 12px;
 }
 .v-editor-footer small {
@@ -430,8 +470,11 @@
 .v-report {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .v-report h3 {
   font-size: 14px;
@@ -458,28 +501,39 @@
   margin-top: 6px;
 }
 .v-report-score {
-  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  padding: 16px;
   background: var(--accent);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
 .v-report-score > small {
+  grid-column: 1;
   font-size: 11px;
   color: var(--muted-foreground);
 }
 .v-report-score h3 {
-  margin-top: 10px;
+  grid-column: 1;
+  overflow-wrap: anywhere;
 }
 .v-report-score > strong {
-  display: block;
-  font-size: 32px;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  font-size: 28px;
   color: var(--primary);
-  margin-top: 8px;
 }
 .v-report-score p {
+  grid-column: 1 / -1;
   font-size: 12px;
-  line-height: 1.7;
-  margin-top: 10px;
+  line-height: 1.6;
+}
+.v-report-score > .v-sample {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  padding: 10px 12px;
 }
 .v-facts {
   margin-top: 14px;
@@ -517,6 +571,9 @@
   flex: 1;
   min-width: 0;
 }
+.v-candidates strong {
+  overflow-wrap: anywhere;
+}
 .v-candidates small {
   display: block;
   font-size: 11px;
@@ -551,36 +608,20 @@
   font-size: 11px;
   line-height: 1.7;
 }
-@media (max-width: 1300px) {
-  .v-plans {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .v-plan {
-    aspect-ratio: auto;
-    min-height: 365px;
-  }
-}
-@media (max-width: 850px) {
-  .v-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .v-filters {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-  .v-search {
-    max-width: none;
-    flex-basis: 100%;
-  }
-  .v-plans {
-    grid-template-columns: 1fr;
-  }
-  .v-plan {
-    aspect-ratio: auto;
+/* 低于桌面最小宽度后才降级，正常桌面窗口始终保持三列设置与单行线路。 */
+@media (max-width: 600px) {
+  .v-line-head {
+    display: none;
   }
   .v-line {
-    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .v-line [data-slot="field-label"] {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    white-space: normal;
   }
   .v-line > div:nth-child(4) {
     grid-column: 2;
@@ -593,24 +634,7 @@
     margin-top: 0;
     justify-self: end;
   }
-  .v-wide-dialog {
-    max-width: calc(100vw - 24px) !important;
-    padding: 18px !important;
-  }
-  .v-run-settings {
-    grid-template-columns: 1fr !important;
-  }
-  .v-editor-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .v-editor-footer > .v-actions {
-    justify-content: flex-end;
-  }
-  .v-report-drawer {
-    padding: 20px !important;
-  }
-  .v-table {
-    min-width: 900px;
-  }
+  .v-run-settings { grid-template-columns: 1fr; }
+  .v-editor-footer { grid-template-columns: 1fr; }
+  .v-editor-footer > .v-actions { justify-content: flex-end; }
 }

@@ -9,9 +9,10 @@
     EyeOff,
     FileJson,
     Pencil,
+    Server,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
+  import * as Field from "$lib/components/ui/field";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as InputGroup from "$lib/components/ui/input-group";
   import { VelaService, type GatewaySettings } from "$lib/generated/mygo";
@@ -180,114 +181,65 @@
 
 <div class="grid gap-5">
   <section class="settings-card" aria-labelledby="access-title">
-    <div class="settings-heading">
-      <div>
-        <h2 id="access-title">网关接入</h2>
-        <p>复制地址与密钥到你的工具。</p>
-      </div>
-      <span class="tag">仅 127.0.0.1</span>
-    </div>
-    <div class="px-6">
-      <form class="border-t py-5" novalidate onsubmit={savePort}>
-        <div class="grid items-end gap-6 sm:grid-cols-[1fr_minmax(140px,240px)]">
-          <div class="grid gap-1.5 text-xs">
-            <span class="text-muted-foreground">监听地址</span>
-            <code class="text-[13px]">127.0.0.1</code>
-          </div>
-          <label class="grid gap-1.5 text-xs"
-            >监听端口<Input
-              aria-label="监听端口"
-              type="number"
-              min="1024"
-              max="65535"
-              step="1"
-              required
-              disabled={!desktop || portBusy}
-              bind:value={port}
-            /></label
-          >
-        </div>
-        {#if portError}<p class="mt-3 text-xs text-destructive" role="alert">
-            {portError}
-          </p>{/if}
-        <div class="mt-3 flex justify-end gap-2">
-          {#if portChanged}<Button variant="outline" size="sm" onclick={cancelPort}
-              >取消</Button
-            >{/if}
-          <Button type="submit" size="sm" disabled={!desktop || !portChanged || portBusy}
-            >保存设置</Button
-          >
-        </div>
-      </form>
-      <div class="access-field">
-        <span id="gateway-address-label">本机接入地址</span>
-        <div class="access-value" aria-labelledby="gateway-address-label">
-          <code>{endpoint}</code>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="复制网关地址"
-            title={copied === "address" ? "已复制" : "复制网关地址"}
-            disabled={!desktop}
-            onclick={() => void copy("address")}
-            >{#if copied === "address"}<Check />{:else}<Copy />{/if}</Button
-          >
-        </div>
-      </div>
-      <div class="access-field">
-        <span id="gateway-key-label">访问密钥</span>
+    <div class="flex items-center justify-between gap-6 border-b px-6 py-5">
+      <div class="flex items-center gap-3">
+        <span class="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-primary"><Server class="size-5" aria-hidden="true" /></span>
         <div>
-          <div class="access-value" aria-labelledby="gateway-key-label">
-            <code
-              >{keyError && keySet === null
-                ? "读取失败"
-                : keySet === null
-                  ? "正在读取…"
-                  : !keySet
-                    ? "尚未设置"
-                    : revealed || "••••••••••••••••"}</code
-            >
-            {#if keySet}
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={revealed ? "隐藏访问密钥" : "显示访问密钥"}
-                aria-pressed={!!revealed}
-                onclick={() => void toggleReveal()}
-                >{#if revealed}<EyeOff />{:else}<Eye />{/if}</Button
-              >
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="复制访问密钥"
-                title={copied === "key" ? "已复制" : "复制访问密钥"}
-                onclick={() => void copy("key")}
-                >{#if copied === "key"}<Check />{:else}<Copy />{/if}</Button
-              >
-            {/if}
-            <Button
-              variant="outline"
-              size="sm"
-              class="ml-1"
-              disabled={!desktop || keySet === null}
-              onclick={openEditor}><Pencil />{keySet ? "修改" : "设置密钥"}</Button
-            >
+          <h2 id="access-title" class="text-[15px] font-semibold">网关接入</h2>
+          <p class="mt-1 text-xs text-muted-foreground">配置本机连接，将接入地址与密钥填入你的工具</p>
+        </div>
+      </div>
+      <span class="tag">仅限本机</span>
+    </div>
+    <Field.Group class="gap-5 px-6 py-5">
+      <Field.Field class="grid items-start gap-3 @[600px]:grid-cols-[112px_minmax(0,1fr)]">
+        <Field.Label for="gateway-port" class="@[600px]:pt-2">监听地址</Field.Label>
+        <form class="min-w-0" novalidate onsubmit={savePort}>
+          <div class="flex flex-wrap items-center gap-2">
+            <InputGroup.Root class="w-64 max-w-full">
+              <InputGroup.Addon><InputGroup.Text>127.0.0.1 :</InputGroup.Text></InputGroup.Addon>
+              <InputGroup.Input id="gateway-port" aria-label="监听端口" type="number" min="1024" max="65535" step="1" required disabled={!desktop || portBusy} bind:value={port} />
+            </InputGroup.Root>
+            {#if portChanged}<Button variant="outline" size="sm" disabled={portBusy} onclick={cancelPort}>取消</Button>{/if}
+            <Button type="submit" size="sm" disabled={!desktop || !portChanged || portBusy}>{portBusy ? "正在保存…" : "保存端口"}</Button>
+          </div>
+          {#if portError}<p class="mt-2 text-xs text-destructive" role="alert">{portError}</p>{/if}
+        </form>
+      </Field.Field>
+      <Field.Field class="grid items-start gap-3 @[600px]:grid-cols-[112px_minmax(0,1fr)]">
+        <Field.Label for="gateway-endpoint" class="@[600px]:pt-2">接入地址</Field.Label>
+        <div class="min-w-0">
+          <InputGroup.Root>
+            <InputGroup.Input id="gateway-endpoint" value={endpoint} readonly aria-label="本机接入地址" />
+            <InputGroup.Addon align="inline-end"><InputGroup.Button size="icon-xs" aria-label="复制网关地址" title={copied === "address" ? "已复制" : "复制网关地址"} disabled={!desktop} onclick={() => void copy("address")}>{#if copied === "address"}<Check />{:else}<Copy />{/if}</InputGroup.Button></InputGroup.Addon>
+          </InputGroup.Root>
+        </div>
+      </Field.Field>
+      <Field.Field class="grid items-start gap-3 @[600px]:grid-cols-[112px_minmax(0,1fr)]">
+        <Field.Label for="gateway-access-key" class="@[600px]:pt-2">访问密钥</Field.Label>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <InputGroup.Root class="min-w-0 flex-1">
+              <InputGroup.Input id="gateway-access-key" readonly aria-label="访问密钥" value={keyError && keySet === null ? "读取失败" : keySet === null ? "正在读取…" : !keySet ? "尚未设置" : revealed || "••••••••••••••••"} />
+              {#if keySet}
+                <InputGroup.Addon align="inline-end">
+                  <InputGroup.Button size="icon-xs" aria-label={revealed ? "隐藏访问密钥" : "显示访问密钥"} aria-pressed={!!revealed} onclick={() => void toggleReveal()}>{#if revealed}<EyeOff />{:else}<Eye />{/if}</InputGroup.Button>
+                  <InputGroup.Button size="icon-xs" aria-label="复制访问密钥" title={copied === "key" ? "已复制" : "复制访问密钥"} onclick={() => void copy("key")}>{#if copied === "key"}<Check />{:else}<Copy />{/if}</InputGroup.Button>
+                </InputGroup.Addon>
+              {/if}
+            </InputGroup.Root>
+            <Button variant="outline" size="sm" disabled={!desktop || keySet === null} onclick={openEditor}><Pencil />{keySet ? "修改密钥" : "设置密钥"}</Button>
           </div>
           {#if keyError}
             <p class="mt-2 text-xs text-destructive" role="alert">{keyError}</p>
-            {#if keySet === null}<Button
-                variant="link"
-                size="xs"
-                class="px-0"
-                disabled={keyBusy}
-                onclick={() => void loadKey()}>重新读取</Button
-              >{/if}
+            {#if keySet === null}<Button variant="link" size="xs" class="px-0" disabled={keyBusy} onclick={() => void loadKey()}>重新读取</Button>{/if}
           {/if}
         </div>
-      </div>
-      <p class="border-t py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-        密钥仅在本机加密保存，不上传给开发者，不写入普通配置、日志或默认导出文件。网关尚未接入，端口与密钥在网关上线后用于监听和鉴权。
-      </p>
+      </Field.Field>
+    </Field.Group>
+    <div class="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-4 text-xs text-muted-foreground">
+      <p>仅接受本机连接，访问密钥在本机加密保存</p>
+      <p>网关尚未接入，当前仅保存配置</p>
     </div>
   </section>
 

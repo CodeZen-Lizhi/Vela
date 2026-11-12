@@ -122,6 +122,15 @@
   min-height: 100vh;
   background: var(--muted);
 }
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+.sidebar-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+  color: var(--muted-foreground);
+}
 .sidebar {
   position: sticky;
   top: 0;
@@ -149,6 +158,28 @@
 .nav-item.active {
   color: var(--primary);
   background: var(--accent);
+}
+.nav-item:not(:disabled):not(.active):hover {
+  color: var(--foreground);
+  background: var(--secondary);
+}
+.nav-item svg {
+  flex-shrink: 0;
+}
+.sidebar-collapsed .sidebar {
+  padding-inline: 6px;
+}
+.sidebar-collapsed .sidebar-controls,
+.sidebar-collapsed .nav-item {
+  justify-content: center;
+}
+.sidebar-collapsed .nav-item {
+  padding-inline: 12px;
+}
+.sidebar-collapsed .sidebar-brand,
+.sidebar-collapsed .sidebar > p,
+.sidebar-collapsed .nav-item span {
+  display: none;
 }
 .nav-item:disabled {
   opacity: 0.55;
@@ -215,11 +246,11 @@
   overflow-y: auto;
   padding-right: 4px;
 }
-/* 弹窗内的滚动区保留滚轮、触控板和键盘滚动，不绘制滚动条。 */
-.scroll-quiet {
+/* 所有页面、弹窗和嵌套滚动区均隐藏滚动条，保留滚轮、触控板及键盘滚动。 */
+* {
   scrollbar-width: none;
 }
-.scroll-quiet::-webkit-scrollbar {
+*::-webkit-scrollbar {
   display: none;
 }
 /* shadcn 控件由自身样式绘制焦点环，原生控件才使用此兜底。 */
@@ -230,39 +261,6 @@ input:not([data-slot]):focus-visible {
   outline-offset: 2px;
 }
 @media (max-width: 760px) {
-  .app-shell {
-    grid-template-columns: 64px minmax(0, 1fr);
-  }
-  .sidebar {
-    padding: calc(var(--mygo-titlebar-height, 0px) + 20px) 6px;
-  }
-  .sidebar-brand > div,
-  .sidebar > p,
-  .nav-item span {
-    display: none;
-  }
-  .sidebar-brand {
-    padding: 0 !important;
-    justify-content: center;
-  }
-  /* 窄侧栏放不下分类文字，子分类改为贴着侧栏的浮层。 */
-  .settings-subnav {
-    position: fixed;
-    left: 70px;
-    bottom: 14px;
-    z-index: 8;
-    width: 146px;
-    margin: 0;
-    padding: 7px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--card);
-    box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
-  }
-  .nav-item {
-    justify-content: center;
-    padding: 12px;
-  }
   .rate-row {
     grid-template-columns: 1fr;
   }
@@ -590,7 +588,7 @@ input:not([data-slot]):focus-visible {
   color: var(--foreground);
   font-weight: 600;
 }
-/* 矮窗口下仅在展开设置分类时收紧侧栏间距，保证六个分类无需滚动即可到达；其他页面的侧栏不变。 */
+/* 矮窗口下仅在展开设置分类时收紧侧栏间距，超出高度时仍可滚动到达；其他页面的侧栏不变。 */
 @media (max-height: 720px) {
   .sidebar:has(.settings-subnav) {
     padding-top: calc(var(--mygo-titlebar-height, 0px) + 14px);
@@ -684,31 +682,6 @@ input:not([data-slot]):focus-visible {
   font-size: 11px;
   line-height: 1.6;
 }
-.segmented {
-  display: flex;
-  gap: 3px;
-  padding: 3px;
-  border-radius: 8px;
-  background: var(--secondary);
-}
-.segmented button {
-  min-height: 29px;
-  padding: 3px 16px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  cursor: pointer;
-}
-.segmented button.chosen {
-  border-color: var(--border);
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
-}
-.segmented button:disabled {
-  cursor: default;
-}
 .settings-note {
   margin: 12px 4px 0;
   color: var(--muted-foreground);
@@ -720,28 +693,6 @@ input:not([data-slot]):focus-visible {
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.7;
-}
-.access-field {
-  display: grid;
-  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
-  align-items: center;
-  gap: 24px;
-  padding: 20px 0;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-.access-value {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.access-value code {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  user-select: all;
 }
 .attention-row {
   display: grid;
@@ -783,10 +734,6 @@ input:not([data-slot]):focus-visible {
   }
   .setting-row {
     gap: 12px;
-  }
-  .access-field {
-    grid-template-columns: 1fr;
-    gap: 10px;
   }
   .attention-row {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -841,3 +788,10 @@ input:not([data-slot]):focus-visible {
     --trait-accent: #e8a878;
   }
 }
+
+/* 全局表格规则：文字与组合信息左对齐，纯数值右对齐，开关及操作居中；表头与单元格使用相同标记。 */
+table :is(th, td) { text-align:left; vertical-align:middle; }
+table :is(th, td)[data-align="number"] { text-align:right; font-variant-numeric:tabular-nums; }
+table :is(th, td)[data-align="control"] { text-align:center; }
+table :is(th, td)[data-align="control"] > div { justify-content:center; }
+table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:flex-end; }

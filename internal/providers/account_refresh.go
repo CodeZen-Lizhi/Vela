@@ -43,7 +43,19 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 		balance, queryErr = h.balance(qctx, balance, account.Checkin)
 	}
 	if queryErr != nil {
-		balance.Status = failedStatus(balance.Status, queryErr)
+		if isSilentRefresh(ctx) {
+			balance = account.Balance
+		} else {
+			balance.Status = failedStatus(balance.Status, queryErr)
+		}
+	}
+	if isSilentRefresh(ctx) {
+		if balance.Checkin.State == "failed" {
+			balance.Checkin = account.Balance.Checkin
+		}
+		if balance.SubscriptionStatus.State == "failed" {
+			balance.SubscriptionStatus = account.Balance.SubscriptionStatus
+		}
 	}
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
@@ -221,7 +233,7 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 			e = errors.New("所选上游名称字段缺失或不支持")
 		}
 		if e != nil {
-			q.NameStatus = failedStatus(q.NameStatus, e)
+			q.NameStatus = refreshFailure(ctx, q.NameStatus, e)
 		} else {
 			kd.Name = name
 			q.NameStatus = successStatus()
@@ -236,7 +248,7 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 			e = errors.New("上游倍率字段缺失或不是有限非负数值")
 		}
 		if e != nil {
-			q.MultiplierStatus = failedStatus(q.MultiplierStatus, e)
+			q.MultiplierStatus = refreshFailure(ctx, q.MultiplierStatus, e)
 		} else {
 			kd.Multiplier = info.rate
 			q.MultiplierStatus = successStatus()

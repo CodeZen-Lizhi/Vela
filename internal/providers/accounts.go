@@ -7,11 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // accountSchema 在既有供应商数据库中新增从属表；secret 为绑定行身份的完整连接密文，document 只含来源与结果。
@@ -458,6 +456,11 @@ func (a *Accounts) RefreshProviderKey(ctx context.Context, id string) (ProviderK
 
 // RefreshProviderAccounts 查询已配置账户和上游来源 Key；空 ID 遍历全部供应商，包括停用项；跳过批次执行期间已删除的对象。
 func (a *Accounts) RefreshProviderAccounts(ctx context.Context, id string) (ProviderAccountRefresh, error) {
+	return a.refreshAccounts(ctx, id, true, true)
+}
+
+// refreshAccounts 按查询范围处理对象；静默后台批次单项失败继续，主动调用仍反馈错误。
+func (a *Accounts) refreshAccounts(ctx context.Context, id string, balance, keyInfo bool) (ProviderAccountRefresh, error) {
 	if err := a.beginQuery(ctx); err != nil {
 		return ProviderAccountRefresh{}, err
 	}
@@ -488,27 +491,37 @@ func (a *Accounts) RefreshProviderAccounts(ctx context.Context, id string) (Prov
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		if err := a.refreshBalance(ctx, pid); err != nil {
-			if accountObjectMissing(err) {
+		if balance {
+			if err := a.refreshBalance(ctx, pid); err != nil {
+				if !accountObjectMissing(err) && !isSilentRefresh(ctx) {
+					return result, err
+				}
+				if accountObjectMissing(err) {
+					continue
+				}
+			}
+		}
+		keys, err := a.store.keyRows(ctx, pid)
+		if err != nil {
+			if isSilentRefresh(ctx) {
 				continue
 			}
 			return result, err
 		}
-		keys, err := a.store.keyRows(ctx, pid)
-		if err != nil {
-			return result, err
-		}
 		providerKeys := []ProviderKeyQuery{}
 		for _, key := range keys {
+			if !keyInfo {
+				break
+			}
 			if err = a.refreshKey(ctx, key.id); err != nil {
-				if accountObjectMissing(err) {
+				if accountObjectMissing(err) || isSilentRefresh(ctx) {
 					continue
 				}
 				return result, err
 			}
 			q, err := a.ProviderKeyQuery(ctx, key.id)
 			if err != nil {
-				if accountObjectMissing(err) {
+				if accountObjectMissing(err) || isSilentRefresh(ctx) {
 					continue
 				}
 				return result, err
@@ -518,7 +531,7 @@ func (a *Accounts) RefreshProviderAccounts(ctx context.Context, id string) (Prov
 		// Key 网络请求期间供应商也可能被删除，确认主体仍在才交付整组结果。
 		account, err := a.ProviderAccount(ctx, pid)
 		if err != nil {
-			if accountObjectMissing(err) {
+			if accountObjectMissing(err) || isSilentRefresh(ctx) {
 				continue
 			}
 			return result, err
@@ -532,62 +545,4 @@ func (a *Accounts) RefreshProviderAccounts(ctx context.Context, id string) (Prov
 // accountObjectMissing 识别批次快照在正常删除后失效的错误；不把数据库或凭据故障当成删除。
 func accountObjectMissing(err error) bool {
 	return errors.Is(err, errKeyMissing) || errors.Is(err, errProviderMissing) || errors.Is(err, sql.ErrNoRows)
-}
-
-// Run 在应用运行期间按已保存分钟间隔查询，每秒重读设置；单次故障记录后继续，ctx 退出释放计时器。
-func (a *Accounts) Run(ctx context.Context, readSettings func(context.Context) (bool, int, error)) error {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	return a.run(ctx, readSettings, ticker.C)
-}
-
-// run 由时钟通道驱动真实定时刷新，测试可推进时间而不改变查询和持久化路径。
-// 设置读取失败或间隔非法时暂停本次调度；查询失败后仍等待下一周期，只有父 ctx 取消才终止。
-func (a *Accounts) run(ctx context.Context, readSettings func(context.Context) (bool, int, error), ticks <-chan time.Time) error {
-	var next time.Time
-	previous := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case now, ok := <-ticks:
-			if !ok {
-				return nil
-			}
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			enabled, minutes, err := readSettings(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				// 外部回调错误不写入日志，避免其中夹带配置或认证材料。
-				log.Print("读取账户刷新设置失败，稍后重试")
-				continue
-			}
-			if minutes < 1 {
-				log.Print("账户刷新间隔无效，需至少 1 分钟；稍后重读设置")
-				continue
-			}
-			if !enabled {
-				next = time.Time{}
-				continue
-			}
-			if next.IsZero() || previous != minutes {
-				previous = minutes
-				next = now.Add(time.Duration(minutes) * time.Minute)
-			}
-			if now.Before(next) {
-				continue
-			}
-			next = now.Add(time.Duration(minutes) * time.Minute)
-			if _, err = a.RefreshProviderAccounts(ctx, ""); err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				log.Print("账户定时刷新本轮失败，将在下一周期重试")
-			}
-		}
-	}
 }

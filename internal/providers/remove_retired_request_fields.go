@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 )
 
-// removeTransportFailover 在初始化事务中移除旧请求策略开关，兼容明文及整文档加密。
-// 只清理 request.transportFailover，保留其他已知/未知字段；失败全部回滚，不改变备注迁移。
-func (s *Store) removeTransportFailover(ctx context.Context) error {
+// removeRetiredRequestFields 在初始化事务中移除已取消的请求策略字段，兼容明文及整文档加密。
+// 清理历史转移限制与传输失败开关，兼容明文和密文；保留其他字段，失败全部回滚。
+func (s *Store) removeRetiredRequestFields(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -33,10 +33,16 @@ func (s *Store) removeTransportFailover(ctx context.Context) error {
 		if err = json.Unmarshal(document["request"], &request); err != nil {
 			break
 		}
-		if _, exists := request["transportFailover"]; !exists {
+		changed := false
+		for _, field := range []string{"transportFailover", "maxTransfers", "maxTransferSeconds"} {
+			if _, exists := request[field]; exists {
+				delete(request, field)
+				changed = true
+			}
+		}
+		if !changed {
 			continue
 		}
-		delete(request, "transportFailover")
 		document["request"], err = json.Marshal(request)
 		if err != nil {
 			break

@@ -9,7 +9,7 @@ import (
 
 // GeneralSettings 是常规设置：外观、关闭窗口后的行为、后台入口与页面刷新间隔。
 type GeneralSettings struct {
-	// Appearance 界面外观，取 light 或 dark。
+	// Appearance 界面外观：light 浅色、dark 深色、system 跟随系统。
 	Appearance string `json:"appearance"`
 	// CloseAction 关闭主窗口后的行为：background 继续运行，quit 退出应用。
 	CloseAction string `json:"closeAction"`
@@ -17,7 +17,7 @@ type GeneralSettings struct {
 	BackgroundEntry string `json:"backgroundEntry"`
 	// DashboardSeconds 总览刷新间隔，单位秒。
 	DashboardSeconds int `json:"dashboardSeconds"`
-	// ProviderSeconds 供应商列表刷新间隔，单位秒。
+	// ProviderSeconds 供应商列表本地状态重读间隔，单位秒，不触发上游查询。
 	ProviderSeconds int `json:"providerSeconds"`
 }
 
@@ -27,12 +27,18 @@ type GatewaySettings struct {
 	Port int `json:"port"`
 }
 
-// AccountRefresh 是所有供应商账户共用的定时刷新设置。
+// AccountRefresh 分别控制余额、Key 信息定时查询，以及启动和窗口恢复查询。
 type AccountRefresh struct {
-	// Enabled 是否定时刷新账户信息，默认关闭。
+	// Enabled 是否定时刷新余额，沿用旧字段，默认关闭。
 	Enabled bool `json:"enabled"`
-	// Minutes 刷新间隔，单位分钟，至少为 1。
+	// Minutes 余额刷新间隔，单位分钟，至少为 1。
 	Minutes int `json:"minutes"`
+	// KeyEnabled 是否定时刷新上游 Key 信息，默认关闭。
+	KeyEnabled bool `json:"keyEnabled"`
+	// KeyMinutes Key 信息刷新间隔，单位分钟，至少为 1。
+	KeyMinutes int `json:"keyMinutes"`
+	// OnVisible 是否在启动及隐藏/最小化恢复后刷新，默认关闭。
+	OnVisible bool `json:"onVisible"`
 }
 
 // AttentionSettings 是总览提醒的展示偏好，只控制展示，不启动采集或验证任务。
@@ -57,8 +63,8 @@ func DefaultGeneral() GeneralSettings {
 // DefaultGateway 返回默认监听端口。
 func DefaultGateway() GatewaySettings { return GatewaySettings{Port: 18080} }
 
-// DefaultAccountRefresh 返回默认关闭、间隔 5 分钟的账户刷新设置。
-func DefaultAccountRefresh() AccountRefresh { return AccountRefresh{Enabled: false, Minutes: 5} }
+// DefaultAccountRefresh 返回三个开关均关闭、余额 5 分钟与 Key 信息 30 分钟的默认设置。
+func DefaultAccountRefresh() AccountRefresh { return AccountRefresh{Minutes: 5, KeyMinutes: 30} }
 
 // DefaultAttention 返回四项提醒全部开启、余额阈值 10 美元的默认偏好。
 func DefaultAttention() AttentionSettings {
@@ -67,8 +73,8 @@ func DefaultAttention() AttentionSettings {
 
 // Validate 只接受界面提供的取值，拒绝后保留原设置。
 func (g GeneralSettings) Validate() error {
-	if g.Appearance != "light" && g.Appearance != "dark" {
-		return errors.New("外观只能是浅色或深色")
+	if g.Appearance != "light" && g.Appearance != "dark" && g.Appearance != "system" {
+		return errors.New("外观只能是浅色、深色或跟随系统")
 	}
 	if g.CloseAction != "background" && g.CloseAction != "quit" {
 		return errors.New("请选择关闭窗口后继续运行或退出应用")
@@ -95,7 +101,7 @@ func (g GatewaySettings) Validate() error {
 
 // Validate 要求间隔至少 1 分钟；关闭时仍保留间隔。
 func (a AccountRefresh) Validate() error {
-	if a.Minutes < 1 {
+	if a.Minutes < 1 || a.KeyMinutes < 1 {
 		return errors.New("请输入至少 1 分钟的整数刷新间隔")
 	}
 	return nil

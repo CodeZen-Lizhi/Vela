@@ -20,12 +20,33 @@ export interface AccountBalance {
   checkin: QueryStatus;
 }
 
-/** AccountRefresh 是所有供应商账户共用的定时刷新设置。 */
+/** AccountRefresh 分别控制余额、Key 信息定时查询，以及启动和窗口恢复查询。 */
 export interface AccountRefresh {
-  /** Enabled 是否定时刷新账户信息，默认关闭。 */
+  /** Enabled 是否定时刷新余额，沿用旧字段，默认关闭。 */
   enabled: boolean;
-  /** Minutes 刷新间隔，单位分钟，至少为 1。 */
+  /** Minutes 余额刷新间隔，单位分钟，至少为 1。 */
   minutes: number;
+  /** KeyEnabled 是否定时刷新上游 Key 信息，默认关闭。 */
+  keyEnabled: boolean;
+  /** KeyMinutes Key 信息刷新间隔，单位分钟，至少为 1。 */
+  keyMinutes: number;
+  /** OnVisible 是否在启动及隐藏/最小化恢复后刷新，默认关闭。 */
+  onVisible: boolean;
+}
+
+/** Attempt 保存一次固定映射与 Key 组合的执行摘要，不保存明文认证。 */
+export interface Attempt {
+  /** KeyID、KeyName、RequestModel 是实际尝试身份。 */
+  keyId: string;
+  keyName: string;
+  requestModel: string;
+  /** State 取 success、failed、unused 或 cancelled；未使用组合不发请求。 */
+  state: string;
+  /** Status 是 HTTP 状态，未收到响应头时为零；DurationMillis 为本次耗时毫秒。 */
+  status: number;
+  durationMillis: number;
+  /** Error 为脱敏后的失败说明，成功或未使用时为空。 */
+  error: string;
 }
 
 /** AttentionSettings 是总览提醒的展示偏好，只控制展示，不启动采集或验证任务。 */
@@ -106,7 +127,7 @@ export interface GatewaySettings {
 
 /** GeneralSettings 是常规设置：外观、关闭窗口后的行为、后台入口与页面刷新间隔。 */
 export interface GeneralSettings {
-  /** Appearance 界面外观，取 light 或 dark。 */
+  /** Appearance 界面外观：light 浅色、dark 深色、system 跟随系统。 */
   appearance: string;
   /** CloseAction 关闭主窗口后的行为：background 继续运行，quit 退出应用。 */
   closeAction: string;
@@ -114,7 +135,7 @@ export interface GeneralSettings {
   backgroundEntry: string;
   /** DashboardSeconds 总览刷新间隔，单位秒。 */
   dashboardSeconds: number;
-  /** ProviderSeconds 供应商列表刷新间隔，单位秒。 */
+  /** ProviderSeconds 供应商列表本地状态重读间隔，单位秒，不触发上游查询。 */
   providerSeconds: number;
 }
 
@@ -130,6 +151,13 @@ export interface ImagePrice {
   maxPixels: number;
   /** Price 非负美元单价，零明确表示免费。 */
   price: number;
+}
+
+/** KeyOption 是经过模型权限和密钥存在性筛选的诊断 Key，不含认证信息。 */
+export interface KeyOption {
+  /** Value 是 Key 稳定身份；Label 为名称，停用对象可主动诊断。 */
+  value: string;
+  label: string;
 }
 
 /** Mode 表示 fast 或 priority 模式；倍率与显式价格二选一。 */
@@ -182,6 +210,17 @@ export interface Model {
   sourcePricing: Pricing;
   /** Overrides 受到本地修改保护的价格规则组。 */
   overrides: string[];
+}
+
+/** Options 是前端预选测试配置所需的当前配置快照。 */
+export interface Options {
+  /** ModelName、Kind 来自统一模型；不从展示名称推测模型类型。 */
+  modelName: string;
+  kind: string;
+  /** Keys 仅列有权使用该统一模型且已设置密钥的当前供应商 Key。 */
+  keys: KeyOption[];
+  /** Mappings 是按优先级排列的已配置请求名；无映射时为默认模型名。 */
+  mappings: string[];
 }
 
 /** PreferredKey 是供应商列表展示的首选 Key：已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的。 */
@@ -405,17 +444,12 @@ export interface ProviderModel {
   mappings: ProviderModelMapping[];
 }
 
-/** ProviderModelGrant 是新增关联时对指定权限 Key 的授权选择。 */
-export type ProviderModelGrant = "none" | "selected" | "enabled";
-
-/** ProviderModelMapping 是模型级请求名及操作范围，不含 Key 覆盖、API 格式或端点范围。 */
+/** ProviderModelMapping 是模型级请求名及优先级，不含 Key 覆盖或 API 格式。 */
 export interface ProviderModelMapping {
   /** RequestName 去首尾空白的上游请求名，同模型内必须唯一。 */
   requestName: string;
   /** Priority 正整数，越小越优先；传零时按列表位置生成 1..N，保留旧版同级排序兼容。 */
   priority: number;
-  /** Operations 请求操作标识，去空白、小写且去重；空数组适用于全部操作。 */
-  operations: string[];
 }
 
 /** ProviderModelMappingsDraft 是工作台中一个模型的完整映射草稿。 */
@@ -434,14 +468,10 @@ export interface ProviderModelPermissions {
   modelIds: string[];
 }
 
-/** ProviderModelsDraft 原子替换供应商的完整关联集合；保留项的启停、映射及权限不变。 */
+/** ProviderModelsDraft 原子替换供应商的完整关联集合；保留项的启停、映射及权限不变，不为新增关联配置 Key 权限。 */
 export interface ProviderModelsDraft {
   /** ModelIDs 完整目标关联集合，使用统一模型的本地稳定身份。 */
   modelIds: string[];
-  /** GrantMode 仅决定新增关联的权限；空值等价 none。 */
-  grantMode: ProviderModelGrant;
-  /** KeyIDs selected 模式下接收新增模型的 Key，必须全部属于当前供应商。 */
-  keyIds: string[];
 }
 
 /** ProviderOverview 是供应商列表的一行：配置加上由 Key 汇总出的展示信息。 */
@@ -525,6 +555,25 @@ export interface Rate {
   unit: string;
 }
 
+/** Request 是一次主动诊断配置；ID 由页面生成，用于取消本次请求。 */
+export interface Request {
+  /** ID 是本次测试唯一标识，重复运行须重新生成。 */
+  id: string;
+  /** ProviderID、ModelID 固定供应商与已关联统一模型稳定身份。 */
+  providerId: string;
+  modelId: string;
+  /** KeyID、RequestModel 为空时按映射优先级及 Key 顺序自动尝试。 */
+  keyId: string;
+  requestModel: string;
+  /** Protocol 取 chat、responses、anthropic、gemini、image、embedding、rerank 或 video。 */
+  protocol: string;
+  /** Message 是默认请求使用的输入；RequestBody 非空时使用 JSON 对象覆盖默认正文。 */
+  message: string;
+  requestBody: string;
+  /** RequestHeaders 为本次自定义 JSON 请求头，不允许覆盖认证、Host 与 Cookie。 */
+  requestHeaders: string;
+}
+
 /** RequestPolicy 是供应商的请求配置。本模块只负责保存与校验，执行语义由网关与调度实现。 */
 export interface RequestPolicy {
   /** Attempts 总尝试次数（含首次），1～99；0 表示使用默认值。 */
@@ -535,14 +584,37 @@ export interface RequestPolicy {
   firstByteSeconds: number;
   /** RequestSeconds 非流式请求超时，单位秒，1～1200；0 表示使用默认值。 */
   requestSeconds: number;
-  /** MaxTransfers 最大转移次数；0 表示不限制。 */
-  maxTransfers: number;
-  /** MaxTransferSeconds 最大转移超时，单位秒；0 表示不限制。 */
-  maxTransferSeconds: number;
   /** Proxy 供应商的出口选择。 */
   proxy: ProxyChoice;
   /** ResponsesWebSocket 是否启用 Responses WebSocket 模式。 */
   responsesWebSocket: boolean;
+}
+
+/** Result 是一次诊断最终结果及脱敏快照，持久化最近一次已完成结果。 */
+export interface Result {
+  /** ID、ProviderID、ModelID 固定本次诊断身份。 */
+  id: string;
+  providerId: string;
+  modelId: string;
+  /** Protocol 为本次实际选择的协议；State 取 success、failed 或 cancelled。 */
+  protocol: string;
+  state: string;
+  /** CompletedAt 是 RFC3339Nano 时间；DurationMillis、FirstByteMillis 为真实总耗时与首响应耗时。 */
+  completedAt: string;
+  durationMillis: number;
+  firstByteMillis: number;
+  /** Status 为最后尝试 HTTP 状态；Error 为最终失败原因。 */
+  status: number;
+  error: string;
+  /** RequestModel、KeyName 为最终实际尝试的目标身份。 */
+  requestModel: string;
+  keyName: string;
+  /** RequestBody、RequestHeaders、ResponseBody 是截断并脱敏的诊断快照。 */
+  requestBody: string;
+  requestHeaders: string;
+  responseBody: string;
+  /** Attempts 保留实际顺序及首个成功后未使用的组合。 */
+  attempts: Attempt[];
 }
 
 /** RuntimeInfo 是前端可读取的运行信息投影。 */
@@ -739,6 +811,10 @@ export const VelaService = {
   addModel(providerID: string, modelID: string): Promise<Model> {
     return call("VelaService.AddModel", providerID, modelID);
   },
+  /** CancelProviderModelTest 取消指定请求及后续候选，已发出的上游消耗不可撤回。 */
+  cancelProviderModelTest(id: string): Promise<void> {
+    return call("VelaService.CancelProviderModelTest", id);
+  },
   /** CopyAccessKey 将访问密钥直接写入系统剪贴板，密钥不经过页面。 */
   copyAccessKey(): Promise<void> {
     return call("VelaService.CopyAccessKey");
@@ -807,6 +883,14 @@ export const VelaService = {
   providerKeys(providerID: string): Promise<ProviderKey[]> {
     return call("VelaService.ProviderKeys", providerID);
   },
+  /** ProviderModelTestOptions 读取当前关联模型的诊断 Key 和按优先级排列的映射，不访问上游。 */
+  providerModelTestOptions(providerID: string, modelID: string): Promise<Options> {
+    return call("VelaService.ProviderModelTestOptions", providerID, modelID);
+  },
+  /** ProviderModelTestResults 重读当前供应商每个已关联模型的最近真实诊断结果。 */
+  providerModelTestResults(providerID: string): Promise<Result[]> {
+    return call("VelaService.ProviderModelTestResults", providerID);
+  },
   /** ProviderModels 读取供应商已关联模型及有序映射，不暴露价格和凭据。 */
   providerModels(providerID: string): Promise<ProviderModel[]> {
     return call("VelaService.ProviderModels", providerID);
@@ -826,6 +910,10 @@ export const VelaService = {
   /** RevealAccessKey 在用户主动查看时返回访问密钥。 */
   revealAccessKey(): Promise<string> {
     return call("VelaService.RevealAccessKey");
+  },
+  /** RunProviderModelTest 按用户选择执行真实联通诊断并保存脱敏结果，真实上游可能产生消耗。 */
+  runProviderModelTest(request: Request): Promise<Result> {
+    return call("VelaService.RunProviderModelTest", request);
   },
   /** RuntimeInfo 返回当前应用的基础运行信息。 */
   runtimeInfo(): Promise<RuntimeInfo> {
@@ -875,7 +963,7 @@ export const VelaService = {
   saveProviderModelMappings(providerID: string, drafts: ProviderModelMappingsDraft[]): Promise<void> {
     return call("VelaService.SaveProviderModelMappings", providerID, drafts);
   },
-  /** SaveProviderModels 一次替换供应商全部模型关联，并按草稿为新增模型授权。 */
+  /** SaveProviderModels 一次替换供应商全部模型关联；Key 权限由独立权限入口维护。 */
   saveProviderModels(providerID: string, draft: ProviderModelsDraft): Promise<void> {
     return call("VelaService.SaveProviderModels", providerID, draft);
   },
@@ -910,6 +998,10 @@ export const VelaService = {
   /** SetProviderKeyEnabled 启用或停用一把上游 Key。 */
   setProviderKeyEnabled(keyID: string, enabled: boolean): Promise<void> {
     return call("VelaService.SetProviderKeyEnabled", keyID, enabled);
+  },
+  /** SetProviderKeyMultiplier 仅修改当前 Key 的手动倍率；自动来源由后端拒绝写入。 */
+  setProviderKeyMultiplier(keyID: string, value: number): Promise<void> {
+    return call("VelaService.SetProviderKeyMultiplier", keyID, value);
   },
   /** SetProviderModelEnabled 即时启停一个供应商模型，保留映射及权限。 */
   setProviderModelEnabled(providerID: string, modelID: string, enabled: boolean): Promise<void> {

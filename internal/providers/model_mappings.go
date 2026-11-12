@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
 	"strings"
 )
 
-// normalizeModelMappings 校验请求名和优先级，按旧版归一化操作范围；保持列表顺序并独立复制输入。
+// normalizeModelMappings 校验请求名和优先级，保持列表顺序并独立复制输入。
 func normalizeModelMappings(input []ProviderModelMapping) ([]ProviderModelMapping, error) {
 	result := make([]ProviderModelMapping, 0, len(input))
 	names := map[string]bool{}
@@ -27,14 +26,6 @@ func normalizeModelMappings(input []ProviderModelMapping) ([]ProviderModelMappin
 		if item.Priority == 0 {
 			item.Priority = i + 1
 		}
-		operations := []string{}
-		for _, raw := range item.Operations {
-			op := strings.ToLower(strings.TrimSpace(raw))
-			if op != "" && !slices.Contains(operations, op) {
-				operations = append(operations, op)
-			}
-		}
-		item.Operations = operations
 		result = append(result, item)
 	}
 	return result, nil
@@ -91,32 +82,19 @@ func (s *Store) SaveMappings(ctx context.Context, providerID string, drafts []Pr
 	return tx.Commit()
 }
 
-// ResolveModelRequestName 只解析模型映射，不执行网关、Key 选路或启停准入；存在受限默认名且范围不符时返回不可用。
-// 排序沿用旧调度：优先级、带操作范围者、请求名；没有适用映射且默认名未受限时使用默认名。
-func ResolveModelRequestName(defaultName, operation string, mappings []ProviderModelMapping) (string, bool) {
-	operation = strings.ToLower(strings.TrimSpace(operation))
+// ResolveModelRequestName 按优先级、请求名选择映射；无配置时使用默认名，不执行选路或启停准入。
+// 历史同优先级映射仍按请求名排序，不重写其存储顺序。
+func ResolveModelRequestName(defaultName string, mappings []ProviderModelMapping) string {
 	var selected *ProviderModelMapping
-	defaultAvailable := true
 	for i := range mappings {
 		item := &mappings[i]
-		matches := len(item.Operations) == 0 || slices.Contains(item.Operations, operation)
-		if item.RequestName == defaultName {
-			defaultAvailable = matches
-		}
-		if !matches {
-			continue
-		}
 		if selected == nil || item.Priority < selected.Priority ||
-			(item.Priority == selected.Priority && len(item.Operations) > 0 && len(selected.Operations) == 0) ||
-			(item.Priority == selected.Priority && (len(item.Operations) > 0) == (len(selected.Operations) > 0) && item.RequestName < selected.RequestName) {
+			(item.Priority == selected.Priority && item.RequestName < selected.RequestName) {
 			selected = item
 		}
 	}
 	if selected != nil {
-		return selected.RequestName, true
+		return selected.RequestName
 	}
-	if defaultAvailable {
-		return defaultName, true
-	}
-	return "", false
+	return defaultName
 }

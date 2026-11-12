@@ -291,14 +291,6 @@
       <h1>模型验证</h1>
       <p>按供应商、模型、Key 与思考强度追踪固定线路的覆盖和差异。</p>
     </div>
-    <Button
-      disabled={!desktop || !snapshot || !providers.length}
-      onclick={() => openPlan()}
-      ><Plus data-icon="inline-start" />{providerId &&
-      snapshot?.plans.some((plan) => plan.providerId === providerId)
-        ? "编辑当前计划"
-        : "创建检测计划"}</Button
-    >
   </header>
   {#if !desktop}<p class="feedback">
       浏览器预览 · 计划、检测及报告请在 Vela
@@ -325,7 +317,23 @@
         >
       </div>
       <div class="v-filters">
-        {#if tab === "results"}<InputGroup.Root class="v-search"
+        <Choice
+          bind:value={providerId}
+          label="验证供应商"
+          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
+        />
+        <Button
+          size="sm"
+          disabled={!desktop || !snapshot || !providers.length}
+          onclick={() => openPlan()}
+          ><Plus data-icon="inline-start" />{providerId &&
+          snapshot?.plans.some((plan) => plan.providerId === providerId)
+            ? "编辑当前计划"
+            : "创建检测计划"}</Button
+        >
+      </div>
+      {#if tab === "results"}<div class="v-result-filters">
+          <InputGroup.Root class="v-search"
             ><InputGroup.Input
               bind:value={query}
               aria-label="搜索验证结果"
@@ -341,12 +349,8 @@
                 label,
               })),
             ]}
-          />{/if}<Choice
-          bind:value={providerId}
-          label="验证供应商"
-          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
-        />
-      </div>
+          />
+        </div>{/if}
     </div>
     {#if running && snapshot}{@const progress = snapshot.progress}
       <div class="v-job" role="status">
@@ -381,7 +385,7 @@
       <Table.Root class="v-table"
         ><Table.Header
           ><Table.Row
-            >{#each ["供应商", "执行模型", "执行 Key", "结论", "候选置信度", "最近检测", "操作"] as title}<Table.Head
+            >{#each ["供应商", "执行模型", "执行 Key", "结论", "候选置信度", "最近检测", "操作"] as title}<Table.Head data-align={title==="操作"?"control":title==="候选置信度"?"number":undefined}
                 >{title}</Table.Head
               >{/each}</Table.Row
           ></Table.Header
@@ -418,7 +422,7 @@
                 >{#if report.state !== "complete"}<small
                     >{report.state === "cancelled" ? "已取消" : "执行失败"} · {report.reason}</small
                   >{/if}</Table.Cell
-              ><Table.Cell
+              ><Table.Cell data-align="number"
                 ><strong
                   >{probability(report.candidates[0]?.probability)}</strong
                 ><small
@@ -426,7 +430,7 @@
                     report.candidates[0]?.model ||
                     "无有效候选"} · 参考库内</small
                 ></Table.Cell
-              ><Table.Cell>{time(report.time)}</Table.Cell><Table.Cell
+              ><Table.Cell>{time(report.time)}</Table.Cell><Table.Cell data-align="control"
                 ><div class="v-actions">
                   <Button
                     variant="ghost"
@@ -485,7 +489,7 @@
               <div class="v-identity">
                 <span class="v-avatar">{name.slice(0, 1)}</span>
                 <div>
-                  <strong>{name}</strong><small
+                  <strong title={name}>{name}</strong><small
                     >{plan.enabled
                       ? `自动运行 · 每 ${plan.hours} 小时`
                       : "仅手动检测"}</small

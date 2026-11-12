@@ -313,13 +313,13 @@ func (m *Manager) credential(ctx context.Context, t VerificationTarget) (provide
 			modelName = model.ModelName
 		}
 	}
-	candidates, err := m.vendors.ExecutionCandidates(ctx, modelName, "chat")
+	candidates, err := m.vendors.ExecutionCandidates(ctx, modelName)
 	if err != nil {
 		return providers.ExecutionCandidate{}, "", err
 	}
 	for _, c := range candidates {
 		if c.Provider.ID == t.ProviderID && c.Key.ID == t.KeyID && c.Model == t.RequestModel && c.Provider.URL == t.URL {
-			secret, err := m.vendors.ExecutionSecret(ctx, modelName, c.Key.ID, c.Version, c.Model, "chat")
+			secret, err := m.vendors.ExecutionSecret(ctx, modelName, c.Key.ID, c.Version, c.Model)
 			return c, secret, err
 		}
 	}

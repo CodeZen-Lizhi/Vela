@@ -47,7 +47,7 @@ func TestDefaultsAndPersistence(t *testing.T) {
 		t.Fatalf("提醒默认值 = %+v, %v", attention, err)
 	}
 
-	wantGeneral := GeneralSettings{Appearance: "dark", CloseAction: "quit", BackgroundEntry: "both", DashboardSeconds: 30, ProviderSeconds: 120}
+	wantGeneral := GeneralSettings{Appearance: "system", CloseAction: "quit", BackgroundEntry: "both", DashboardSeconds: 30, ProviderSeconds: 120}
 	wantAttention := AttentionSettings{Balance: false, Difference: true, Health: false, Rate: true, BalanceThreshold: 0}
 	if err = s.SaveGeneral(ctx, wantGeneral); err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestDefaultsAndPersistence(t *testing.T) {
 	if err = s.SaveGateway(ctx, GatewaySettings{Port: 19090}); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SaveAccountRefresh(ctx, AccountRefresh{Enabled: true, Minutes: 7}); err != nil {
+	if err = s.SaveAccountRefresh(ctx, AccountRefresh{Enabled: true, Minutes: 7, KeyEnabled: true, KeyMinutes: 31, OnVisible: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.SaveAttention(ctx, wantAttention); err != nil {
@@ -73,7 +73,7 @@ func TestDefaultsAndPersistence(t *testing.T) {
 	if gateway, err = s.Gateway(ctx); err != nil || gateway.Port != 19090 {
 		t.Fatalf("重读端口 = %+v, %v", gateway, err)
 	}
-	if account, err = s.AccountRefresh(ctx); err != nil || !account.Enabled || account.Minutes != 7 {
+	if account, err = s.AccountRefresh(ctx); err != nil || !account.Enabled || account.Minutes != 7 || !account.KeyEnabled || account.KeyMinutes != 31 || !account.OnVisible {
 		t.Fatalf("重读账户刷新 = %+v, %v", account, err)
 	}
 	if attention, err = s.Attention(ctx); err != nil || attention != wantAttention {
@@ -89,7 +89,7 @@ func TestInvalidValuesKeepSavedSettings(t *testing.T) {
 	if err := s.SaveGateway(ctx, GatewaySettings{Port: 20000}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveAccountRefresh(ctx, AccountRefresh{Enabled: true, Minutes: 9}); err != nil {
+	if err := s.SaveAccountRefresh(ctx, AccountRefresh{Enabled: true, Minutes: 9, KeyMinutes: 30}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +105,7 @@ func TestInvalidValuesKeepSavedSettings(t *testing.T) {
 		t.Fatal("负数阈值应被拒绝")
 	}
 	invalid := []GeneralSettings{
-		{Appearance: "system", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60},
+		{Appearance: "sepia", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60},
 		{Appearance: "light", CloseAction: "hide", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60},
 		{Appearance: "light", CloseAction: "background", BackgroundEntry: "none", DashboardSeconds: 10, ProviderSeconds: 60},
 		{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 5, ProviderSeconds: 60},
@@ -142,7 +142,7 @@ func TestSectionsAreIndependent(t *testing.T) {
 	if err := s.SaveGateway(ctx, GatewaySettings{Port: 21000}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveAccountRefresh(ctx, AccountRefresh{Enabled: true, Minutes: 3}); err != nil {
+	if err := s.SaveAccountRefresh(ctx, AccountRefresh{Enabled: true, Minutes: 3, KeyMinutes: 30}); err != nil {
 		t.Fatal(err)
 	}
 	if gateway, err := s.Gateway(ctx); err != nil || gateway.Port != 21000 {
@@ -193,5 +193,18 @@ func TestValidateAccessKey(t *testing.T) {
 		if err := ValidateAccessKey(value); err == nil {
 			t.Fatalf("%q 应被拒绝", value)
 		}
+	}
+}
+
+// TestLegacyAccountRefresh 保留旧余额开关及间隔，新 Key 和窗口恢复开关默认关闭。
+func TestLegacyAccountRefresh(t *testing.T) {
+	s, db := openStore(t, filepath.Join(t.TempDir(), "legacy.sqlite"))
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO settings(name,document) VALUES('account','{"enabled":true,"minutes":17}')`); err != nil {
+		t.Fatal(err)
+	}
+	value, err := s.AccountRefresh(context.Background())
+	if err != nil || !value.Enabled || value.Minutes != 17 || value.KeyEnabled || value.KeyMinutes != 30 || value.OnVisible {
+		t.Fatalf("旧设置兼容失败: %+v %v", value, err)
 	}
 }

@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
+  import { Trash2 } from "@lucide/svelte";
   import * as Field from "$lib/components/ui/field";
   import Choice from "./Choice.svelte";
   import type {
@@ -193,121 +194,131 @@
 </script>
 
 <form class="v-editor" onsubmit={submit}>
-  <fieldset disabled={busy} class="v-fieldset">
-    <section class="v-form-card">
-      <h3><span>01</span>运行范围</h3>
-      <Field.Group class="v-run-settings">
-        <Field.Field
-          ><Field.Label>供应商</Field.Label><Choice
-            value={providerId}
-            options={providers}
-            label="计划供应商"
-            disabled={!!plan}
-            onValueChange={changeProvider}
-          /></Field.Field
-        >
-        <Field.Field
-          ><Field.Label>检测周期</Field.Label><Choice
-            value={hours}
-            onValueChange={(value) => (hours = value)}
-            label="检测周期"
-            disabled={!enabled}
-            options={[1, 6, 12, 24].map((hour) => ({
-              value: String(hour),
-              label: `每 ${hour} 小时`,
-            }))}
-          /></Field.Field
-        >
-        <Field.Field
-          ><Field.Label>自动运行</Field.Label>
-          <div class="v-mode">
-            <span>{enabled ? "按周期执行" : "仅手动检测"}</span><Switch
-              bind:checked={enabled}
-              aria-label="自动运行"
-            />
-          </div></Field.Field
-        >
-      </Field.Group>
-      <p class="v-note">
-        首次开启不立即执行；睡眠或退出期间不执行，恢复后不补测。
-      </p>
-    </section>
-    <section class="v-form-card">
-      <h3><span>02</span>验证线路</h3>
-      <div class="v-lines">
-        {#each lines as line, index (line.id)}
-          {@const choices = keys(line)}
-          {@const shared =
-            !!line.modelId &&
-            lines.filter((other) => other.modelId === line.modelId).length > 1}
-          <div class="v-line">
-            <span class="v-line-number"
-              >{String(index + 1).padStart(2, "0")}</span
-            >
-            <Field.Field
-              ><Field.Label>执行模型</Field.Label><Choice
-                value={line.modelId}
-                options={modelOptions(line)}
-                label={`第 ${index + 1} 行模型`}
-                onValueChange={(value) => change(line, "modelId", value)}
-              /></Field.Field
-            >
-            <Field.Field
-              ><Field.Label>执行 Key</Field.Label><Choice
-                value={line.keyId}
-                options={choices}
-                disabled={!line.modelId || !choices.length}
-                label={`第 ${index + 1} 行 Key`}
-                onValueChange={(value) => change(line, "keyId", value)}
-              />{#if line.modelId && !choices.length}<small
-                  class="text-destructive"
-                  >无可用兼容 Key{scope.find(
-                    (target) => target.modelId === line.modelId,
-                  )?.reason
-                    ? `：${scope.find((target) => target.modelId === line.modelId)?.reason}`
-                    : ""}</small
-                >{/if}</Field.Field
-            >
-            <Field.Field
-              ><Field.Label>请求协议</Field.Label><Choice
-                value={line.protocol}
-                options={protocols}
-                disabled={!line.modelId}
-                label={`第 ${index + 1} 行请求协议`}
-                onValueChange={(value) => change(line, "protocol", value)}
-              /></Field.Field
-            >
-            <Field.Field
-              ><Field.Label>思考强度</Field.Label><Choice
-                value={line.effort}
-                options={efforts}
-                disabled={!line.modelId || shared}
-                label={`第 ${index + 1} 行思考强度`}
-                onValueChange={(value) => change(line, "effort", value)}
-              /></Field.Field
-            >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!line.modelId && !line.keyId && !line.protocol}
-              aria-label={`移除第 ${index + 1} 行`}
-              onclick={() => remove(line.id)}>移除</Button
-            >
-          </div>
-        {/each}
-      </div>
-      <div class="v-math" aria-live="polite">
-        {#each [{ name: "执行模型", value: models }, { name: "Key 绑定", value: complete.length }, { name: "固定组合", value: complete.length }, { name: "每轮样本", value: complete.length * 3 }] as item}<div
+  <div class="v-editor-body">
+    <fieldset disabled={busy} class="v-fieldset">
+      <section class="v-editor-scope" aria-label="运行范围">
+        <Field.Group class="v-run-settings">
+          <Field.Field
+            ><Field.Label>供应商</Field.Label><Choice
+              value={providerId}
+              options={providers}
+              label="计划供应商"
+              disabled={!!plan}
+              onValueChange={changeProvider}
+            /></Field.Field
           >
-            <small>{item.name}</small><strong>{item.value}</strong>
-          </div>{/each}
-      </div>
-    </section>
-  </fieldset>
-  {#if validation || error}<p role="alert" class="v-error">
-      {validation || error}
-    </p>{/if}
+          <Field.Field
+            ><Field.Label>检测周期</Field.Label><Choice
+              value={hours}
+              onValueChange={(value) => (hours = value)}
+              label="检测周期"
+              disabled={!enabled}
+              options={[1, 6, 12, 24].map((hour) => ({
+                value: String(hour),
+                label: `每 ${hour} 小时`,
+              }))}
+            /></Field.Field
+          >
+          <Field.Field
+            ><Field.Label>自动运行</Field.Label>
+            <div class="v-mode">
+              <span>{enabled ? "按周期执行" : "仅手动检测"}</span><Switch
+                bind:checked={enabled}
+                aria-label="自动运行"
+              />
+            </div></Field.Field
+          >
+        </Field.Group>
+        <p class="v-note">
+          首次开启不立即执行；睡眠或退出期间不执行，恢复后不补测。
+        </p>
+      </section>
+      <section class="v-editor-lines" aria-label="验证线路">
+        <h3>验证线路</h3>
+        <div class="v-line-head" aria-hidden="true">
+          <span></span>
+          <span>执行模型</span>
+          <span>执行 Key</span>
+          <span>请求协议</span>
+          <span>思考强度</span>
+          <span></span>
+        </div>
+        <div class="v-lines">
+          {#each lines as line, index (line.id)}
+            {@const choices = keys(line)}
+            {@const shared =
+              !!line.modelId &&
+              lines.filter((other) => other.modelId === line.modelId).length > 1}
+            <div class="v-line">
+              <span class="v-line-number"
+                >{String(index + 1).padStart(2, "0")}</span
+              >
+              <Field.Field
+                ><Field.Label class="sr-only">执行模型</Field.Label><Choice
+                  value={line.modelId}
+                  options={modelOptions(line)}
+                  label={`第 ${index + 1} 行模型`}
+                  onValueChange={(value) => change(line, "modelId", value)}
+                /></Field.Field
+              >
+              <Field.Field
+                ><Field.Label class="sr-only">执行 Key</Field.Label><Choice
+                  value={line.keyId}
+                  options={choices}
+                  disabled={!line.modelId || !choices.length}
+                  label={`第 ${index + 1} 行 Key`}
+                  onValueChange={(value) => change(line, "keyId", value)}
+                />{#if line.modelId && !choices.length}<small
+                    class="text-destructive"
+                    >无可用兼容 Key{scope.find(
+                      (target) => target.modelId === line.modelId,
+                    )?.reason
+                      ? `：${scope.find((target) => target.modelId === line.modelId)?.reason}`
+                      : ""}</small
+                  >{/if}</Field.Field
+              >
+              <Field.Field
+                ><Field.Label class="sr-only">请求协议</Field.Label><Choice
+                  value={line.protocol}
+                  options={protocols}
+                  disabled={!line.modelId}
+                  label={`第 ${index + 1} 行请求协议`}
+                  onValueChange={(value) => change(line, "protocol", value)}
+                /></Field.Field
+              >
+              <Field.Field
+                ><Field.Label class="sr-only">思考强度</Field.Label><Choice
+                  value={line.effort}
+                  options={efforts}
+                  disabled={!line.modelId || shared}
+                  label={`第 ${index + 1} 行思考强度`}
+                  onValueChange={(value) => change(line, "effort", value)}
+                /></Field.Field
+              >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={!line.modelId && !line.keyId && !line.protocol}
+                aria-label={`移除第 ${index + 1} 行`}
+                title={`移除第 ${index + 1} 行`}
+                onclick={() => remove(line.id)}><Trash2 /></Button
+              >
+            </div>
+          {/each}
+        </div>
+        <div class="v-math" aria-live="polite">
+          {#each [{ name: "执行模型", value: models }, { name: "Key 绑定", value: complete.length }, { name: "固定组合", value: complete.length }, { name: "每轮样本", value: complete.length * 3 }] as item}<div
+            >
+              <small>{item.name}</small><strong>{item.value}</strong>
+            </div>{/each}
+        </div>
+      </section>
+    </fieldset>
+    {#if validation || error}<p role="alert" class="v-error">
+        {validation || error}
+      </p>{/if}
+  </div>
   <footer class="v-editor-footer">
     <p>
       {enabled

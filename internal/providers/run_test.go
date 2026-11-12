@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/CodeZen-Lizhi/vela/internal/settings"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -37,18 +38,18 @@ func TestAccountRunRecoversFromErrors(t *testing.T) {
 	var mode atomic.Int32
 	go func() {
 		defer close(stopped)
-		result <- a.run(ctx, func(context.Context) (bool, int, error) {
+		result <- a.run(ctx, func(context.Context) (settings.AccountRefresh, error) {
 			current := mode.Load()
 			settingsRead <- struct{}{}
 			switch current {
 			case 0:
-				return false, 0, errors.New("fixture settings failure")
+				return settings.AccountRefresh{}, errors.New("fixture settings failure")
 			case 1:
-				return true, 0, nil
+				return settings.AccountRefresh{Enabled: true, Minutes: 0, KeyMinutes: 30}, nil
 			case 2:
-				return true, 1, nil
+				return settings.AccountRefresh{Enabled: true, Minutes: 1, KeyMinutes: 30}, nil
 			default:
-				return false, 1, nil
+				return settings.AccountRefresh{Minutes: 1, KeyMinutes: 30}, nil
 			}
 		}, ticks)
 	}()

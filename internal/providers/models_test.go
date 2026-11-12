@@ -90,7 +90,7 @@ func assertModelPermissions(t *testing.T, s *Store, key string, all bool, ids ..
 	}
 }
 
-// TestModelsAtomicSave 验证关联变更的事务、保留项启停及映射、指定 Key 授权与移除清理。
+// TestModelsAtomicSave 验证关联变更的事务、保留项启停及映射、新增关联不扩大 Key 权限及移除清理。
 func TestModelsAtomicSave(t *testing.T) {
 	f := newModelFixture(t)
 	s := f.store
@@ -103,7 +103,7 @@ func TestModelsAtomicSave(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	original := []ProviderModelMappingsDraft{{ModelID: f.ids[0], Mappings: []ProviderModelMapping{{RequestName: " upstream ", Operations: []string{" Compact ", "compact", ""}}}}}
+	original := []ProviderModelMappingsDraft{{ModelID: f.ids[0], Mappings: []ProviderModelMapping{{RequestName: " upstream "}}}}
 	if err := s.SaveMappings(ctx, f.provider, original); err != nil {
 		t.Fatal(err)
 	}
@@ -114,31 +114,28 @@ func TestModelsAtomicSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: []string{f.ids[1], f.ids[2], "missing"}, GrantMode: ModelGrantSelected, KeyIDs: []string{f.keys[0]}})
+	err = s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: []string{f.ids[1], f.ids[2], "missing"}})
 	expectError(t, err, "不存在")
 	after, err := s.Models(ctx, f.provider)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatalf("失败事务改变原关联: %+v %v", after, err)
 	}
 	assertModelPermissions(t, s, f.keys[0], false, f.ids[0])
-	if err = s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids, GrantMode: ModelGrantSelected, KeyIDs: []string{f.keys[0], f.keys[2]}}); err != nil {
+	if err = s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids}); err != nil {
 		t.Fatal(err)
 	}
-	assertModelPermissions(t, s, f.keys[0], false, f.ids[0], f.ids[2])
+	assertModelPermissions(t, s, f.keys[0], false, f.ids[0])
 	assertModelPermissions(t, s, f.keys[1], false, f.ids[0])
 	assertModelPermissions(t, s, f.keys[2], true)
 	after, err = s.Models(ctx, f.provider)
 	if err != nil || after[0].Enabled || after[0].Mappings[0].RequestName != "upstream" {
 		t.Fatalf("保留项被覆盖: %+v %v", after, err)
 	}
-	if !reflect.DeepEqual(after[0].Mappings[0].Operations, []string{"compact"}) {
-		t.Fatalf("操作范围未归一化: %+v", after[0])
-	}
 	if err = s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids[1:]}); err != nil {
 		t.Fatal(err)
 	}
 	assertModelPermissions(t, s, f.keys[1], false)
-	assertModelPermissions(t, s, f.keys[0], false, f.ids[2])
+	assertModelPermissions(t, s, f.keys[0], false)
 	var count int
 	if err = s.db.QueryRow("SELECT COUNT(*) FROM provider_model_mappings").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("移除未清映射: %d %v", count, err)
@@ -154,8 +151,8 @@ func TestModelsAtomicSave(t *testing.T) {
 	assertModelPermissions(t, s, f.keys[1], false)
 }
 
-// TestModelPermissionModesAndOwnership 验证指定零个、全部模式、启用 Key 授权及跨供应商输入回滚。
-func TestModelPermissionModesAndOwnership(t *testing.T) {
+// TestModelPermissionModesAndValidation 验证新增关联保留启用和停用 Key 的权限模式，以及非法输入回滚。
+func TestModelPermissionModesAndValidation(t *testing.T) {
 	f := newModelFixture(t)
 	s := f.store
 	ctx := context.Background()
@@ -170,34 +167,26 @@ func TestModelPermissionModesAndOwnership(t *testing.T) {
 	if err := s.SetKeyEnabled(ctx, f.keys[1], false); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids[:2], GrantMode: ModelGrantEnabled}); err != nil {
+	if err := s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids[:2]}); err != nil {
 		t.Fatal(err)
 	}
-	assertModelPermissions(t, s, f.keys[0], false, f.ids[1])
+	assertModelPermissions(t, s, f.keys[0], false)
 	assertModelPermissions(t, s, f.keys[1], false)
 	assertModelPermissions(t, s, f.keys[2], true)
 	expectError(t, s.SaveModelPermissions(ctx, f.keys[0], ProviderModelPermissions{ModelIDs: []string{f.ids[0], f.ids[2]}}), "未关联")
-	assertModelPermissions(t, s, f.keys[0], false, f.ids[1])
+	assertModelPermissions(t, s, f.keys[0], false)
 	expectError(t, s.SaveModelPermissions(ctx, f.keys[0], ProviderModelPermissions{AllModels: true, ModelIDs: f.ids[:1]}), "同时指定")
 	expectError(t, s.SaveModelPermissions(ctx, f.keys[0], ProviderModelPermissions{ModelIDs: []string{f.ids[0], f.ids[0]}}), "重复")
-	assertModelPermissions(t, s, f.keys[0], false, f.ids[1])
+	assertModelPermissions(t, s, f.keys[0], false)
+	// 新关联的权限只通过独立入口设置，保存后必须能重新读取。
+	if err := s.SaveModelPermissions(ctx, f.keys[0], ProviderModelPermissions{ModelIDs: f.ids[:2]}); err != nil {
+		t.Fatal(err)
+	}
+	assertModelPermissions(t, s, f.keys[0], false, f.ids[0], f.ids[1])
 	if err := s.SaveModelPermissions(ctx, f.keys[1], ProviderModelPermissions{AllModels: true}); err != nil {
 		t.Fatal(err)
 	}
 	assertModelPermissions(t, s, f.keys[1], true)
-	other, err := s.Create(ctx, validDraft("其他供应商"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	otherKey, err := s.CreateKey(ctx, other.ID, keyDraft("其他", "", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectError(t, s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids, GrantMode: ModelGrantSelected, KeyIDs: []string{otherKey.ID}}), "不属于")
-	got, err := s.Models(ctx, f.provider)
-	if err != nil || len(got) != 2 {
-		t.Fatalf("非法归属改变关联: %+v %v", got, err)
-	}
 	expectError(t, s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: []string{f.ids[0], f.ids[0]}}), "重复")
 	expectError(t, s.SaveModels(ctx, "missing", ProviderModelsDraft{}), "不存在")
 	expectError(t, s.SaveModelPermissions(ctx, "missing", ProviderModelPermissions{AllModels: true}), "不存在")
@@ -211,7 +200,7 @@ func TestMappingsAtomicSaveAndValidation(t *testing.T) {
 	if err := s.SaveModels(ctx, f.provider, ProviderModelsDraft{ModelIDs: f.ids[:2]}); err != nil {
 		t.Fatal(err)
 	}
-	original := []ProviderModelMappingsDraft{{ModelID: f.ids[0], Mappings: []ProviderModelMapping{{RequestName: "a"}, {RequestName: "b"}}}, {ModelID: f.ids[1], Mappings: []ProviderModelMapping{{RequestName: "c", Operations: []string{"future_operation"}}}}}
+	original := []ProviderModelMappingsDraft{{ModelID: f.ids[0], Mappings: []ProviderModelMapping{{RequestName: "a"}, {RequestName: "b"}}}, {ModelID: f.ids[1], Mappings: []ProviderModelMapping{{RequestName: "c"}}}}
 	if err := s.SaveMappings(ctx, f.provider, original); err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +331,7 @@ func TestModelConfigurationRestart(t *testing.T) {
 	if err = s.SetModelEnabled(ctx, p.ID, m.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SaveMappings(ctx, p.ID, []ProviderModelMappingsDraft{{ModelID: m.ID, Mappings: []ProviderModelMapping{{RequestName: "first", Operations: []string{"compact"}}, {RequestName: "second"}}}}); err != nil {
+	if err = s.SaveMappings(ctx, p.ID, []ProviderModelMappingsDraft{{ModelID: m.ID, Mappings: []ProviderModelMapping{{RequestName: "first"}, {RequestName: "second"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = ms.Close(); err != nil {
@@ -367,32 +356,30 @@ func TestModelConfigurationRestart(t *testing.T) {
 	assertModelPermissions(t, s, k.ID, false)
 }
 
-// TestResolveModelRequestName 验证操作过滤、优先级、同级确定顺序及默认名限制，不执行网关。
+// TestResolveModelRequestName 验证优先级、历史同级名称顺序及无映射时默认名回退，不执行网关。
 func TestResolveModelRequestName(t *testing.T) {
 	cases := []struct {
-		// name 用例说明。
-		name string
-		// operation 当前请求操作。
-		operation string
-		// mappings 已保存的模型级配置。
+		// name 描述场景；mappings 为已有映射；want 为期望的请求名。
+		name     string
 		mappings []ProviderModelMapping
-		// want 期望的单个请求名。
-		want string
-		// available 是否提供当前操作。
-		available bool
+		want     string
 	}{
-		{"默认", "compact", nil, "default", true},
-		{"不适用项回退", "search", []ProviderModelMapping{{RequestName: "scoped", Priority: 1, Operations: []string{"compact"}}}, "default", true},
-		{"默认名显式受限", "search", []ProviderModelMapping{{RequestName: "default", Priority: 1, Operations: []string{"compact"}}}, "", false},
-		{"先过滤再优先级", "compact", []ProviderModelMapping{{RequestName: "skip", Priority: 1, Operations: []string{"search"}}, {RequestName: "selected", Priority: 2}, {RequestName: "later", Priority: 3}}, "selected", true},
-		{"同级范围优先", "compact", []ProviderModelMapping{{RequestName: "a", Priority: 1}, {RequestName: "z", Priority: 1, Operations: []string{"compact"}}}, "z", true},
-		{"同级名称排序", "compact", []ProviderModelMapping{{RequestName: "z", Priority: 1}, {RequestName: "a", Priority: 1}}, "a", true},
+		{"默认", nil, "default"},
+		{"空数组回退", []ProviderModelMapping{}, "default"},
+		{"优先级优先于列表位置", []ProviderModelMapping{{RequestName: "later", Priority: 3}, {RequestName: "selected", Priority: 1}, {RequestName: "middle", Priority: 2}}, "selected"},
+		{"同级名称排序", []ProviderModelMapping{{RequestName: "z", Priority: 1}, {RequestName: "a", Priority: 1}}, "a"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := ResolveModelRequestName("default", tc.operation, tc.mappings)
-			if got != tc.want || ok != tc.available {
-				t.Fatalf("解析 = %q %v，期望 %q %v", got, ok, tc.want, tc.available)
+			before := append([]ProviderModelMapping(nil), tc.mappings...)
+			got := ResolveModelRequestName("default", tc.mappings)
+			if got != tc.want {
+				t.Fatalf("解析 = %q，期望 %q", got, tc.want)
+			}
+			for i := range before {
+				if before[i] != tc.mappings[i] {
+					t.Fatal("解析改变原始映射顺序")
+				}
 			}
 		})
 	}

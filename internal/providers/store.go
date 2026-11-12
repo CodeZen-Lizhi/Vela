@@ -88,7 +88,7 @@ func New(db *sql.DB, keys KeyStore, documents ...*credentials.Store) (*Store, er
 	if err := s.removeLocalProxies(context.Background()); err != nil {
 		return nil, fmt.Errorf("迁移局部代理: %w", err)
 	}
-	if err := s.removeTransportFailover(context.Background()); err != nil {
+	if err := s.removeRetiredRequestFields(context.Background()); err != nil {
 		return nil, fmt.Errorf("迁移请求重试策略: %w", err)
 	}
 	if err := s.removeProviderNotes(context.Background()); err != nil {
@@ -156,7 +156,7 @@ func normalizeProxy(choice ProxyChoice, forKey bool) (ProxyChoice, error) {
 	return ProxyChoice{Mode: choice.Mode}, nil
 }
 
-// normalizeRequest 校验请求配置；数值为 0 表示使用默认值或不限制，其余必须落在各自范围内。
+// normalizeRequest 校验请求配置；数值为 0 表示使用默认值，其余必须落在各自范围内。
 func normalizeRequest(p RequestPolicy) (RequestPolicy, error) {
 	switch {
 	case p.Attempts != 0 && (p.Attempts < 1 || p.Attempts > 99):
@@ -167,8 +167,6 @@ func normalizeRequest(p RequestPolicy) (RequestPolicy, error) {
 		return p, errors.New("首次响应超时需为 1～300 秒的整数")
 	case p.RequestSeconds != 0 && (p.RequestSeconds < 1 || p.RequestSeconds > 1200):
 		return p, errors.New("非流式请求超时需为 1～1200 秒的整数")
-	case p.MaxTransfers < 0 || p.MaxTransferSeconds < 0:
-		return p, errors.New("最大转移次数和最大转移超时不能为负数")
 	}
 	proxy, err := normalizeProxy(p.Proxy, false)
 	if err != nil {

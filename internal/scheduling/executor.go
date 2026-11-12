@@ -15,8 +15,6 @@ import (
 type ExecutionRequest struct {
 	// Request 包含逻辑模型、协议和会话身份。
 	Request Request
-	// Operation 是协议入口解析的映射操作范围；空值按chat处理。
-	Operation string
 	// Path 是供应商根地址后的协议路径，不允许完整 URL。
 	Path string
 	// Body 是原始 JSON，传输适配器只替换明确的模型字段。
@@ -86,14 +84,6 @@ var ErrNoCandidates = errors.New("没有可用的调度候选")
 // ErrContinuation 表示连续请求无法核实原目标，入口应返回 HTTP 409。
 var ErrContinuation = errors.New("连续会话的原上游绑定无法验证")
 
-// transferBudget 按供应商隔离，从该供应商首次真实尝试起计时；同Key重试不计换Key次数。
-type transferBudget struct {
-	// started、lastKey、transfers 分别记录供应商首次尝试时间、最后Key与已换Key次数。
-	started   time.Time
-	lastKey   string
-	transfers int
-}
-
 // Execute 按一次配置快照完成选路、有限重试和故障转移；写出结果后绝不重放。
 func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Writer) (ExecutionResult, error) {
 	var result ExecutionResult
@@ -139,7 +129,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		}
 	}
 	candidates = e.Runtime.Rank(policy, req.Request, candidates)
-	budgets := map[string]*transferBudget{}
 	deadlineSet := false
 	lastErr := error(ErrNoCandidates)
 	for _, c := range candidates {
@@ -147,17 +136,10 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		if attempts == 0 {
 			attempts = 1
 		}
-		budget := budgets[c.Provider.ID]
 		waited := time.Duration(0)
 		for n := 0; n < attempts; n++ {
 			if err = ctx.Err(); err != nil {
 				return result, err
-			}
-			if budget != nil {
-				p := c.Provider.Request
-				if (p.MaxTransferSeconds > 0 && time.Since(budget.started) >= time.Duration(p.MaxTransferSeconds)*time.Second) || (p.MaxTransfers > 0 && budget.lastKey != c.Key.ID && budget.transfers >= p.MaxTransfers) {
-					break
-				}
 			}
 			secret, checkErr := e.Source.Credential(ctx, c, req)
 			if checkErr != nil {
@@ -202,13 +184,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				defer boundedCancel()
 				ctx = bounded
 				deadlineSet = true
-			}
-			if budget == nil {
-				budget = &transferBudget{started: time.Now(), lastKey: c.Key.ID}
-				budgets[c.Provider.ID] = budget
-			} else if budget.lastKey != c.Key.ID {
-				budget.transfers++
-				budget.lastKey = c.Key.ID
 			}
 			result.ProviderID = c.Provider.ID
 			result.KeyID = c.Key.ID

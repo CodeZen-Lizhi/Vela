@@ -30,12 +30,12 @@ CREATE INDEX IF NOT EXISTS provider_key_models_relation ON provider_key_models(p
 CREATE TABLE IF NOT EXISTS provider_model_mappings (
  provider_id TEXT NOT NULL, -- 所属供应商
  model_id TEXT NOT NULL, -- 已关联统一模型稳定身份
- document TEXT NOT NULL, -- 有序请求名、优先级及操作范围的 JSON 数组
+ document TEXT NOT NULL, -- 有序请求名及优先级的 JSON 数组
  PRIMARY KEY(provider_id,model_id),
  FOREIGN KEY(provider_id,model_id) REFERENCES provider_models(provider_id,model_id) ON DELETE CASCADE
 );`
 
-// InitModels 在 New 后初始化模型关联表；必须与模型模块复用同一已启用外键的数据库，失败时不保留半套表。
+// InitModels 在 New 后初始化模型关联表；必须与模型模块复用同一已启用外键的数据库，并清理旧映射操作范围，失败时回滚表初始化和全部文档变更。
 func (s *Store) InitModels() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -46,6 +46,9 @@ func (s *Store) InitModels() error {
 	defer tx.Rollback()
 	if _, err = tx.Exec(modelSchema); err != nil {
 		return fmt.Errorf("初始化供应商模型: %w", err)
+	}
+	if err = removeMappingOperations(tx); err != nil {
+		return fmt.Errorf("清理模型映射历史字段: %w", err)
 	}
 	return tx.Commit()
 }
@@ -91,14 +94,8 @@ func (s *Store) Models(ctx context.Context, providerID string) ([]ProviderModel,
 	return result, rows.Err()
 }
 
-// SaveModels 在一个事务中替换全部关联并给新关联授权；移除项通过外键清理映射和指定权限，保留项状态不变。
+// SaveModels 在一个事务中替换全部关联，不为新增关联配置 Key 权限；移除项通过外键清理映射和指定权限，保留项状态不变。
 func (s *Store) SaveModels(ctx context.Context, providerID string, draft ProviderModelsDraft) error {
-	if draft.GrantMode == "" {
-		draft.GrantMode = ModelGrantNone
-	}
-	if draft.GrantMode != ModelGrantNone && draft.GrantMode != ModelGrantSelected && draft.GrantMode != ModelGrantEnabled {
-		return errors.New("请选择新增模型的 Key 权限方式")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -139,43 +136,6 @@ func (s *Store) SaveModels(ctx context.Context, providerID string, draft Provide
 			added = append(added, id)
 		}
 	}
-	keys := []string{}
-	if draft.GrantMode == ModelGrantSelected {
-		seen := map[string]bool{}
-		for _, id := range draft.KeyIDs {
-			if seen[id] {
-				return errors.New("授权 Key 不能重复")
-			}
-			seen[id] = true
-			var all bool
-			if err = tx.QueryRowContext(ctx, "SELECT all_models FROM provider_keys WHERE id=? AND provider_id=?", id, providerID).Scan(&all); errors.Is(err, sql.ErrNoRows) {
-				return errors.New("授权 Key 不属于当前供应商")
-			} else if err != nil {
-				return err
-			}
-			if !all {
-				keys = append(keys, id)
-			}
-		}
-	} else if draft.GrantMode == ModelGrantEnabled {
-		rows, err = tx.QueryContext(ctx, "SELECT id FROM provider_keys WHERE provider_id=? AND enabled=1 AND all_models=0", providerID)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			keys = append(keys, id)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
-	}
 	for id := range existing {
 		if !target[id] {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM provider_models WHERE provider_id=? AND model_id=?", providerID, id); err != nil {
@@ -193,11 +153,6 @@ func (s *Store) SaveModels(ctx context.Context, providerID string, draft Provide
 		}
 		if _, err = tx.ExecContext(ctx, "INSERT INTO provider_models(provider_id,model_id) VALUES(?,?)", providerID, id); err != nil {
 			return err
-		}
-		for _, key := range keys {
-			if _, err = tx.ExecContext(ctx, "INSERT INTO provider_key_models(key_id,provider_id,model_id) VALUES(?,?,?)", key, providerID, id); err != nil {
-				return err
-			}
 		}
 	}
 	return tx.Commit()

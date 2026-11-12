@@ -57,10 +57,6 @@ type RequestPolicy struct {
 	FirstByteSeconds int `json:"firstByteSeconds"`
 	// RequestSeconds 非流式请求超时，单位秒，1～1200；0 表示使用默认值。
 	RequestSeconds int `json:"requestSeconds"`
-	// MaxTransfers 最大转移次数；0 表示不限制。
-	MaxTransfers int `json:"maxTransfers"`
-	// MaxTransferSeconds 最大转移超时，单位秒；0 表示不限制。
-	MaxTransferSeconds int `json:"maxTransferSeconds"`
 	// Proxy 供应商的出口选择。
 	Proxy ProxyChoice `json:"proxy"`
 	// ResponsesWebSocket 是否启用 Responses WebSocket 模式。

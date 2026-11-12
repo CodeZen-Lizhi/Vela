@@ -416,3 +416,32 @@ func TestTargetDisabledDuringSamplingReplacesSuccess(t *testing.T) {
 		t.Fatalf("旧成功掩盖本轮失效: %+v %v", snap.Reports, err)
 	}
 }
+
+// TestVerificationMappingPriorityAndDefault 验证检测目标和执行凭据使用同一优先级映射，清空后回退默认请求名。
+func TestVerificationMappingPriorityAndDefault(t *testing.T) {
+	m, p := fixture(t, "http://127.0.0.1:9000")
+	ctx := context.Background()
+	line := p.Lines[0]
+	if err := m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: line.ModelID, Mappings: []providers.ProviderModelMapping{{RequestName: "later", Priority: 2}, {RequestName: "first", Priority: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	target, err := m.resolve(ctx, p.ProviderID, line)
+	if err != nil || target.RequestModel != "first" {
+		t.Fatalf("检测目标未选首优先级: %+v %v", target, err)
+	}
+	candidate, _, err := m.credential(ctx, target)
+	if err != nil || candidate.Model != "first" {
+		t.Fatalf("执行目标不一致: %+v %v", candidate, err)
+	}
+	if err = m.vendors.SaveMappings(ctx, p.ProviderID, []providers.ProviderModelMappingsDraft{{ModelID: line.ModelID}}); err != nil {
+		t.Fatal(err)
+	}
+	target, err = m.resolve(ctx, p.ProviderID, line)
+	if err != nil || target.RequestModel != "model-0" {
+		t.Fatalf("检测目标未回退默认名: %+v %v", target, err)
+	}
+	candidate, _, err = m.credential(ctx, target)
+	if err != nil || candidate.Model != "model-0" {
+		t.Fatalf("默认执行目标不一致: %+v %v", candidate, err)
+	}
+}

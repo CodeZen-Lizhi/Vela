@@ -26,11 +26,7 @@ func executionVersion(sealed []byte) string {
 }
 
 // ExecutionCandidates 查询显式关联模型和Key权限，不把未关联供应商当成可服务所有模型。
-func (s *Store) ExecutionCandidates(ctx context.Context, modelName string, operations ...string) ([]ExecutionCandidate, error) {
-	operation := "chat"
-	if len(operations) > 0 {
-		operation = operations[0]
-	}
+func (s *Store) ExecutionCandidates(ctx context.Context, modelName string) ([]ExecutionCandidate, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.name,p.enabled,p.document,k.id,k.enabled,k.all_models,k.secret,k.document,COALESCE(x.document,'[]')
  FROM provider_models r JOIN providers p ON p.id=r.provider_id JOIN models m ON m.id=r.model_id
  JOIN provider_keys k ON k.provider_id=p.id LEFT JOIN provider_model_mappings x ON x.provider_id=r.provider_id AND x.model_id=r.model_id
@@ -63,12 +59,7 @@ func (s *Store) ExecutionCandidates(ctx context.Context, modelName string, opera
 		}
 		c.Provider = pd.provider(c.Provider.ID, c.Provider.Name, c.Provider.Enabled)
 		c.Key = kd.key(c.Key.ID, c.Provider.ID, c.Key.Enabled, c.Key.AllModels, "", true)
-		c.Model = modelName
-		resolved, ok := ResolveModelRequestName(modelName, operation, mapping)
-		if !ok {
-			continue
-		}
-		c.Model = resolved
+		c.Model = ResolveModelRequestName(modelName, mapping)
 
 		c.Version = executionVersion(secret)
 		result = append(result, c)
@@ -77,10 +68,10 @@ func (s *Store) ExecutionCandidates(ctx context.Context, modelName string, opera
 }
 
 // ExecutionSecret 在实际出站前复核模型、启停、权限及凭据版本，再解密；不返回给前端。
-func (s *Store) ExecutionSecret(ctx context.Context, modelName, keyID, version, upstreamModel string, operations ...string) (string, error) {
+func (s *Store) ExecutionSecret(ctx context.Context, modelName, keyID, version, upstreamModel string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	candidates, err := s.ExecutionCandidates(ctx, modelName, operations...)
+	candidates, err := s.ExecutionCandidates(ctx, modelName)
 	if err != nil {
 		return "", err
 	}

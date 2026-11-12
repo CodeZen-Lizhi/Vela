@@ -16,26 +16,10 @@ type ProviderModel struct {
 	Mappings []ProviderModelMapping `json:"mappings"`
 }
 
-// ProviderModelGrant 是新增关联时对指定权限 Key 的授权选择。
-type ProviderModelGrant string
-
-const (
-	// ModelGrantNone 保留全部 Key 的原指定权限。
-	ModelGrantNone ProviderModelGrant = "none"
-	// ModelGrantSelected 仅为 KeyIDs 中的指定权限 Key 增加新关联。
-	ModelGrantSelected ProviderModelGrant = "selected"
-	// ModelGrantEnabled 为当前启用的指定权限 Key 增加新关联。
-	ModelGrantEnabled ProviderModelGrant = "enabled"
-)
-
-// ProviderModelsDraft 原子替换供应商的完整关联集合；保留项的启停、映射及权限不变。
+// ProviderModelsDraft 原子替换供应商的完整关联集合；保留项的启停、映射及权限不变，不为新增关联配置 Key 权限。
 type ProviderModelsDraft struct {
 	// ModelIDs 完整目标关联集合，使用统一模型的本地稳定身份。
 	ModelIDs []string `json:"modelIds"`
-	// GrantMode 仅决定新增关联的权限；空值等价 none。
-	GrantMode ProviderModelGrant `json:"grantMode"`
-	// KeyIDs selected 模式下接收新增模型的 Key，必须全部属于当前供应商。
-	KeyIDs []string `json:"keyIds"`
 }
 
 // ProviderModelPermissions 将全部模式与指定零个独立保留；主动不选任何项保存时调用方应传 AllModels=true。
@@ -46,14 +30,12 @@ type ProviderModelPermissions struct {
 	ModelIDs []string `json:"modelIds"`
 }
 
-// ProviderModelMapping 是模型级请求名及操作范围，不含 Key 覆盖、API 格式或端点范围。
+// ProviderModelMapping 是模型级请求名及优先级，不含 Key 覆盖或 API 格式。
 type ProviderModelMapping struct {
 	// RequestName 去首尾空白的上游请求名，同模型内必须唯一。
 	RequestName string `json:"requestName"`
 	// Priority 正整数，越小越优先；传零时按列表位置生成 1..N，保留旧版同级排序兼容。
 	Priority int `json:"priority"`
-	// Operations 请求操作标识，去空白、小写且去重；空数组适用于全部操作。
-	Operations []string `json:"operations"`
 }
 
 // ProviderModelMappingsDraft 是工作台中一个模型的完整映射草稿。

@@ -25,7 +25,7 @@
   /** 浏览器预览没有桌面服务，只展示默认值且不可保存；外观跟随浏览器当前的明暗偏好。 */
   const preview: SettingsSnapshot = {
     general: {
-      appearance: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+      appearance: "system",
       closeAction: "background",
       backgroundEntry: "menu",
       dashboardSeconds: 10,
@@ -33,7 +33,7 @@
     },
     openAtLogin: false,
     gateway: { port: 18080 },
-    account: { enabled: false, minutes: 5 },
+    account: { enabled: false, minutes: 5, keyEnabled:false, keyMinutes:30, onVisible:false },
     attention: {
       balance: true,
       difference: true,

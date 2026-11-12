@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
 	"github.com/egoist/mygo"
@@ -14,8 +16,11 @@ var (
 	general    = settings.DefaultGeneral()
 )
 
-// themeSource 把保存的外观映射为宿主外观，页面通过 prefers-color-scheme 跟随。
+// themeSource 把保存的浅色、深色或跟随系统选项映射为宿主外观，页面通过 prefers-color-scheme 跟随。
 func themeSource(appearance string) mygo.ThemeSource {
+	if appearance == "system" {
+		return mygo.ThemeSystem
+	}
 	if appearance == "dark" {
 		return mygo.ThemeDark
 	}
@@ -70,7 +75,7 @@ func lastWindowClosed() {
 	}
 }
 
-// syncTray 按设置创建或移除菜单栏图标：仅在允许后台运行且入口包含菜单栏时显示。
+// syncTray 按设置创建或移除菜单栏图标；左键打开主窗口，右键显示操作菜单。
 func syncTray() {
 	want := general.CloseAction == "background" && general.BackgroundEntry != "dock"
 	if want == (appTray != nil) {
@@ -86,15 +91,55 @@ func syncTray() {
 		Icon:           trayIconPNG,
 		IconIsTemplate: true,
 		ToolTip:        "Vela AI Gateway",
-		Menu: mygo.NewMenu([]*mygo.MenuItem{
-			{Label: "打开 Vela", Click: func(*mygo.MenuItem, *mygo.Window) { openMainWindow() }},
-			mygo.Separator(),
-			{Role: mygo.RoleQuit},
-		}),
 	})
 	if err != nil {
 		log.Printf("创建菜单栏图标失败: %v", err)
 		return
 	}
+	menu := mygo.NewMenu([]*mygo.MenuItem{
+		{Label: "打开 Vela", Click: func(*mygo.MenuItem, *mygo.Window) { openMainWindow() }},
+		mygo.Separator(),
+		// 网关监听尚未接入，接通真实暂停/恢复能力后再启用。
+		{Label: "暂停网关", Disabled: true},
+		mygo.Separator(),
+		{Label: "退出 Vela", Role: mygo.RoleQuit},
+	})
+	tray.OnClick(openMainWindow)
+	tray.OnRightClick(func() {
+		// macOS 常驻菜单会截获点击；仅在右键弹出期间挂载，关闭后恢复左键事件。
+		tray.SetMenu(menu)
+		defer tray.SetMenu(nil)
+		tray.PopUpMenu()
+	})
 	appTray = tray
+}
+
+// refreshOnVisible 由入口装配全局静默刷新；主线程只发起异步工作，不等待网络。
+var refreshOnVisible func()
+
+// watchWindowVisibility 观察原生窗口从不可见到可见的边沿，统一涵盖启动、菜单栏、Dock、隐藏及最小化恢复。
+// 只读取宿主窗口状态，不因普通前后台焦点切换或页面导航触发查询；随应用退出释放计时器。
+func watchWindowVisibility(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+		wasVisible := false
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				mygo.RunOnMain(func() {
+					if ctx.Err() != nil {
+						return
+					}
+					visible := mainWindow != nil && !mainWindow.IsDestroyed() && mainWindow.IsVisible() && !mainWindow.IsMinimized() && !mygo.App.IsHidden()
+					if visible && !wasVisible && refreshOnVisible != nil {
+						refreshOnVisible()
+					}
+					wasVisible = visible
+				})
+			}
+		}
+	}()
 }

@@ -102,7 +102,7 @@ func (m *Manager) Targets(ctx context.Context) ([]VerificationTarget, error) {
 				if model.Kind != "chat" {
 					continue
 				}
-				request, allowed := providers.ResolveModelRequestName(model.ModelName, "chat", model.Mappings)
+				request := providers.ResolveModelRequestName(model.ModelName, model.Mappings)
 				t := VerificationTarget{VerificationLine: VerificationLine{ModelID: model.ModelID, KeyID: key.ID}, ProviderID: p.ID, ProviderName: p.Name, KeyName: key.Name, ModelName: model.Name, RequestModel: request, URL: p.URL}
 				switch {
 				case !p.Enabled:
@@ -115,8 +115,6 @@ func (m *Manager) Targets(ctx context.Context) ([]VerificationTarget, error) {
 					t.Reason = "供应商模型已停用"
 				case !permissions.AllModels && !slices.Contains(permissions.ModelIDs, model.ModelID):
 					t.Reason = "Key 没有该模型权限"
-				case !allowed:
-					t.Reason = "当前模型没有适用的请求名映射"
 				}
 				result = append(result, t)
 			}

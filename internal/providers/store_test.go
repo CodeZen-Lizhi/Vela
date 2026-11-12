@@ -114,7 +114,6 @@ func TestProviderLifecycle(t *testing.T) {
 		"流式请求总超时":   func(d *ProviderDraft) { d.Request.StreamTotalMillis = 999 },
 		"首次响应超时":    func(d *ProviderDraft) { d.Request.FirstByteSeconds = 301 },
 		"非流式请求超时":   func(d *ProviderDraft) { d.Request.RequestSeconds = -1 },
-		"不能为负数":     func(d *ProviderDraft) { d.Request.MaxTransfers = -1 },
 		"请选择网络代理方式": func(d *ProviderDraft) { d.Request.Proxy.Mode = ProxyProvider },
 		"代理方式":      func(d *ProviderDraft) { d.Request.Proxy = ProxyChoice{Mode: "custom"} },
 	}
@@ -130,7 +129,7 @@ func TestProviderLifecycle(t *testing.T) {
 
 	edit := validDraft("Northstar Pro")
 	edit.URL = "http://localhost:3000/v1beta"
-	edit.Request = RequestPolicy{Attempts: 2, StreamTotalMillis: 300_125, MaxTransfers: 3, Proxy: ProxyChoice{Mode: ProxyDirect}}
+	edit.Request = RequestPolicy{Attempts: 2, StreamTotalMillis: 300_125, Proxy: ProxyChoice{Mode: ProxyDirect}}
 	updated, err := s.Update(ctx, first.ID, edit)
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +299,7 @@ func TestKeyLifecycle(t *testing.T) {
 		}
 	}
 
-	// 重启后用同一把主密钥仍可读回：顺序为创建顺序，内容与编辑结果一致。
+	// 重启后用同一把主密钥仍可读回：按优先级排序，内容与编辑结果一致。
 	s, closeDB = openStore(t, path, &memoryKeys{value: keys.value})
 	defer closeDB()
 	list, err = s.Keys(ctx, provider.ID)
@@ -308,7 +307,7 @@ func TestKeyLifecycle(t *testing.T) {
 		t.Fatalf("重启重读 = %+v, %v", list, err)
 	}
 	// 倍率是指针字段，按指向的值比较。
-	if list[0].ID != blank.ID || list[0].Enabled || !reflect.DeepEqual(list[1], edited) || list[2].ID != short.ID {
+	if !reflect.DeepEqual(list[0], edited) || list[1].ID != blank.ID || list[1].Enabled || list[2].ID != short.ID {
 		t.Fatalf("重读的列表 = %+v", list)
 	}
 	if got, err := s.Secret(ctx, main.ID); err != nil || got != replaced {

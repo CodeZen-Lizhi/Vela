@@ -27,7 +27,7 @@ type schedulingSource struct {
 func (s *schedulingSource) Candidates(ctx context.Context, req scheduling.ExecutionRequest) ([]scheduling.Candidate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	routes, err := s.providers.ExecutionCandidates(ctx, req.Request.Model, requestOperation(req))
+	routes, err := s.providers.ExecutionCandidates(ctx, req.Request.Model)
 	s.order++
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func (s *schedulingSource) Candidates(ctx context.Context, req scheduling.Execut
 
 // Credential 在每次真实出站前复核模型、启停、Key权限和凭据版本。
 func (s *schedulingSource) Credential(ctx context.Context, c scheduling.Candidate, req scheduling.ExecutionRequest) (string, error) {
-	return s.providers.ExecutionSecret(ctx, req.Request.Model, c.Key.ID, c.CredentialVersion, c.Model, requestOperation(req))
+	return s.providers.ExecutionSecret(ctx, req.Request.Model, c.Key.ID, c.CredentialVersion, c.Model)
 }
 
 // SchedulingExecution 是宿主或未来HTTP网关持有的调度生命周期，不暴露到前端。
@@ -121,12 +121,4 @@ func (s *SchedulingExecution) Close() {
 	if runner, ok := s.Executor.Runner.(*scheduling.HTTPRunner); ok {
 		runner.Close()
 	}
-}
-
-// requestOperation 使用协议入口提供的操作范围，空值保留聊天默认语义。
-func requestOperation(req scheduling.ExecutionRequest) string {
-	if req.Operation != "" {
-		return req.Operation
-	}
-	return "chat"
 }

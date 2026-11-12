@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Select from "$lib/components/ui/select";
   import { Switch } from "$lib/components/ui/switch";
+  import { Button } from "$lib/components/ui/button";
   import { VelaService, type GeneralSettings } from "$lib/generated/mygo";
   import { errorMessage } from "./sections";
 
@@ -71,14 +72,14 @@
 <section class="settings-card" aria-label="常规设置">
   <div class="setting-row">
     <span id="appearance-label">外观</span>
-    <div class="segmented" role="group" aria-labelledby="appearance-label">
-      {#each [["light", "浅色"], ["dark", "深色"]] as [value, label]}
-        <button
-          type="button"
-          class:chosen={saved.appearance === value}
+    <div class="flex items-center gap-1 rounded-lg bg-secondary p-1" role="group" aria-labelledby="appearance-label">
+      {#each [["light", "浅色"], ["dark", "深色"], ["system", "跟随系统"]] as [value, label]}
+        <Button
+          variant={saved.appearance === value ? "outline" : "ghost"}
+          size="sm"
           aria-pressed={saved.appearance === value}
-          disabled={!desktop}
-          onclick={() => void update({ appearance: value })}>{label}</button
+          disabled={!desktop || busy}
+          onclick={() => void update({ appearance: value })}>{label}</Button
         >
       {/each}
     </div>
@@ -155,7 +156,7 @@
     </Select.Root>
   </div>
   <div class="setting-row">
-    <span id="provider-label">供应商列表刷新间隔</span>
+    <span id="provider-label"><strong>供应商列表状态更新间隔</strong><small class="block text-xs text-muted-foreground">更新本地健康度、Key 和已保存余额；不向上游查询。上游查询周期在“账户”中设置。</small></span>
     <Select.Root
       type="single"
       bind:value={() => String(saved.providerSeconds), (value) => void update({ providerSeconds: Number(value) })}
@@ -175,11 +176,3 @@
   </div>
 </section>
 {#if error}<p class="error-banner mt-4" role="alert">{error}</p>{/if}
-<p class="settings-note">
-  {saved.closeAction === "quit"
-    ? "关闭窗口即退出应用，网关随之停止。"
-    : "关闭窗口后应用继续运行，可从所选系统入口重新打开。"}
-</p>
-<p class="settings-note">
-  刷新间隔已保存；总览与供应商页面接入后按此间隔刷新。
-</p>

@@ -237,7 +237,7 @@
             ><Table.Row
               ><Table.Head>尺寸 / 像素区间</Table.Head><Table.Head
                 >质量</Table.Head
-              ><Table.Head class="text-right">单价</Table.Head></Table.Row
+              ><Table.Head data-align="number">单价</Table.Head></Table.Row
             ></Table.Header
           >
           <Table.Body
@@ -246,7 +246,7 @@
                   >{row.size ||
                     `${row.minPixels || 0}–${row.maxPixels || "不限"} px`}</Table.Cell
                 ><Table.Cell>{row.quality || "未指定"}</Table.Cell><Table.Cell
-                  class="text-right">{money(row.price)}</Table.Cell
+                  data-align="number">{money(row.price)}</Table.Cell
                 ></Table.Row
               >{/each}</Table.Body
           >
@@ -262,7 +262,7 @@
         <Table.Root>
           <Table.Header
             ><Table.Row
-              ><Table.Head>分辨率</Table.Head><Table.Head class="text-right"
+              ><Table.Head>分辨率</Table.Head><Table.Head data-align="number"
                 >每秒价格</Table.Head
               ></Table.Row
             ></Table.Header
@@ -270,7 +270,7 @@
           <Table.Body
             >{#each pricing.videos as row}<Table.Row
                 ><Table.Cell>{row.resolution}</Table.Cell><Table.Cell
-                  class="text-right">{money(row.price)}</Table.Cell
+                  data-align="number">{money(row.price)}</Table.Cell
                 ></Table.Row
               >{/each}</Table.Body
           >

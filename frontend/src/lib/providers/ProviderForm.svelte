@@ -15,7 +15,7 @@
   } = $props();
   /** 供应商草稿仅包含名称、地址与请求配置，不包含备注。 */
   let draft = $state<ProviderDraft>(untrack(() => provider ? {name: provider.name, website: provider.website, url: provider.url, request: {...provider.request, proxy:{...provider.request.proxy}}} : {
-    name: "", website: "", url: "", request: { attempts: 0, streamTotalMillis: 0, firstByteSeconds: 0, requestSeconds: 0, maxTransfers: 0, maxTransferSeconds: 0, proxy: {mode: "global"}, responsesWebSocket: false },
+    name: "", website: "", url: "", request: { attempts: 0, streamTotalMillis: 0, firstByteSeconds: 0, requestSeconds: 0, proxy: {mode: "global"}, responsesWebSocket: false },
   }));
   /** 高级设置默认折叠，收起只影响显示，草稿和约束始终保留。 */
   let advanced = $state(false);
@@ -24,8 +24,6 @@
   let totalSeconds = $state<number | undefined>(untrack(() => draft.request.streamTotalMillis ? draft.request.streamTotalMillis / 1000 : undefined));
   let firstSeconds = $state<number | undefined>(untrack(() => draft.request.firstByteSeconds || undefined));
   let requestSeconds = $state<number | undefined>(untrack(() => draft.request.requestSeconds || undefined));
-  let transfers = $state<number | undefined>(untrack(() => draft.request.maxTransfers || undefined));
-  let transferSeconds = $state<number | undefined>(untrack(() => draft.request.maxTransferSeconds || undefined));
   /** 清空覆盖以 0 提交，默认值只作占位和生效说明，不伪装为显式配置。 */
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -38,7 +36,7 @@
       invalid.reportValidity();
       return;
     }
-    await onsave({...draft, request: {...draft.request, attempts: attempts ?? 0, streamTotalMillis: Math.round((totalSeconds ?? 0) * 1000), firstByteSeconds: firstSeconds ?? 0, requestSeconds: requestSeconds ?? 0, maxTransfers: transfers ?? 0, maxTransferSeconds: transferSeconds ?? 0}});
+    await onsave({...draft, request: {...draft.request, attempts: attempts ?? 0, streamTotalMillis: Math.round((totalSeconds ?? 0) * 1000), firstByteSeconds: firstSeconds ?? 0, requestSeconds: requestSeconds ?? 0}});
   }
 </script>
 <form class="provider-editor" novalidate onsubmit={submit}>
@@ -53,14 +51,12 @@
       <Collapsible.Root bind:open={advanced} class="provider-editor-advanced">
         <Collapsible.Trigger type="button" class="provider-editor-expand" disabled={busy}><span>高级设置</span><span class="provider-editor-expand-hint">超时、尝试与连接</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Collapsible.Trigger>
         <Collapsible.Content forceMount class="provider-editor-advanced-content">
-          <p class="provider-editor-hint">留空使用默认值；转移限制为 0 或留空表示不限。</p>
+          <p class="provider-editor-hint">留空使用默认值；总尝试次数包含首次请求。</p>
           <Field.Group class="provider-editor-fields">
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-first">首次响应超时</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-first" type="number" min={1} max={300} step={1} bind:value={firstSeconds} placeholder={String(defaults.firstByteSeconds)}/><span>秒</span></div></Field.Content></Field.Field>
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-total">流式总超时</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-total" type="number" min={1} max={1200} step={0.001} bind:value={totalSeconds} placeholder={String(defaults.streamTotalMillis / 1000)}/><span>秒</span></div></Field.Content></Field.Field>
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-request">非流式超时</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-request" type="number" min={1} max={1200} step={1} bind:value={requestSeconds} placeholder={String(defaults.requestSeconds)}/><span>秒</span></div></Field.Content></Field.Field>
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-attempts">总尝试次数</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-attempts" type="number" min={1} max={99} step={1} bind:value={attempts} placeholder={String(defaults.attempts)}/><span>次</span></div><Field.Description>包含首次请求。</Field.Description></Field.Content></Field.Field>
-            <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-transfers">转移次数上限</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-transfers" type="number" min={0} step={1} bind:value={transfers} placeholder="不限"/><span>次</span></div></Field.Content></Field.Field>
-            <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-transfer-seconds">转移时间上限</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-transfer-seconds" type="number" min={0} step={1} bind:value={transferSeconds} placeholder="不限"/><span>秒</span></div></Field.Content></Field.Field>
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-ws">Responses WebSocket</Field.Label><Field.Content><Switch id="provider-ws" bind:checked={draft.request.responsesWebSocket} disabled={busy}/><Field.Description>仅在上游支持时开启。</Field.Description></Field.Content></Field.Field>
           </Field.Group>
         </Collapsible.Content>

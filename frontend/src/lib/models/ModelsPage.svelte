@@ -368,7 +368,7 @@
         ><Table.Header
           ><Table.Row
             ><Table.Head>模型</Table.Head><Table.Head>能力</Table.Head
-            ><Table.Head>目录价格</Table.Head><Table.Head class="text-right"
+            ><Table.Head data-align="number">目录价格</Table.Head><Table.Head data-align="control"
               >操作</Table.Head
             ></Table.Row
           ></Table.Header
@@ -407,14 +407,14 @@
                 </div>
               </Table.Cell><Table.Cell class="model-capability-cell"
                 ><ModelCapabilities values={model.capabilities} /></Table.Cell
-              ><Table.Cell class="model-price-cell"
+              ><Table.Cell class="model-price-cell" data-align="number"
                 ><PriceSummary
                   pricing={model.pricing}
                   kind={model.kind}
                   modified={model.overrides.length > 0}
                 /></Table.Cell
-              ><Table.Cell
-                ><div class="flex justify-end gap-1">
+              ><Table.Cell data-align="control"
+                ><div class="flex gap-1">
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -452,8 +452,8 @@
 <Dialog.Root bind:open={addOpen}>
   <Dialog.Content
     class={createDraft && !createEntry
-      ? "flex max-h-[86vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(760px,calc(100vw-3rem))]"
-      : "flex h-[min(86vh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(920px,calc(100vw-3rem))]"}
+      ? "flex max-h-[86dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(760px,88vw)]"
+      : "flex h-[min(86dvh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(920px,88vw)]"}
   >
     <Dialog.Header class="h-16 shrink-0 flex-row items-center gap-3 border-b px-6 pr-16"
       >{#if createDraft && createEntry}<Button variant="ghost" size="sm" disabled={busy} onclick={() => void returnToCatalog()}><ArrowLeft data-icon="inline-start" />返回</Button>{/if}<Dialog.Title
@@ -511,8 +511,8 @@
 <Dialog.Root bind:open={editorOpen}
   ><Dialog.Content
     class={readOnly
-      ? "flex max-h-[86vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(920px,calc(100vw-3rem))]"
-      : "flex max-h-[86vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(760px,calc(100vw-3rem))]"}
+      ? "flex max-h-[86dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(920px,88vw)]"
+      : "flex max-h-[86dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(760px,88vw)]"}
     ><Dialog.Header class="shrink-0 border-b px-6 py-5"
       ><Dialog.Title>{readOnly ? "模型详情" : "编辑模型"}</Dialog.Title
       ><Dialog.Description class="sr-only"

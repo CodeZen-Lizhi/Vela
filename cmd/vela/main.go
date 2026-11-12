@@ -87,6 +87,11 @@ func main() {
 		log.Fatal(err)
 	}
 	defer execution.Close()
+	modelTests, err := app.NewModelTests(store, upstreams, execution)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer modelTests.Close()
 	accounts, err := providers.NewAccounts(upstreams, func(ctx context.Context) (bool, string, error) {
 		proxy, readErr := store.GetProxy(ctx)
 		return proxy.Enabled, proxy.URL, readErr
@@ -97,10 +102,7 @@ func main() {
 	queryContext, stopQueries := context.WithCancel(context.Background())
 	defer stopQueries()
 	go func() {
-		if err := accounts.Run(queryContext, func(ctx context.Context) (bool, int, error) {
-			value, readErr := preferences.AccountRefresh(ctx)
-			return value.Enabled, value.Minutes, readErr
-		}); err != nil && queryContext.Err() == nil {
+		if err := accounts.Run(queryContext, preferences.AccountRefresh); err != nil && queryContext.Err() == nil {
 			log.Printf("账户定时刷新停止: %v", err)
 		}
 	}()
@@ -139,11 +141,21 @@ func main() {
 		Settings:     preferences,
 		Scheduling:   policies,
 		Verification: verifier,
+		ModelTests:   modelTests,
 		Credentials:  secrets,
 		ApplyGeneral: applyGeneral,
 	}))
 
+	refreshOnVisible = func() {
+		go func() {
+			config, err := preferences.AccountRefresh(queryContext)
+			if err == nil && config.OnVisible {
+				_ = accounts.RefreshBackground(queryContext, true, true)
+			}
+		}()
+	}
 	mygo.App.WhenReady(func() {
+		watchWindowVisibility(queryContext)
 		mainWindow = createMainWindow()
 		syncTray()
 	})

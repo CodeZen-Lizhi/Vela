@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/CodeZen-Lizhi/vela/internal/settings"
 )
 
 // accountFixture 建立真实 SQLite 和两个独立 Key，使用内存主密钥替代系统钥匙串。
@@ -357,7 +359,7 @@ func TestAccountRunCancellation(t *testing.T) {
 	a, _, _, _ := accountFixture(t, "https://example.com")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if e := a.Run(ctx, func(context.Context) (bool, int, error) { return false, 5, nil }); !errors.Is(e, context.Canceled) {
+	if e := a.Run(ctx, func(context.Context) (settings.AccountRefresh, error) { return settings.DefaultAccountRefresh(), nil }); !errors.Is(e, context.Canceled) {
 		t.Fatal(e)
 	}
 }

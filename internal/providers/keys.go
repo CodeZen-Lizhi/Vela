@@ -1,12 +1,14 @@
 package providers
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -190,7 +192,7 @@ func (row keyRow) revealed(master []byte) (string, error) {
 	return string(plaintext), err
 }
 
-// Keys 读取一个供应商的全部上游 Key，按创建顺序排列，没有 Key 时返回空数组。
+// Keys 读取一个供应商的全部上游 Key，按优先级数值升序排列，同级保留创建顺序；启停不影响位置，没有 Key 时返回空数组。
 // 只返回密钥掩码；任意一把 Key 设置了密钥而主密钥不可用时返回错误，不返回残缺的列表。
 func (s *Store) Keys(ctx context.Context, providerID string) ([]ProviderKey, error) {
 	rows, err := s.keyRows(ctx, providerID)
@@ -220,6 +222,9 @@ func (s *Store) Keys(ctx context.Context, providerID string) ([]ProviderKey, err
 		}
 		result = append(result, key)
 	}
+	slices.SortStableFunc(result, func(left, right ProviderKey) int {
+		return cmp.Compare(left.Priority, right.Priority)
+	})
 	return result, nil
 }
 

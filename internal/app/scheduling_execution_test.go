@@ -314,19 +314,29 @@ func TestSchedulingRejectsHTTPContinuationField(t *testing.T) {
 	}
 }
 
-// TestSchedulingUsesProviderOperationMappings 验证合入后直接采用供应商模块的操作范围映射，不另建第二份关系。
-func TestSchedulingUsesProviderOperationMappings(t *testing.T) {
+// TestSchedulingUsesProviderPriorityMappings 验证映射优先级、执行前复核及清空后的默认名回退。
+func TestSchedulingUsesProviderPriorityMappings(t *testing.T) {
 	f := newExecutionFixture(t)
 	ctx := context.Background()
-	if err := f.vendors.SaveMappings(ctx, f.provider.ID, []providers.ProviderModelMappingsDraft{{ModelID: "model-1", Mappings: []providers.ProviderModelMapping{{RequestName: "chat-upstream", Operations: []string{"chat"}}, {RequestName: "responses-upstream", Operations: []string{"responses"}}}}}); err != nil {
+	if err := f.vendors.SaveMappings(ctx, f.provider.ID, []providers.ProviderModelMappingsDraft{{ModelID: "model-1", Mappings: []providers.ProviderModelMapping{{RequestName: "later-upstream", Priority: 2}, {RequestName: "first-upstream", Priority: 1}}}}); err != nil {
 		t.Fatal(err)
 	}
-	routes, err := f.vendors.ExecutionCandidates(ctx, "logical-model", "responses")
-	if err != nil || len(routes) != 2 || routes[0].Model != "responses-upstream" {
-		t.Fatalf("未复用操作范围: %+v %v", routes, err)
+	routes, err := f.vendors.ExecutionCandidates(ctx, "logical-model")
+	if err != nil || len(routes) != 2 || routes[0].Model != "first-upstream" {
+		t.Fatalf("未复用优先级: %+v %v", routes, err)
 	}
-	if _, err = f.vendors.ExecutionSecret(ctx, "logical-model", routes[0].Key.ID, routes[0].Version, "chat-upstream", "responses"); err == nil {
-		t.Fatal("跨操作映射通过执行前复核")
+	if _, err = f.vendors.ExecutionSecret(ctx, "logical-model", routes[0].Key.ID, routes[0].Version, "later-upstream"); err == nil {
+		t.Fatal("非当前映射通过执行前复核")
+	}
+	if _, err = f.vendors.ExecutionSecret(ctx, "logical-model", routes[0].Key.ID, routes[0].Version, "first-upstream"); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.vendors.SaveMappings(ctx, f.provider.ID, []providers.ProviderModelMappingsDraft{{ModelID: "model-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	routes, err = f.vendors.ExecutionCandidates(ctx, "logical-model")
+	if err != nil || len(routes) != 2 || routes[0].Model != "logical-model" {
+		t.Fatalf("清空后没有回退默认名: %+v %v", routes, err)
 	}
 }
 
@@ -415,6 +425,57 @@ func TestExecutionGlobalProxyAndDirect(t *testing.T) {
 	request(candidate, "direct")
 	if proxied.Load() != 1 || direct.Load() != 3 {
 		t.Fatal("继承或直连请求数量错误")
+	}
+}
+
+// TestSchedulingLegacyTransferLimitsIgnored 验证旧配置的次数和耗时限制不再阻断第三把 Key 的真实 HTTP 调用。
+func TestSchedulingLegacyTransferLimitsIgnored(t *testing.T) {
+	f := newExecutionFixture(t)
+	ctx := context.Background()
+	multiplier := 1.0
+	third, err := f.vendors.CreateKey(ctx, f.provider.ID, providers.ProviderKeyDraft{Name: "third", Secret: "key-c", Multiplier: &multiplier, Priority: 3, CacheMinutes: 5, ProbeMinutes: 10, Proxy: providers.ProxyChoice{Mode: providers.ProxyProvider}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	var mu sync.Mutex
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("Authorization")
+		mu.Lock()
+		calls = append(calls, key)
+		mu.Unlock()
+		if key != "Bearer key-c" {
+			// 前两次失败累计超过旧版一秒限制，保留原故障触发条件。
+			timer := time.NewTimer(550 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+			case <-r.Context().Done():
+				return
+			}
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		io.WriteString(w, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer upstream.Close()
+	request := map[string]any{"attempts": 1, "maxTransfers": 1, "maxTransferSeconds": 1, "proxy": map[string]string{"mode": "direct"}}
+	raw, err := json.Marshal(map[string]any{"url": upstream.URL, "request": request})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.catalog.DB().Exec("UPDATE providers SET document=? WHERE id=?", string(raw), f.provider.ID); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	result, err := f.execution.Executor.Execute(ctx, f.request(), &output)
+	if err != nil || result.Attempts != 3 || result.KeyID != third.ID || !bytes.Contains(output.Bytes(), []byte("ok")) {
+		t.Fatalf("旧转移限制阻断候选: %+v err=%v", result, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(calls, []string{"Bearer key-a", "Bearer key-b", "Bearer key-c"}) {
+		t.Fatalf("实际出站顺序: %v", calls)
 	}
 }
 

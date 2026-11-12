@@ -4,6 +4,7 @@
   import type { ProviderKeyQuery, ProviderKeyQueryDraft } from "$lib/generated/mygo";
   import Choice from "./Choice.svelte";
   import QueryConnection from "./QueryConnection.svelte";
+  import MultiplierSource from "./MultiplierSource.svelte";
   import { defaultKeyQuery } from "./query-defaults";
 
   /** 可嵌入新增或编辑 Key 的纯草稿字段，不负责读取、保存或创建 Key。 */
@@ -33,7 +34,7 @@
 <fieldset {disabled} class="query-fields">
   <Field.Set><Field.Legend>信息查询</Field.Legend><Field.Group>
     <Field.Field><Field.Label>名称来源</Field.Label><Choice bind:value={draft.nameSource} label="Key 名称来源" {disabled} options={[{ value: "manual", label: "手动填写" }, { value: "upstream_key", label: "上游 Key 名称" }, { value: "upstream_group", label: "上游分组名称" }]} /><Field.Description>与倍率来源独立。上游查询失败时保留当前名称。</Field.Description></Field.Field>
-    <Field.Field><Field.Label>倍率来源</Field.Label><Choice bind:value={draft.multiplierSource} label="Key 倍率来源" {disabled} options={[{ value: "manual", label: "手动设置" }, { value: "upstream", label: "跟随上游" }]} /><Field.Description>手动项不会被同步覆盖；上游倍率 0 表示免费，未知不视为 1。</Field.Description></Field.Field>
+    <Field.Field><Field.Label>倍率来源</Field.Label><MultiplierSource value={draft.multiplierSource} label="Key 倍率来源" {disabled} onchange={(value) => draft.multiplierSource = value}/><Field.Description>手动项不会被同步覆盖；自动跟随上游倍率，0 表示免费，未知不视为 1。</Field.Description></Field.Field>
     {#if queryState}
       <section class="query-status" aria-label="已保存配置的最近查询状态">
         <h3>最近查询状态</h3>

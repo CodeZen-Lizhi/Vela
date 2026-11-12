@@ -15,7 +15,7 @@ func (s *VelaService) ProviderModels(ctx context.Context, providerID string) ([]
 	return store.Models(ctx, providerID)
 }
 
-// SaveProviderModels 一次替换供应商全部模型关联，并按草稿为新增模型授权。
+// SaveProviderModels 一次替换供应商全部模型关联；Key 权限由独立权限入口维护。
 func (s *VelaService) SaveProviderModels(ctx context.Context, providerID string, draft providers.ProviderModelsDraft) error {
 	store, err := s.providerStore()
 	if err != nil {

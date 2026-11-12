@@ -7,7 +7,10 @@
     Network,
     ScrollText,
     FlaskConical,
+    PanelLeftClose,
+    PanelLeftOpen,
   } from "@lucide/svelte";
+  import { Button } from "$lib/components/ui/button";
   import VelaMark from "$lib/components/VelaMark.svelte";
   import VerificationPage from "$lib/verification/VerificationPage.svelte";
   import ModelsPage from "$lib/models/ModelsPage.svelte";
@@ -17,6 +20,8 @@
   import { settingsSections, type SettingsSection } from "$lib/settings/sections";
   /** 当前显示的顶级页面，取导航项名称或“设置”。 */
   let page = $state("模型");
+  /** 侧栏收起时只显示导航图标；切换页面和展开时保留当前页面及设置分类。 */
+  let sidebarCollapsed = $state(false);
   /** 设置子分类由外壳持有，侧栏、面包屑与内容面板共用。 */
   let settingsSection = $state<SettingsSection>("general");
   /** 已实现入口正常导航，其余模块保持明确的待开发状态。 */
@@ -53,8 +58,21 @@
 <svelte:head
   ><title>Vela · {page === "模型" ? "模型管理" : page}</title></svelte:head
 >
-<div class="app-shell">
-  <aside class="sidebar">
+<div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
+  <aside class="sidebar" id="app-sidebar" aria-label="侧栏">
+    <div class="sidebar-controls">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+        title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="app-sidebar"
+        onclick={() => (sidebarCollapsed = !sidebarCollapsed)}
+      >
+        {#if sidebarCollapsed}<PanelLeftOpen />{:else}<PanelLeftClose />{/if}
+      </Button>
+    </div>
     <div class="sidebar-brand mb-8 flex items-center gap-3 px-2">
       <span class="text-primary"><VelaMark class="size-9" /></span>
       <div>
@@ -68,20 +86,26 @@
       {#each navigation as item}<button
           class:active={page === item.name}
           class="nav-item"
+          aria-label={item.name}
+          aria-current={page === item.name ? "page" : undefined}
+          title={sidebarCollapsed ? item.name : undefined}
           disabled={!item.enabled}
           onclick={() => (page = item.name)}
-          ><item.icon class="size-4" /><span>{item.name}</span></button
+          ><item.icon class="size-4" aria-hidden="true" /><span>{item.name}</span></button
         >{/each}
     </nav>
     <div class="settings-nav">
       <button
         class="nav-item w-full"
         class:active={page === "设置"}
-        aria-expanded={page === "设置"}
+        aria-label="设置"
+        title={sidebarCollapsed ? "设置" : undefined}
+        aria-current={page === "设置" ? "page" : undefined}
+        aria-expanded={page === "设置" && !sidebarCollapsed}
         onclick={() => openSettings()}
-        ><Settings2 class="size-4" /><span>设置</span></button
+        ><Settings2 class="size-4" aria-hidden="true" /><span>设置</span></button
       >
-      {#if page === "设置"}
+      {#if page === "设置" && !sidebarCollapsed}
         <nav class="settings-subnav" aria-label="设置分类">
           {#each settingsSections as section}
             <button
