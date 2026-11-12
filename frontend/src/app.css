@@ -33,6 +33,9 @@
   --accent-foreground: #1d4ed8;
   --destructive: #b42332;
   --destructive-foreground: #ffffff;
+  /* 用量、传输与计时共用语义色，浅深色均保持文字可读。 */
+  --positive: #087f6b;
+  --caution: #a65a13;
   --border: #e2e8f0;
   --input: #d5dce6;
   --ring: #2563eb;
@@ -58,6 +61,8 @@
     --accent-foreground: #a9c5ff;
     --destructive: #f0808a;
     --destructive-foreground: #1a0b0d;
+    --positive: #60cfb2;
+    --caution: #efb36a;
     --border: #28303c;
     --input: #343e4d;
     --ring: #6ea0ff;
@@ -81,6 +86,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-positive: var(--positive);
+  --color-caution: var(--caution);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -114,6 +121,12 @@
 
 ::selection {
   background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+/* 进行中文字缓慢明暗交替，最暗时仍有完整文字，不依赖透明度闪灭。 */
+@keyframes vela-status-breathe {
+  0%, 100% { color: var(--primary); }
+  50% { color: color-mix(in srgb, var(--primary) 35%, var(--foreground)); }
 }
 
 .app-shell {

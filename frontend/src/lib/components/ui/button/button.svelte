@@ -17,6 +17,10 @@
 				text: "text-muted-foreground hover:text-primary underline-offset-4 hover:underline",
 			},
 			size: {
+				/** 折叠区标题使用整行点击范围，与信息区内边距保持一致。 */
+				disclosure: "h-11 w-full gap-2 px-4 text-xs justify-between",
+				/** 时间线等信息入口允许多行内容，保留统一按钮主题和焦点样式。 */
+				content: "h-auto gap-2 px-3 py-2 whitespace-normal",
 				// table-inline 用于表格文字入口，不占额外列宽，保留主题与焦点反馈。
 				"table-inline": "h-auto gap-1 p-0 text-xs",
 				default: "h-9 gap-2 px-3.5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",

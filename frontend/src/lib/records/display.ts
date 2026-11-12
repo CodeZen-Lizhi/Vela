@@ -65,14 +65,20 @@ export function label(
 ): string {
   return options.find((x) => x.value === value)?.label ?? value;
 }
-/** 缺失计量保持破折号，与真实零值区分。 */
+/** 完整数值保留千分位；不使用中文万/亿，缺失与真实零值区分。 */
 export function number(value: number | null | undefined): string {
   return value == null
     ? "—"
-    : new Intl.NumberFormat("zh-CN", {
-        notation: value >= 100000 ? "compact" : "standard",
+    : new Intl.NumberFormat("en-US", {
         maximumFractionDigits: 2,
       }).format(value);
+}
+/** Token 与速度用英文 K/M 数量级保持旧版数字密度，完整值在对应提示中保留。 */
+export function compact(value: number | null | undefined): string {
+  return value == null ? "—" : new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 /** 美元估算金额显示六位小数；未知值不补零。 */
 export function money(value: number | null | undefined): string {
@@ -86,10 +92,14 @@ export function duration(value: number | null | undefined): string {
       ? `${Math.round(value)} ms`
       : `${(value / 1000).toFixed(2)} s`;
 }
+/** 列表沿用旧版秒数格式，两位小数紧邻 s，缺失首字显示短横线。 */
+export function seconds(value: number | null | undefined): string {
+  return value == null ? "-" : `${(value / 1000).toFixed(2)}s`;
+}
 /** 缓存命中率从归一化完整上下文计算。 */
 export function cache(usage: Usage | null): string {
   return usage && usage.context > 0
-    ? `${((100 * usage.cacheRead) / usage.context).toFixed(1)}%`
+    ? `${((100 * usage.cacheRead) / usage.context).toFixed(2)}%`
     : "—";
 }
 /** 请求时间按本机显示，统计日的固定时区由后端独立维护。 */

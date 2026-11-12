@@ -1,13 +1,20 @@
 <script lang="ts">
   import { VelaService, type RecordsRecord } from "$lib/generated/mygo";
+  import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import * as Dialog from "$lib/components/ui/dialog";
+  import * as Sheet from "$lib/components/ui/sheet";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import * as Table from "$lib/components/ui/table";
+  import * as Tabs from "$lib/components/ui/tabs";
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import Choice from "$lib/providers/Choice.svelte";
-  import { Copy, RefreshCw } from "@lucide/svelte";
+  import { Copy, RefreshCw, X, Terminal, ChevronsUpDown } from "@lucide/svelte";
   import { errorMessage } from "$lib/settings/sections";
+  import { rateNames, rateUnit, unitLabel } from "$lib/models/display";
+  import DetailSection from "./DetailSection.svelte";
+  import ExecutionPath from "./ExecutionPath.svelte";
+  import { elapsedClock } from "./elapsed-clock.svelte";
   import {
     states,
     sources,
@@ -15,6 +22,7 @@
     protocol,
     label,
     number,
+    compact,
     money,
     duration,
     date,
@@ -35,11 +43,17 @@
     error = $state(""),
     loading = $state(false),
     attempt = $state("0"),
-    panel = $state("trace"),
+    panel = $state("request"),
     side = $state("provider"),
     view = $state("json"),
     compare = $state(false),
     expanded = $state(true);
+  /** 返回原列表行的身份独立于熔断追溯身份。 */
+  let originID = "";
+  /** 更多数据默认收起，路径检查器可主动展开到所选尝试响应。 */
+  let rawOpen = $state(false);
+  /** 与列表共用逐帧时钟语义，按真实起点累计，不推断完成状态。 */
+  const clock = elapsedClock(() => record?.state === "active");
   let generation = 0;
   /** 当前阅读身份允许追溯熔断来源。 */
   let viewedID = $state("");
@@ -57,6 +71,16 @@
           ? (payload?.requestBody ?? "")
           : (payload?.responseBody ?? ""),
   );
+  /** 对话解析和头部比较只计算当前可见正文，避免在模板中反复解析。 */
+  const bodyPanel = $derived(panel === "request" || panel === "response");
+  const conversationRows = $derived(bodyPanel && view === "conversation" ? conversation(content) : []);
+  const comparedHeaders = $derived(!bodyPanel && compare ? headers(
+    panel === "headers" ? (record?.client?.requestHeaders ?? "") : (record?.client?.responseHeaders ?? ""),
+    panel === "headers" ? (current?.payload?.requestHeaders ?? "") : (current?.payload?.responseHeaders ?? ""),
+  ) : []);
+  /** 头部状态来自最后一次真实 HTTP，逻辑失败仍单独显示最终状态。 */
+  const lastStatus = $derived(record?.attempts.at(-1)?.status);
+  const elapsed = $derived(record?.state === "active" ? Math.max(0, clock.now - record.startedAt) : record?.durationMillis);
   /** 详情失败可重试，活跃时持续读取到真实终态。 */
   async function load(requestID: string): Promise<void> {
     const version = ++generation;
@@ -80,8 +104,15 @@
       return;
     }
     record = null;
+    error = "";
     attempt = "0";
-    panel = "trace";
+    panel = "request";
+    side = "provider";
+    view = "json";
+    compare = false;
+    expanded = true;
+    rawOpen = false;
+    originID = requestID;
     viewedID = requestID;
     void load(requestID);
     const timer = setInterval(() => {
@@ -92,6 +123,31 @@
       generation++;
     };
   });
+  /** 切换熔断来源时先清除旧事实，失败不把旧请求冒充来源请求。 */
+  function openSource(requestID: string): void {
+    generation++;
+    record = null;
+    error = "";
+    attempt = "0";
+    rawOpen = false;
+    viewedID = requestID;
+    void load(requestID);
+  }
+  /** 关闭抽屉后恢复原行焦点，行已不在当前页时回到导航入口。 */
+  function restoreFocus(event: Event): void {
+    event.preventDefault();
+    const row = document.querySelector<HTMLElement>(`.record-row[data-record-id="${CSS.escape(originID)}"]`);
+    (row ?? document.querySelector<HTMLElement>('[aria-label="使用记录"]'))?.focus();
+  }
+  /** 路径入口展开对应尝试的真实响应，并把数据区带入可见范围。 */
+  async function showResponse(): Promise<void> {
+    panel = "response";
+    side = "provider";
+    compare = false;
+    rawOpen = true;
+    await tick();
+    document.querySelector(".record-raw-section")?.scrollIntoView({ block: "nearest" });
+  }
   /** 复制只处理已脱敏可见文本，不发送网络调用。 */
   async function copy(value: string): Promise<void> {
     try {
@@ -204,294 +260,121 @@
   }
 </script>
 
-<Dialog.Root
-  open={!!id}
-  onOpenChange={(open) => {
-    if (!open) onclose();
-  }}
-  ><Dialog.Content
-    class="record-detail"
-    onCloseAutoFocus={(event) => {
-      event.preventDefault();
-      const candidates = document.querySelectorAll<HTMLButtonElement>(
-        `[data-record-id="${CSS.escape(viewedID)}"]`,
-      );
-      const trigger = Array.from(candidates).find(
-        (element) => element.getClientRects().length > 0,
-      );
-      (
-        trigger ??
-        document.querySelector<HTMLButtonElement>('[aria-label="使用记录"]')
-      )?.focus();
-    }}
-    ><Dialog.Header
-      ><Dialog.Title>请求详情</Dialog.Title><Dialog.Description
-        >{record?.id ?? id}</Dialog.Description
-      ></Dialog.Header
-    >
-    {#if error}<p class="records-error" role="alert">
-        {error}<Button variant="outline" onclick={() => load(id)}
-          ><RefreshCw />重试</Button
-        >
-      </p>{/if}
-    {#if loading && !record}<p role="status">正在读取请求详情…</p>{/if}
-    {#if record}
-      <section class="record-detail-heading">
-        <div>
-          <h2>{record.model || "未知模型"}</h2>
-          <Badge
-            variant={record.state === "failed" ? "destructive" : "secondary"}
-            >{label(states, record.state)}</Badge
-          >
+<Sheet.Root open={!!id} onOpenChange={(open) => { if (!open) onclose(); }}>
+  <Sheet.Content side="right" class="record-detail" showCloseButton={false} onCloseAutoFocus={restoreFocus}>
+    <header class="record-detail-header">
+      <div class="record-detail-title-row">
+        <div class="record-detail-title-main">
+          <Sheet.Title>请求详情</Sheet.Title>
+          {#if record}
+            <code class="record-model-chip" title={record.model}>{record.model || "未知模型"}</code>
+            {#if record.effort}<Badge variant="secondary">{record.effort}</Badge>{/if}
+            {#if record.tier && record.tier !== "standard"}<Badge variant="secondary">{record.tier}</Badge>{/if}
+            <Badge variant={record.state === "failed" ? "destructive" : "default"}>{label(states, record.state)}{lastStatus ? ` · ${lastStatus}` : ""}</Badge>
+            <Badge variant="outline">{record.transport === "websocket" ? "WebSocket" : record.stream ? "HTTP 流式" : "HTTP 标准"}</Badge>
+          {/if}
         </div>
-        <p>
-          {date(record.startedAt, "day")}
-          {date(record.startedAt)} · {protocol(record.protocol)} · {label(
-            types,
-            record.type,
-          )} / {record.transport === "websocket" ? "WebSocket" : record.stream ? "流式" : "标准"} · {label(
-            sources,
-            record.source,
-          )}
-        </p>
-        <p>
-          {record.providerName || "未发上游"} / {record.keyName || "—"} · → {record.upstreamModel ||
-            record.model}
-        </p>
-        <small
-          >名称为请求发生时快照；价格按请求开始时固定。当前：{record.currentModelName}
-          / {record.currentProviderName} / {record.currentKeyName}</small
-        >
-      </section>
-      <section class="record-detail-metrics">
-        <div><span>估算费用</span><strong>{money(record.cost)}</strong></div>
-        <div>
-          <span>端到端耗时</span><strong
-            >{duration(record.durationMillis)}</strong
-          >
+        <div class="records-actions">
+          <Button variant="ghost" size="icon-sm" aria-label="刷新请求详情" title="刷新请求详情" disabled={loading} onclick={() => load(viewedID)}><RefreshCw /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="关闭请求详情" title="关闭请求详情" onclick={onclose}><X /></Button>
         </div>
-        <div>
-          <span>首字</span><strong>{duration(record.firstByteMillis)}</strong>
-        </div>
-        <div>
-          <span>输出 Token</span><strong>{number(record.usage?.output)}</strong>
-        </div>
-        <div>
-          <span>输出速度</span><strong
-            >{record.outputRate == null
-              ? "—"
-              : `${number(record.outputRate)} tps`}</strong
-          >
-        </div>
-      </section>
-      {#if record.error}<p class="records-error">{record.error}</p>{/if}
-      <div class="record-detail-controls">
-        <Choice
-          bind:value={panel}
-          label="详情分区"
-          options={[
-            { value: "trace", label: "执行链路" },
-            { value: "billing", label: "用量与计费" },
-            { value: "headers", label: "请求头" },
-            { value: "response-headers", label: "响应头" },
-            { value: "request", label: "请求正文" },
-            { value: "response", label: "响应正文" },
-          ]}
-        />{#if panel !== "trace" && panel !== "billing"}<Choice
-            bind:value={attempt}
-            label="实际尝试"
-            options={record.attempts.map((item, i) => ({
-              value: String(i),
-              label: `${item.number}. ${item.providerName} / ${item.keyName} · HTTP ${item.status || "—"}`,
-            }))}
-          /><Choice
-            bind:value={side}
-            label="数据来源"
-            options={[
-              { value: "provider", label: "上游" },
-              { value: "client", label: "客户端" },
-            ]}
-          />{/if}
       </div>
-      {#if panel === "trace"}
-        <section>
-          <h3>实际执行路径</h3>
-          {#if record.circuitSourceId}<p class="records-notice">
-              本地熔断 · 触发请求 <Button
-                variant="link"
-                onclick={() => {
-                  viewedID = record!.circuitSourceId;
-                  void load(viewedID);
-                }}>{record.circuitSourceId}</Button
-              >，可查看仍在保留期内的 HTTP 状态及原始错误。
-            </p>{/if}{#if record.candidates?.length}<p
-              class="records-analysis-note"
-            >
-              排序候选（不代表实际发送）
-            </p>
-            {#each record.candidates as candidate}<p
-                class="records-analysis-note"
-              >
-                {candidate.providerName} / {candidate.keyName} · {candidate.reason ||
-                  (record.attempts.some((a) => a.keyId === candidate.keyId)
-                    ? "已尝试"
-                    : "未执行")}
-              </p>{/each}{/if}{#if !record.attempts.length}<p
-              class="records-notice"
-            >
-              请求只在本地处理，未发送上游，没有上游 HTTP 响应。
-            </p>{/if}
-          <div class="record-trace">
-            {#each record.attempts as item}<article>
-                <span>尝试 {item.number}</span><strong
-                  >{item.providerName} / {item.keyName}</strong
-                ><code>{item.path}</code>
-                <p>
-                  HTTP {item.status || "未收到响应"} · {duration(
-                    item.durationMillis,
-                  )}
-                </p>
-                <small
-                  >{item.error ||
-                    "已收到上游响应；最终结论以请求状态为准"}</small
-                ><Button
-                  variant="link"
-                  onclick={() => {
-                    attempt = String(item.number - 1);
-                    panel = "response";
-                    side = "provider";
-                  }}>查看本次响应</Button
-                >
-              </article>{/each}
-          </div>
+      <Sheet.Description class="record-detail-meta">
+        <span title={record?.id ?? viewedID}>ID: {record?.id ?? viewedID}</span>
+        {#if record}<span>{date(record.startedAt, "day")} {date(record.startedAt)}</span><span>{protocol(record.protocol)}</span>{/if}
+      </Sheet.Description>
+    </header>
+    <div class="record-detail-body">
+      {#if error}<div class="records-error" role="alert">{error}<Button variant="outline" onclick={() => load(viewedID)}>重试</Button></div>{/if}
+      {#if loading && !record}<p role="status">正在读取请求详情…</p>{/if}
+      {#if record}
+        <section class="record-detail-metrics" aria-label="费用与性能概览">
+          <div><strong>{money(record.cost)}</strong><span>总费用 · 本地估算</span></div>
+          <div><strong>{duration(elapsed)}</strong><span>总耗时</span></div>
+          <div><strong title={number(record.usage?.unit ? record.usage.quantity : record.usage?.output)}>{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong><span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span></div>
+          <div><strong title={number(record.outputRate)}>{record.outputRate == null ? "—" : `${compact(record.outputRate)} tps`}</strong><span>输出速度</span></div>
+          <div><strong>{duration(record.firstByteMillis)}</strong><span>首字耗时</span></div>
         </section>
-      {:else if panel === "billing"}
-        <section>
-          <h3>用量与估算费用</h3>
-          <p>不是中转站已对账扣款；未知价格或用量不补零。</p>
-          <div class="record-detail-metrics">
-            <div>
-              <span>输入</span><strong>{number(record.usage?.input)}</strong>
+        {#if record.error}<p class="records-error" role="alert">{record.error}</p>{/if}
+        {#if !record.usage}<p class="record-detail-note">{record.state === "active" ? "请求进行中，用量与估算费用尚未结算。" : record.state === "local" ? "请求未发上游，无上游用量。" : "上游未提供可验证用量，未知值不显示为零。"}</p>{/if}
+        {#if record.circuitSourceId}<p class="records-notice">本地熔断 · 触发请求 <Button variant="link" size="inline" onclick={() => openSource(record!.circuitSourceId)}>{record.circuitSourceId}</Button></p>{/if}
+
+        <DetailSection title="计费明细" description="价格、Token 与媒体费用">
+          <p class="record-detail-note">按请求开始时价格快照和实际用量估算，非上游已对账扣款。</p>
+          <dl class="record-context-grid">
+            <div><dt>输入</dt><dd title={number(record.usage?.input)}>{compact(record.usage?.input)} Token</dd></div>
+            <div><dt>输出</dt><dd title={number(record.usage?.output)}>{compact(record.usage?.output)} Token</dd></div>
+            <div><dt>缓存读取</dt><dd title={number(record.usage?.cacheRead)}>{compact(record.usage?.cacheRead)} Token</dd></div>
+            <div><dt>缓存创建 · 5 分钟 / 1 小时</dt><dd title={`${number(record.usage?.cacheWrite)} / ${number(record.usage?.cacheWrite1h)} Token`}>{compact(record.usage?.cacheWrite)} / {compact(record.usage?.cacheWrite1h)} Token</dd></div>
+            <div><dt>完整输入上下文</dt><dd title={number(record.usage?.context)}>{compact(record.usage?.context)} Token</dd></div>
+            <div><dt>执行倍率</dt><dd>{record.multiplier == null ? "未知" : `${record.multiplier}×`}</dd></div>
+            {#if record.usage?.unit}<div><dt>媒体数量 / 规格</dt><dd>{number(record.usage.quantity)} {record.usage.unit === "image" ? "张" : "秒"} · {record.usage.specification || "规格未记录"}</dd></div>{/if}
+          </dl>
+          {#if record.charges.length}<Table.Root><Table.Header><Table.Row><Table.Head>计价维度</Table.Head><Table.Head>实际数量</Table.Head><Table.Head>美元单价</Table.Head><Table.Head>估算金额</Table.Head></Table.Row></Table.Header><Table.Body>
+            {#each record.charges as charge}<Table.Row><Table.Cell>{rateNames[charge.key] ?? charge.key}</Table.Cell><Table.Cell>{number(charge.quantity)}</Table.Cell><Table.Cell>{money(charge.price)}<small>{unitLabel(rateUnit(charge.key))}</small></Table.Cell><Table.Cell>{money(charge.amount)}</Table.Cell></Table.Row>{/each}
+          </Table.Body></Table.Root>{:else}<p class="record-detail-note">{record.cost == null ? "费用未知，未生成分项金额。" : "未记录费用分项。"}</p>{/if}
+          {#if record.pricing.base.length}<h4>开始时基础价格</h4><Table.Root><Table.Header><Table.Row><Table.Head>维度</Table.Head><Table.Head>价格</Table.Head><Table.Head>单位</Table.Head></Table.Row></Table.Header><Table.Body>
+            {#each record.pricing.base as rate}<Table.Row><Table.Cell>{rateNames[rate.key] ?? rate.key}</Table.Cell><Table.Cell>{money(rate.price)}</Table.Cell><Table.Cell>{unitLabel(rate.unit)}</Table.Cell></Table.Row>{/each}
+          </Table.Body></Table.Root>{/if}
+          <Collapsible.Root><Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="inline">完整历史价格快照</Button>{/snippet}</Collapsible.Trigger><Collapsible.Content><pre>{JSON.stringify(record.pricing, null, 2)}</pre></Collapsible.Content></Collapsible.Root>
+        </DetailSection>
+
+        <DetailSection title="请求上下文" description="来源、模型映射与执行目标">
+          <dl class="record-context-grid">
+            <div><dt>API 格式 / 请求类型</dt><dd>{protocol(record.protocol)} · {label(types, record.type)}</dd></div>
+            <div><dt>来源</dt><dd>{label(sources, record.source)}</dd></div>
+            <div><dt>统一模型 → 上游模型</dt><dd>{record.model || "未知"} → {record.upstreamModel || "未记录"}</dd></div>
+            <div><dt>请求端点</dt><dd>{current?.path || "未发上游或未记录"}</dd></div>
+            <div><dt>供应商 / 执行 Key</dt><dd>{record.providerName || "未发上游"} / {record.keyName || "—"}</dd></div>
+            <div><dt>思考强度 / 处理层级</dt><dd>{record.effort || "未记录"} / {record.tier || "未记录"}</dd></div>
+            <div><dt>请求时名称</dt><dd>{record.modelName || record.model} / {record.providerName || "—"} / {record.keyName || "—"}</dd></div>
+            <div><dt>当前名称</dt><dd>{record.currentModelName || "—"} / {record.currentProviderName || "—"} / {record.currentKeyName || "—"}</dd></div>
+          </dl>
+        </DetailSection>
+
+        {#key record.id}<ExecutionPath {record} bind:attempt onresponse={showResponse} />{/key}
+
+        <Collapsible.Root bind:open={rawOpen} class="record-detail-section record-raw-section">
+          <Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="ghost" size="disclosure" class="record-raw-trigger">更多数据<ChevronsUpDown /></Button>{/snippet}</Collapsible.Trigger>
+          <Collapsible.Content>
+            <div class="record-section-body">
+              <Tabs.Root bind:value={panel}>
+                <Tabs.List variant="line" aria-label="原始请求与响应" class="record-payload-tabs">
+                  <Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="request">请求正文</Tabs.Trigger><Tabs.Trigger value="response-headers">响应头</Tabs.Trigger><Tabs.Trigger value="response">响应正文</Tabs.Trigger>
+                </Tabs.List>
+                <div class="record-payload-toolbar">
+                  {#if record.attempts.length}<Choice bind:value={attempt} label="实际尝试" options={record.attempts.map((item, index) => ({ value: String(index), label: `${item.number}. ${item.providerName} / ${item.keyName} · HTTP ${item.status || "—"}` }))} />{/if}
+                  <div class="records-actions">
+                    <ToggleGroup.Root type="single" value={side} onValueChange={(next) => { if (next) side = next; }} aria-label="数据来源" size="sm" spacing={1}>
+                      <ToggleGroup.Item value="client" aria-label="客户端数据">客户端</ToggleGroup.Item><ToggleGroup.Item value="provider" aria-label="上游数据">上游</ToggleGroup.Item>
+                    </ToggleGroup.Root>
+                    {#if bodyPanel}<ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root>{:else}<Button variant={compare ? "secondary" : "ghost"} size="sm" aria-pressed={compare} onclick={() => (compare = !compare)}>对比上下游</Button>{/if}
+                    {#if panel === "request" || panel === "headers"}<Button variant="ghost" size="icon-sm" aria-label="复制 cURL" title="复制 cURL" disabled={!curl()} onclick={() => copy(curl())}><Terminal /></Button>{/if}
+                    <Button variant="ghost" size="icon-sm" aria-label="复制当前内容" title="复制当前内容" disabled={!content || (!bodyPanel && compare)} onclick={() => copy(content)}><Copy /></Button>
+                  </div>
+                </div>
+                {#each ["headers", "request", "response-headers", "response"] as tab}
+                  <Tabs.Content value={tab}>
+                    {#if panel === tab}
+                      {#if !bodyPanel && compare}
+                        {#if comparedHeaders.length}<Table.Root><Table.Header><Table.Row><Table.Head>头名称</Table.Head><Table.Head>客户端</Table.Head><Table.Head>上游</Table.Head></Table.Row></Table.Header><Table.Body>{#each comparedHeaders as row}<Table.Row><Table.Cell>{row.name}</Table.Cell><Table.Cell>{row.left}</Table.Cell><Table.Cell>{row.right}</Table.Cell></Table.Row>{/each}</Table.Body></Table.Root>{:else}<p class="records-notice">没有可对比的头部数据。</p>{/if}
+                      {:else if bodyPanel && payload?.bodyState === "expired"}<p class="records-notice">正文已超过 7 天保留期限，摘要与诊断仍可查询。</p>
+                      {:else if !content}<p class="records-notice">{record.state === "active" ? "请求进行中，尚无此项数据。" : "此侧数据未采集或不适用。"}</p>
+                      {:else if bodyPanel && view === "conversation" && conversationRows.length}
+                        {#each conversationRows as line}<article class="record-message"><strong>{line.role}</strong><pre>{line.text}</pre></article>{/each}
+                      {:else}
+                        {#if bodyPanel && view === "conversation"}<p class="record-detail-note">此内容无法解析为对话，显示原始数据。</p>{/if}
+                        <Collapsible.Root bind:open={expanded}><Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="inline">{expanded ? "收起 JSON" : "展开 JSON"}</Button>{/snippet}</Collapsible.Trigger><Collapsible.Content><pre>{pretty(content)}</pre></Collapsible.Content></Collapsible.Root>
+                      {/if}
+                      {#if bodyPanel && payload?.bodyState === "truncated"}<p class="record-detail-note">快照已截断，不表示上游响应被截断。</p>{/if}
+                    {/if}
+                  </Tabs.Content>
+                {/each}
+              </Tabs.Root>
             </div>
-            <div>
-              <span>输出</span><strong>{number(record.usage?.output)}</strong>
-            </div>
-            <div>
-              <span>缓存读取</span><strong
-                >{number(record.usage?.cacheRead)}</strong
-              >
-            </div>
-            <div>
-              <span>缓存写入 5m / 1h</span><strong
-                >{number(record.usage?.cacheWrite)} / {number(
-                  record.usage?.cacheWrite1h,
-                )}</strong
-              >
-            </div>
-            <div>
-              <span>完整输入上下文</span><strong
-                >{number(record.usage?.context)}</strong
-              >
-            </div>
-          </div>
-          {#if record.usage?.unit}<p>
-              {record.usage.quantity}
-              {record.usage.unit} · {record.usage.specification}
-            </p>{/if}<Table.Root
-            ><Table.Header
-              ><Table.Row
-                ><Table.Head>计价维度</Table.Head><Table.Head
-                  >实际数量</Table.Head
-                ><Table.Head>美元单价</Table.Head><Table.Head
-                  >估算金额</Table.Head
-                ></Table.Row
-              ></Table.Header
-            ><Table.Body
-              >{#each record.charges as charge}<Table.Row
-                  ><Table.Cell>{charge.key}</Table.Cell><Table.Cell
-                    >{number(charge.quantity)}</Table.Cell
-                  ><Table.Cell>{money(charge.price)}</Table.Cell><Table.Cell
-                    >{money(charge.amount)}</Table.Cell
-                  ></Table.Row
-                >{/each}</Table.Body
-            ></Table.Root
-          >
-          <h3>开始时价格快照</h3>
-          <pre>{JSON.stringify(record.pricing, null, 2)}</pre>
-        </section>
-      {:else}
-        <section class="record-payload">
-          <div class="record-payload-toolbar">
-            <h3>
-              {panel === "headers"
-                ? "请求头"
-                : panel === "response-headers"
-                  ? "响应头"
-                  : panel === "request"
-                    ? "请求正文"
-                    : "响应正文"}
-            </h3>
-            <div class="records-actions">
-              {#if panel === "request" || panel === "response"}<Button
-                  variant="outline"
-                  onclick={() =>
-                    (view = view === "json" ? "conversation" : "json")}
-                  >{view === "json" ? "对话视图" : "JSON 视图"}</Button
-                >{:else}<Button
-                  variant="outline"
-                  aria-pressed={compare}
-                  onclick={() => (compare = !compare)}>对比上下游</Button
-                >{/if}{#if panel === "request"}<Button
-                  variant="outline"
-                  disabled={!curl()}
-                  onclick={() => copy(curl())}>复制 cURL</Button
-                >{/if}<Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="复制当前内容"
-                disabled={!content}
-                onclick={() => copy(content)}><Copy /></Button
-              >
-            </div>
-          </div>
-          {#if payload?.bodyState === "expired" && (panel === "request" || panel === "response")}<p
-              class="records-notice"
-            >
-              正文已超过 7 天保留期限，摘要与诊断仍可查询。
-            </p>{:else if !content}<p class="records-notice">
-              {record.state === "active"
-                ? "请求进行中，尚无此项数据。"
-                : "此侧数据未采集或不适用；没有生成替代内容。"}
-            </p>{:else if compare && (panel === "headers" || panel === "response-headers")}<Table.Root
-              ><Table.Header
-                ><Table.Row
-                  ><Table.Head>头名称</Table.Head><Table.Head>客户端</Table.Head
-                  ><Table.Head>上游</Table.Head></Table.Row
-                ></Table.Header
-              ><Table.Body
-                >{#each headers(panel === "headers" ? (record.client?.requestHeaders ?? "") : (record.client?.responseHeaders ?? ""), panel === "headers" ? (current?.payload?.requestHeaders ?? "") : (current?.payload?.responseHeaders ?? "")) as row}<Table.Row
-                    ><Table.Cell>{row.name}</Table.Cell><Table.Cell
-                      >{row.left}</Table.Cell
-                    ><Table.Cell>{row.right}</Table.Cell></Table.Row
-                  >{/each}</Table.Body
-              ></Table.Root
-            >{:else if view === "conversation" && (panel === "request" || panel === "response") && conversation(content).length}{#each conversation(content) as line}<article
-                class="record-message"
-              >
-                <strong>{line.role}</strong>
-                <pre>{line.text}</pre>
-              </article>{/each}{:else}<Collapsible.Root bind:open={expanded}>
-              <Collapsible.Trigger
-                >{expanded ? "收起 JSON" : "展开 JSON"}</Collapsible.Trigger
-              >
-              <Collapsible.Content
-                ><pre>{pretty(content)}</pre></Collapsible.Content
-              >
-            </Collapsible.Root>{/if}{#if payload?.bodyState === "truncated"}<p>
-              快照已截断，不表示上游响应被截断。
-            </p>{/if}
-        </section>
+          </Collapsible.Content>
+        </Collapsible.Root>
       {/if}
-    {/if}
-  </Dialog.Content></Dialog.Root
->
+    </div>
+  </Sheet.Content>
+</Sheet.Root>

@@ -22,6 +22,11 @@
     /** 所有筛选共用打开身份；读取前禁用避免空数据假象。 */ openID?: string;
     disabled?: boolean;
   } = $props();
+  /** 列头保留字段名，以高亮与悬停说明展示已选条件。 */
+  const selected = $derived(multiple ? values.length > 0 : value !== "");
+  const selectionLabel = $derived(multiple
+    ? values.map((item) => options.find((option) => option.value === item)?.label ?? item).join("、")
+    : (options.find((item) => item.value === value)?.label ?? value));
 </script>
 
 {#if multiple}
@@ -34,9 +39,11 @@
   >
     <Select.Trigger
       variant={column ? "column" : "default"}
+      data-filter-active={selected}
+      title={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}
       aria-label={`${title}筛选`}
       ><span class="min-w-0 truncate"
-        >{title}{values.length ? ` · ${values.length}` : ""}</span
+        >{title}{!column && values.length ? ` · ${values.length}` : ""}</span
       ></Select.Trigger
     >
     <Select.Content align="start"
@@ -58,11 +65,11 @@
   >
     <Select.Trigger
       variant={column ? "column" : "default"}
+      data-filter-active={selected}
+      title={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}
       aria-label={`${title}筛选`}
       ><span class="min-w-0 truncate"
-        >{value
-          ? (options.find((item) => item.value === value)?.label ?? title)
-          : title}</span
+        >{column || !value ? title : selectionLabel}</span
       ></Select.Trigger
     >
     <Select.Content align="start"

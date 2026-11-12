@@ -8,29 +8,31 @@
     Radio,
     ChevronLeft,
     ChevronRight,
-    Activity,
-    CheckCircle2,
-    Cpu,
-    CircleDollarSign,
-    Timer,
+    Info,
+    Waves,
+    ArrowRightLeft,
+    Cable,
+    Check,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import * as InputGroup from "$lib/components/ui/input-group";
   import * as Table from "$lib/components/ui/table";
-  import * as Collapsible from "$lib/components/ui/collapsible";
+  import * as Select from "$lib/components/ui/select";
+  import * as Tooltip from "$lib/components/ui/tooltip";
+  import { Separator } from "$lib/components/ui/separator";
   import {
     VelaService,
     events,
     type Page,
     type RecordsRecord,
     type Query,
-    type Aggregate,
   } from "$lib/generated/mygo";
   import Choice from "$lib/providers/Choice.svelte";
   import { errorMessage } from "$lib/settings/sections";
   import Filter from "./Filter.svelte";
   import Detail from "./Detail.svelte";
+  import { elapsedClock } from "./elapsed-clock.svelte";
   import {
     states,
     executions,
@@ -40,8 +42,9 @@
     protocol,
     label,
     number,
+    compact,
     money,
-    duration,
+    seconds,
     cache,
     date,
     emptyQuery,
@@ -60,7 +63,7 @@
   /** q 是唯一查询草稿；result 是最后一次成功快照，失败不清空。 */
   let q = $state<Query>(emptyQuery()),
     result = $state<Page | null>(null),
-    range = $state("last30"),
+    range = $state("today"),
     openID = $state("");
   /** 页面生命周期、异步代次和刷新计时，离页后不回写旧结果。 */
   const desktop = isMyGo();
@@ -68,24 +71,20 @@
     error = $state(""),
     realtime = $state(false),
     selected = $state("");
-  let analysisGeneration = 0;
   let generation = 0,
     disposed = false,
     ready = false,
     refreshing = false,
     activeReading = false;
-  /** now 只用于活跃耗时展示；统计数据来自后端而非页面计时推算。 */
+  /** 每页条数沿用用户当前选择，筛选变化时保留。 */
   let pageSize = $state("20");
-  let now = $state(Date.now()),
-    analysisOpen = $state(false),
-    totals = $state<Aggregate[]>([]),
-    analysisError = $state("");
-  /** 总页数与完整筛选结果成功率；未发上游包含在已结束分母。 */
+  /** 当前页共享逐帧展示时钟，实际记录查询仍按原周期进行。 */
+  const clock = elapsedClock(() => Boolean(result?.records.some((row) => row.state === "active")));
+  /** 总页数按后端匹配总数计算，空结果仍保留内部第一页。 */
   const pages = $derived(
     Math.max(1, Math.ceil((result?.summary.total ?? 0) / q.size)),
   );
   const summary = $derived(result?.summary);
-  const settled = $derived(summary ? summary.total - summary.active : 0);
   const filterIdentity = $derived(
     JSON.stringify([
       q.search,
@@ -113,7 +112,7 @@
       q.types.length ||
       q.transports.length ||
       q.executions.length ||
-      range !== "last30",
+      range !== "today",
     ),
   );
   /** 当前筛选从本地自然日开始，全部表示保留期内全部明细。 */
@@ -187,7 +186,6 @@
     refreshing = true;
     try {
       await load(true);
-      if (analysisOpen) await readAnalysis();
     } finally {
       refreshing = false;
     }
@@ -197,82 +195,20 @@
     q.page = page;
     void load(page === 1);
   }
-  /** 清空条件遵循默认最近三十天，保留用户每页数量。 */
-  function clear(): void {
-    const size = q.size;
-    q = { ...emptyQuery(), size };
-    range = "last30";
-  }
-  /** 分析查询仅使用长期统计支持的维度，界面明确其范围与明细不同。 */
-  async function readAnalysis(): Promise<void> {
-    if (!desktop || disposed) return;
-    const version = ++analysisGeneration;
-    analysisError = "";
-    try {
-      const scope = query();
-      const next = await VelaService.requestTotals({
-        ...emptyQuery(),
-        start: scope.start,
-        end: scope.end,
-        modelId: q.modelId,
-        providerId: q.providerId,
-        protocol: q.protocol,
-      });
-      if (!disposed && version === analysisGeneration) totals = next;
-    } catch (cause) {
-      if (!disposed && version === analysisGeneration)
-        analysisError = errorMessage(cause);
-    }
-  }
-  /** 按稳定身份合并长期日统计，不将同名重建实体合并。 */
-  function breakdown(kind: "model" | "provider"): {
-    id: string;
-    name: string;
-    requests: number;
-    tokens: number;
-    cost: number;
-    unknown: number;
-  }[] {
-    const values = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        requests: number;
-        tokens: number;
-        cost: number;
-        unknown: number;
-      }
-    >();
-    for (const row of totals) {
-      const id = kind === "model" ? row.modelId : row.providerId;
-      const item = values.get(id) ?? {
-        id,
-        name:
-          (kind === "model" ? row.modelName : row.providerName) || "未发上游",
-        requests: 0,
-        tokens: 0,
-        cost: 0,
-        unknown: 0,
-      };
-      item.requests += row.requests;
-      item.tokens += row.tokens;
-      item.cost += row.cost;
-      item.unknown += row.unknownCost;
-      values.set(id, item);
-    }
-    return [...values.values()].sort((a, b) => b.requests - a.requests);
+  /** 完整行点击进入对应详情，选中文本及行内操作不触发跳转。 */
+  function openRecord(event: MouseEvent, id: string): void {
+    if (event.defaultPrevented || event.button !== 0 || window.getSelection()?.toString().trim()) return;
+    if (event.target instanceof Element && event.target.closest("button,a,input,select,textarea")) return;
+    selected = id;
   }
   $effect(() => {
     filterIdentity;
     if (!ready || !desktop) return;
     generation++;
-    analysisGeneration++;
     const timer = setTimeout(() => {
       q.page = 1;
       q.size = Number(pageSize);
       void load(true);
-      if (analysisOpen) void readAnalysis();
     }, 180);
     return () => clearTimeout(timer);
   });
@@ -282,7 +218,6 @@
     ready = true;
     void load(true);
     const active = setInterval(() => {
-      now = Date.now();
       void updateActive();
     }, 1000);
     const live = setInterval(() => {
@@ -307,7 +242,7 @@
 </script>
 
 <div class="records-page list-page">
-  <PageHeader title="使用记录" description="请求明细 · 摘要、诊断、估算费用与执行路径">
+  <PageHeader title="使用记录" description="请求明细 · 用量、估算费用与执行路径">
     {#snippet actions()}
     <div class="records-actions">
       <Button
@@ -330,67 +265,13 @@
   {#if error}<div class="records-error" role="alert">
       {error}<Button variant="outline" onclick={refresh}>重试</Button>
     </div>{/if}
-  <section class="records-stats" aria-label="全部筛选结果摘要">
-    <article>
-      <Activity />
-      <div>
-        <span>当前请求</span><strong>{number(summary?.total)}</strong><small
-          >{number(summary?.active)} 条进行中</small
-        >
-      </div>
-    </article>
-    <article>
-      <CheckCircle2 />
-      <div>
-        <span>成功率</span><strong
-          >{summary && settled
-            ? `${((100 * summary.success) / settled).toFixed(1)}%`
-            : "—"}</strong
-        ><small
-          >{summary
-            ? `${summary.success} 成功 · ${summary.failed} 失败 · ${summary.local} 未发上游`
-            : "等待读取"}</small
-        >
-      </div>
-    </article>
-    <article>
-      <Cpu />
-      <div>
-        <span>Token 总量</span><strong>{number(summary?.tokens)}</strong><small
-          >缓存命中 {summary?.inputContext
-            ? `${((100 * summary.cacheRead) / summary.inputContext).toFixed(1)}%`
-            : "—"}{summary?.unknownUsage
-            ? ` · ${summary.unknownUsage} 条未知`
-            : ""}</small
-        >
-      </div>
-    </article>
-    <article>
-      <CircleDollarSign />
-      <div>
-        <span>估算费用</span><strong>{money(summary?.cost)}</strong><small
-          >{summary?.unknownCost
-            ? `${summary.unknownCost} 条费用未知，未计入合计`
-            : "不包含进行中请求"}</small
-        >
-      </div>
-    </article>
-    <article>
-      <Timer />
-      <div>
-        <span>平均总耗时</span><strong
-          >{summary?.timed ? duration(summary.averageMillis) : "—"}</strong
-        ><small>{number(summary?.timed)} 条有效耗时</small>
-      </div>
-    </article>
-  </section>
   <section class="records-surface list-surface" aria-label="请求记录">
     <div class="records-filters">
-      <div class="records-query">
         <InputGroup.Root class="records-search"
           ><InputGroup.Addon><Search /></InputGroup.Addon><InputGroup.Input
             aria-label="搜索请求记录"
-            placeholder="搜索请求 ID、模型、供应商、Key 或错误"
+            placeholder="搜索记录"
+            title="搜索请求 ID、模型、供应商、Key 或错误"
             bind:value={q.search}
             disabled={!desktop}
           /></InputGroup.Root
@@ -416,11 +297,9 @@
           bind:openID
           disabled={!desktop}
         />
-      </div>
-      <div class="records-filter-options">
         <Filter
           id="transport"
-          title="传输方式"
+          title="传输"
           options={transports}
           multiple
           bind:values={q.transports}
@@ -438,15 +317,13 @@
         />
         <Filter
           id="execution"
-          title="执行链路"
+          title="链路"
           options={executions}
           multiple
           bind:values={q.executions}
           bind:openID
           disabled={!desktop}
         />
-        <Button variant="ghost" size="sm" disabled={!desktop} onclick={clear}>清除筛选</Button>
-      </div>
     </div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -500,34 +377,40 @@
                 bind:openID
                 disabled={!desktop}
               /></Table.Head
-            ><Table.Head>状态</Table.Head><Table.Head
+            ><Table.Head
               ><Filter
                 id="type"
                 column
-                title="类型"
+                title="类型 / 状态"
                 options={types}
                 multiple
                 bind:values={q.types}
                 bind:openID
                 disabled={!desktop}
               /></Table.Head
-            ><Table.Head
-              >用量<small title="Token 按量，图片按实际张数，视频按实际时长"
-                >Token / 媒体</small
-              ></Table.Head
+            ><Table.Head class="normal-case" title="第一行：输入 / 输出 Token；第二行：缓存读取 Token / 命中率">Token</Table.Head
             ><Table.Head>估算费用</Table.Head><Table.Head
-              >端到端<small>首字 / 总耗时</small></Table.Head
+              >端到端<small>首字 / 总耗时</small><small>输出速度</small></Table.Head
             >
           </Table.Row></Table.Header
         ><Table.Body
           >{#each result?.records ?? [] as row (row.id)}<Table.Row
+              class="record-row"
+              data-record-id={row.id}
+              data-record-state={row.state}
+              role="button"
+              tabindex={0}
+              aria-label={`查看 ${row.model || "未知模型"} 请求详情`}
+              aria-haspopup="dialog"
+              onclick={(event) => openRecord(event, row.id)}
+              onkeydown={(event) => {
+                if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  selected = row.id;
+                }
+              }}
               ><Table.Cell
-                ><Button
-                  variant="link"
-                  size="table-inline"
-                  data-record-id={row.id}
-                  onclick={() => (selected = row.id)}
-                  >{date(row.startedAt)}</Button
+                ><span class="record-value">{date(row.startedAt)}</span
                 ><small>{date(row.startedAt, "day")}</small></Table.Cell
               ><Table.Cell>{@render modelCell(row)}</Table.Cell><Table.Cell
                 >{@render providerCell(row)}</Table.Cell
@@ -535,12 +418,9 @@
                 ><span class="record-truncate" title={protocol(row.protocol)}
                   >{protocol(row.protocol)}</span
                 ></Table.Cell
-              ><Table.Cell>{@render stateCell(row)}</Table.Cell><Table.Cell
-                >{label(types, row.type)}<small
-                  >{row.transport === "websocket" ? "WebSocket" : row.stream ? "流式" : "标准"}</small
-                ></Table.Cell
+              ><Table.Cell>{@render stateCell(row)}</Table.Cell
               ><Table.Cell>{@render usageCell(row)}</Table.Cell><Table.Cell
-                ><span class="record-value" title={money(row.cost)}
+                ><span class="record-value record-cost" class:record-missing={row.cost == null || row.cost === 0} title={`${money(row.cost)} · 本地估算`}
                   >{money(row.cost)}</span
                 ></Table.Cell
               ><Table.Cell>{@render timingCell(row)}</Table.Cell></Table.Row
@@ -550,104 +430,89 @@
     </div>
     </div>
     <footer class="records-pagination list-footer">
-      <span>共 {number(summary?.total)} 条 · 第 {q.page} / {pages} 页<small class="block">明细保留 30 天 · 正文保留 7 天</small></span>
-      <div class="records-actions">
-        <Choice
-          bind:value={pageSize}
-          label="每页条数"
-          options={[10, 20, 50, 100].map((value) => ({
-            value: String(value),
-            label: `${value} 条/页`,
-          }))}
-          disabled={!desktop}
-        /><Button
-          variant="outline"
+      <div class="records-pagination-summary">
+        <span>共 {number(summary?.total)} 条</span>
+        <Tooltip.Provider delayDuration={150}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <Button {...props} variant="ghost" size="icon-xs" aria-label="记录保留期限"><Info /></Button>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content side="top">明细保留 30 天 · 正文保留 7 天</Tooltip.Content>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      </div>
+      <div class="records-pagination-controls">
+        <div class="records-page-size">
+          <span>每页</span>
+          <Select.Root type="single" bind:value={pageSize} disabled={!desktop || loading}>
+            <Select.Trigger variant="ghost" aria-label="每页条数">{pageSize} 条</Select.Trigger>
+            <Select.Content side="top" align="end"><Select.Group>
+              {#each [10, 20, 50, 100] as size}
+                <Select.Item value={String(size)} label={`${size} 条`}>{size} 条</Select.Item>
+              {/each}
+            </Select.Group></Select.Content>
+          </Select.Root>
+        </div>
+        <Separator orientation="vertical" class="mx-1 h-4 w-px self-center" />
+        <nav class="records-pagination-nav" aria-label="使用记录分页">
+        <Button
+          variant="ghost"
           size="icon-sm"
           aria-label="上一页"
           disabled={!desktop || loading || q.page <= 1}
           onclick={() => turn(q.page - 1)}><ChevronLeft /></Button
-        ><Button
-          variant="outline"
+        >
+        <span class="records-page-count" role="status" aria-label={result ? `第 ${summary?.total ? q.page : 0} 页，共 ${summary?.total ? pages : 0} 页` : "等待读取页码"}>
+          {#if result}{summary?.total ? q.page : 0} / {summary?.total ? pages : 0}{:else}— / —{/if}
+        </span>
+        <Button
+          variant="ghost"
           size="icon-sm"
           aria-label="下一页"
           disabled={!desktop || loading || q.page >= pages}
           onclick={() => turn(q.page + 1)}><ChevronRight /></Button
         >
+        </nav>
       </div>
     </footer>
   </section>
-  <Collapsible.Root
-    class="records-analysis-panel"
-    bind:open={analysisOpen}
-    onOpenChange={(open) => {
-      if (open) void readAnalysis();
-    }}
-    ><Collapsible.Trigger class="records-analysis-trigger"
-      >{analysisOpen ? "收起" : "展开"}模型 / 供应商用量分析</Collapsible.Trigger
-    ><Collapsible.Content
-      ><p class="records-analysis-note">
-        长期累计 ·
-        仅跟随时间、模型、供应商和协议筛选，清理明细后仍保留。费用为本地估算。
-      </p>
-      {#if analysisError}<p role="alert">{analysisError}</p>{/if}
-      <div class="records-analysis">
-        {#each ["model", "provider"] as kind}<section>
-            <h2>{kind === "model" ? "模型" : "供应商"}统计</h2>
-            <Table.Root
-              ><Table.Header
-                ><Table.Row
-                  ><Table.Head>名称</Table.Head><Table.Head>请求</Table.Head
-                  ><Table.Head>Token</Table.Head><Table.Head
-                    >估算费用</Table.Head
-                  ></Table.Row
-                ></Table.Header
-              ><Table.Body
-                >{#each breakdown(kind as "model" | "provider") as item (item.id)}<Table.Row
-                    ><Table.Cell>{item.name}</Table.Cell><Table.Cell
-                      >{number(item.requests)}</Table.Cell
-                    ><Table.Cell>{number(item.tokens)}</Table.Cell><Table.Cell
-                      >{money(item.cost)}{#if item.unknown}<small
-                          >{item.unknown} 条未知</small
-                        >{/if}</Table.Cell
-                    ></Table.Row
-                  >{/each}</Table.Body
-              ></Table.Root
-            >
-          </section>{/each}
-      </div></Collapsible.Content
-    ></Collapsible.Root
-  >
 </div>
 {#snippet modelCell(row: RecordsRecord)}<strong
     class="record-model record-truncate"
     title={row.model || "未知模型"}>{row.model || "未知模型"}</strong
   >
   <div class="records-badges">
-    {#if row.effort}<Badge variant="secondary">{row.effort}</Badge
-      >{/if}{#if row.tier && row.tier !== "standard"}<Badge variant="secondary"
+    {#if row.effort}<Badge variant="parameter">{row.effort}</Badge
+      >{/if}{#if row.tier && row.tier !== "standard"}<Badge variant="parameter"
         >{row.tier}</Badge
       >{/if}
   </div>
   {#if row.upstreamModel && row.upstreamModel !== row.model}<small
       >→ {row.upstreamModel}</small
     >{/if}{/snippet}
-{#snippet providerCell(row: RecordsRecord)}<strong
+{#snippet providerCell(row: RecordsRecord)}<span
     class="record-truncate"
     title={row.providerName || "未发上游"}
     >{row.providerName ||
-      (row.state === "local" ? "本地响应" : "未知供应商")}</strong
+      (row.state === "local" ? "本地响应" : "未知供应商")}</span
   ><small class="record-truncate" title={row.keyName || "—"}
     >{row.keyName || "—"}</small
-  >{#if row.execution !== "direct"}<Badge variant="outline"
+  >{#if row.execution !== "direct"}<Badge variant="neutral"
       >{label(executions, row.execution)}</Badge
     >{/if}{/snippet}
-{#snippet stateCell(row: RecordsRecord)}<Badge
-    variant={row.state === "failed"
-      ? "destructive"
-      : row.state === "success"
-        ? "default"
-        : "secondary"}>{label(states, row.state)}</Badge
-  >{/snippet}
+<!-- 类型与生命周期沿用旧版同列堆叠，成功不重复添加状态标签。 -->
+{#snippet stateCell(row: RecordsRecord)}<div class="record-type-status" role="group" aria-label={`请求状态：${label(states, row.state)}`} title={`请求状态：${label(states, row.state)}`}>
+    {#if row.state === "active"}<Badge variant="processing">进行中</Badge>
+    {:else}
+      <Badge variant={row.state === "success" ? "positive" : "info"}>{#if row.state === "success"}<Check aria-hidden="true" />{/if}{label(types, row.type)}</Badge>
+      {#if row.state !== "success"}<Badge variant={row.state === "failed" ? "negative" : row.state === "local" ? "warning" : "neutral"}>{label(states, row.state)}</Badge>{/if}
+      <Badge variant={row.transport === "websocket" || row.stream ? "transport" : "metadata"}>
+        {#if row.transport === "websocket"}<Cable aria-hidden="true" />WS{:else if row.stream}<Waves aria-hidden="true" />流式{:else}<ArrowRightLeft aria-hidden="true" />标准{/if}
+      </Badge>
+    {/if}
+  </div>{/snippet}
 {#snippet usageCell(row: RecordsRecord)}{#if row.state === "local"}<span
       class="text-muted-foreground">— 无用量</span
     >{:else if row.usage?.unit}<strong
@@ -657,22 +522,13 @@
       >{row.usage.specification} · {row.usage.unit === "image"
         ? "按次"
         : "按时长"}</small
-    >{:else}<div class="records-token-usage" aria-label="Token 用量">
-      <span>输入 {number(row.usage?.input)} Token</span>
-      <span>输出 {number(row.usage?.output)} Token</span>
-      <small
-        title={`缓存写入 ${number(row.usage ? row.usage.cacheWrite + row.usage.cacheWrite1h : null)} Token`}
-        >缓存 {number(row.usage?.cacheRead)} Token</small
-      >
-      <small>命中 {cache(row.usage)}</small>
+    >{:else}<div class="records-token-usage" aria-label="Token 用量" title={`输入 ${row.usage?.input ?? "未知"} Token；输出 ${row.usage?.output ?? "未知"} Token；缓存读取 ${row.usage?.cacheRead ?? "未知"} Token；缓存写入 ${row.usage ? row.usage.cacheWrite + row.usage.cacheWrite1h : "未知"} Token；命中 ${cache(row.usage)}`}>
+      <div><span class="record-input" class:record-missing={!row.usage} aria-label={`输入 ${row.usage?.input ?? "未知"} Token`}>{compact(row.usage?.input)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-output" class:record-missing={!row.usage} aria-label={`输出 ${row.usage?.output ?? "未知"} Token`}>{compact(row.usage?.output)}</span></div>
+      <div><span class="record-cache" class:record-missing={!row.usage || row.usage.cacheRead === 0} aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" class:record-missing={!row.usage || !row.usage.context} aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
     </div>{/if}{/snippet}
 {#snippet timingCell(row: RecordsRecord)}{#if row.state === "local"}<span
       >本地响应</span
-    ><small>{duration(row.durationMillis)}</small>{:else}<span
-      >{duration(row.firstByteMillis)} / {duration(
-        row.state === "active" ? now - row.startedAt : row.durationMillis,
-      )}</span
-    ><small
-      >{row.outputRate == null ? "—" : `${number(row.outputRate)} tps`}</small
-    >{/if}{/snippet}
+    ><small>{seconds(row.durationMillis)}</small>{:else}<div class="record-timing-pair" title="端到端首字 / 总耗时">
+      <span class="record-first-byte">{seconds(row.firstByteMillis)}</span><span class="record-separator">/</span><span class="record-total-time">{seconds(row.state === "active" ? Math.max(0, clock.now - row.startedAt) : row.durationMillis)}</span>
+    </div>{#if row.state !== "active"}<span class="record-speed" class:record-missing={row.outputRate == null} title={`输出速度 ${number(row.outputRate)} tps`}>{row.outputRate == null ? "—" : `${compact(row.outputRate)} tps`}</span>{/if}{/if}{/snippet}
 <Detail id={selected} onclose={() => (selected = "")} {notify} />
