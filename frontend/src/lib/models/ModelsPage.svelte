@@ -414,22 +414,22 @@
                   modified={model.overrides.length > 0}
                 /></Table.Cell
               ><Table.Cell data-align="control"
-                ><div class="flex gap-1">
+                ><div class="flex gap-0.5">
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     aria-label={`查看 ${model.name}`}
                     disabled={busy || loading}
                     onclick={() => openEditor(model, true)}><Eye /></Button
                   ><Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     aria-label={`编辑 ${model.name}`}
                     disabled={busy || loading}
                     onclick={() => openEditor(model, false)}><Pencil /></Button
                   ><Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     aria-label={`删除 ${model.name}`}
                     onclick={() => {
                       selected = model;

@@ -13,15 +13,15 @@
 .provider-status { display:flex; gap:3px; padding:3px; border-radius:8px; background:var(--muted); }
 .provider-status button { padding:6px 10px; color:var(--muted-foreground); font-size:12px; border-radius:6px; }
 .provider-status button[aria-pressed=true] { color:var(--foreground); background:var(--background); box-shadow:0 1px 3px #0000000b; }
-.provider-table { width:100%; min-width:680px; border-collapse:collapse; font-size:12px; }
+.provider-table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; font-size:12px; }
 .provider-table th { background:var(--muted); color:var(--muted-foreground); font-size:11px; font-weight:500; padding:12px 16px; white-space:nowrap; }
 .provider-table td { padding:18px 16px; border-top:1px solid var(--border); vertical-align:middle; }
 .provider-table tr[data-disabled=true] td { color:var(--muted-foreground); }
 .provider-table tbody tr { transition:background .15s; }
 .provider-table tbody tr:hover { background:color-mix(in srgb,var(--muted) 55%,transparent); }
-.provider-identity { display:flex; gap:10px; align-items:center; min-width:120px; }
+.provider-identity { display:flex; gap:10px; align-items:center; min-width:0; }
 .provider-avatar { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border-radius:9px; color:var(--accent-foreground); background:var(--accent); font-size:14px; font-weight:600; }
-.provider-name { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.provider-name { min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 .provider-name:hover { color:var(--primary); }
 .provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
 .provider-balance { display:inline-flex; align-items:baseline; gap:2px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -45,7 +45,7 @@
 .provider-form-footer { display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border); padding:17px 0 0; margin-top:22px; background:var(--background); }
 .provider-advanced { display:flex; width:100%; justify-content:space-between; align-items:center; font-size:12px; font-weight:600; padding:13px 0; border-top:1px solid var(--border); }
 .provider-advanced span { color:var(--muted-foreground); font-weight:400; font-size:11px; }
-/* 详情最多占窗口宽度的 82%，始终露出列表；表格空间不足时在内部横向滚动。 */
+/* 详情最多占窗口宽度的 82%，始终露出列表；内部表格随可用宽度分配列。 */
 .provider-drawer[data-slot=dialog-content] { top:0; right:0; bottom:0; left:auto; translate:0 0 !important; transform:none; width:min(800px,82vw); height:100dvh; max-width:none; max-height:none; border-radius:12px 0 0 12px; padding:0; display:flex; flex-direction:column; gap:0; }
 /* 侧栏使用有方向的滑入，覆盖居中 Dialog 的缩放动画，避免整块面板突然放大。 */
 .provider-drawer[data-slot=dialog-content][data-state=open] { animation:provider-drawer-enter 220ms cubic-bezier(.22,1,.36,1); }
@@ -92,6 +92,31 @@
 .provider-methods { display:flex; flex-direction:column; gap:7px; }
 .provider-methods button { text-align:left; border:1px solid var(--border); padding:12px; border-radius:8px; font-size:12px; }
 .provider-methods button[aria-checked=true] { border-color:var(--primary); color:var(--primary); background:var(--accent); }
+/* 列宽由容器分配，桌面最小窗口也完整显示状态与操作，不依赖横向滚动。 */
+.provider-table:not(.provider-key-table) th:nth-child(1) { width:22%; }
+.provider-table:not(.provider-key-table) th:nth-child(2) { width:11%; }
+.provider-table:not(.provider-key-table) th:nth-child(3) { width:18%; }
+.provider-table:not(.provider-key-table) th:nth-child(4) { width:10%; }
+.provider-table:not(.provider-key-table) th:nth-child(5) { width:10%; }
+.provider-table:not(.provider-key-table) th:nth-child(6) { width:8%; }
+.provider-table:not(.provider-key-table) th:nth-child(7) { width:21%; }
+.provider-table td { overflow-wrap:anywhere; }
+.provider-identity > a { flex-shrink:0; }
+.provider-health { white-space:normal; }
+.provider-key-table code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media(max-width:1100px) {
+ .provider-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:14px 16px; }
+ .provider-search { width:100%; max-width:none; min-width:0; }
+ .provider-filter { justify-self:end; }
+ .provider-status { justify-self:start; }
+ .provider-toolbar-actions { justify-self:end; }
+ .provider-table th,.provider-table td { padding:12px 6px; }
+ .provider-identity { gap:6px; }
+ .provider-key-summary { gap:4px; }
+ .provider-drawer-heading { padding-left:20px; }
+ .provider-drawer-body { padding:20px; }
+ .provider-tabs { padding-inline:20px; }
+}
 @media(max-width:760px) {
  .provider-heading { align-items:flex-start; flex-wrap:wrap; }
  .provider-drawer-heading,.provider-drawer-body { padding:20px; }

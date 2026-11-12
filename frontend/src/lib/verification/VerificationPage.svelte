@@ -398,7 +398,7 @@
                 ><div class="v-identity">
                   <span class="v-avatar"
                     >{report.target.providerName.slice(0, 1)}</span
-                  ><strong>{report.target.providerName}</strong>
+                  ><strong title={report.target.providerName}>{report.target.providerName}</strong>
                 </div></Table.Cell
               ><Table.Cell
                 ><strong>{report.target.modelName}</strong><small
@@ -408,7 +408,7 @@
                 ></Table.Cell
               ><Table.Cell
                 ><div class="v-identity">
-                  <KeyRound class="size-3" />{report.target.keyName}
+                  <KeyRound class="size-3" /><span class="v-key-name" title={report.target.keyName}>{report.target.keyName}</span>
                 </div>
                 {#if reason}<small class="text-destructive">{reason}</small
                   >{/if}</Table.Cell
@@ -434,16 +434,19 @@
                 ><div class="v-actions">
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon-xs"
+                    aria-label={`复测 ${report.target.modelName}`}
                     title={reason || "固定目标复测会产生上游消耗"}
                     disabled={!desktop || running || busy || !!reason}
                     onclick={() => start(report.target.providerId, report.id)}
-                    ><Play data-icon="inline-start" />复测</Button
+                    ><Play /></Button
                   ><Button
                     variant="ghost"
-                    size="sm"
+                    size="icon-xs"
+                    aria-label={`查看 ${report.target.modelName} 验证详情`}
+                    title="验证详情"
                     onclick={() => (reportID = report.id)}
-                    ><Eye data-icon="inline-start" />详情</Button
+                    ><Eye /></Button
                   >
                 </div></Table.Cell
               ></Table.Row

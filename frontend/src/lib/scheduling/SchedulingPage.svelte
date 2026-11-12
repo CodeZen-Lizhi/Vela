@@ -243,7 +243,26 @@
     background: var(--primary);
     color: var(--primary-foreground);
   }
-  @media (max-width: 900px) {
+  /* 最小桌面窗口仍保留三列，图标与选中标记在上，说明使用完整卡片宽度。 */
+  @media (max-width: 1100px) {
+    .strategy-option {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: 32px 1fr;
+      gap: 10px;
+      padding: 14px 12px;
+    }
+    .strategy-option > .min-w-0 {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .strategy-check {
+      grid-column: 2;
+      grid-row: 1;
+      align-self: center;
+    }
+  }
+  @media (max-width: 600px) {
     .strategy-list {
       grid-template-columns: 1fr;
     }

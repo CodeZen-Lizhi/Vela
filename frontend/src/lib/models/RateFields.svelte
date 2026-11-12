@@ -58,5 +58,7 @@
 
 <style>
   :global(.rate-fields) { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-items: start; }
+  /* 桌面窄窗口固定三列，避免同一价格组随弹窗宽度改变排列。 */
+  @media (max-width: 1100px) { :global(.rate-fields) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (max-width: 640px) { :global(.rate-fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

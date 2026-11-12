@@ -103,8 +103,16 @@
 }
 .v-table {
   font-size: 12px;
-  min-width: 900px;
+  width: 100%;
+  table-layout: fixed;
 }
+.v-table th:nth-child(1) { width: 18%; }
+.v-table th:nth-child(2) { width: 19%; }
+.v-table th:nth-child(3) { width: 12%; }
+.v-table th:nth-child(4) { width: 14%; }
+.v-table th:nth-child(5) { width: 12%; }
+.v-table th:nth-child(6) { width: 13%; }
+.v-table th:nth-child(7) { width: 12%; }
 .v-table th {
   height: 44px;
   background: var(--muted);
@@ -114,8 +122,15 @@
 }
 .v-table td {
   padding: 18px 16px;
-  max-width: 260px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
+.v-table .v-identity { min-width: 0; }
+.v-table .v-identity strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v-table .v-key-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v-table .v-identity > svg { flex-shrink:0; }
+.v-table .v-actions { gap:2px; }
+.v-table [data-slot="badge"] { max-width:100%; white-space:normal; }
 .v-table small {
   display: block;
   white-space: normal;
@@ -607,6 +622,15 @@
   border-radius: 6px;
   font-size: 11px;
   line-height: 1.7;
+}
+/* 两个桌面窄窗口使用相同列数与工具栏分行，所有结果列和操作直接可见。 */
+@media (max-width: 1100px) {
+  .v-toolbar { gap:12px; padding:14px 16px; }
+  .v-tabs { flex-basis:100%; }
+  .v-filters { width:100%; justify-content:space-between; }
+  .v-table th,.v-table td { padding:12px 6px; }
+  .v-table .v-identity { gap:6px; }
+  .v-plans { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 /* 低于桌面最小宽度后才降级，正常桌面窗口始终保持三列设置与单行线路。 */
 @media (max-width: 600px) {

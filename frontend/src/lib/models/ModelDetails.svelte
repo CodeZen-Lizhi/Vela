@@ -501,6 +501,11 @@
     font-size: 11px;
     line-height: 1.7;
   }
+  /* 价格维度和规则卡在两个桌面窄尺寸下保持相同列数。 */
+  @media (max-width: 1100px) {
+    .detail-rates { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .detail-rule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 600px) {
     .detail-metadata {
       grid-template-columns: repeat(2, minmax(0, 1fr));

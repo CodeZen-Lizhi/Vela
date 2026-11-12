@@ -192,11 +192,11 @@
       <span class="tag">仅限本机</span>
     </div>
     <Field.Group class="gap-5 px-6 py-5">
-      <Field.Field class="grid items-start gap-3 @[600px]:grid-cols-[112px_minmax(0,1fr)]">
-        <Field.Label for="gateway-port" class="@[600px]:pt-2">监听地址</Field.Label>
+      <Field.Field class="grid items-start gap-3 grid-cols-[112px_minmax(0,1fr)]">
+        <Field.Label for="gateway-port" class="pt-2">监听地址</Field.Label>
         <form class="min-w-0" novalidate onsubmit={savePort}>
           <div class="flex flex-wrap items-center gap-2">
-            <InputGroup.Root class="w-64 max-w-full">
+            <InputGroup.Root class="min-w-0 flex-1">
               <InputGroup.Addon><InputGroup.Text>127.0.0.1 :</InputGroup.Text></InputGroup.Addon>
               <InputGroup.Input id="gateway-port" aria-label="监听端口" type="number" min="1024" max="65535" step="1" required disabled={!desktop || portBusy} bind:value={port} />
             </InputGroup.Root>
@@ -206,8 +206,8 @@
           {#if portError}<p class="mt-2 text-xs text-destructive" role="alert">{portError}</p>{/if}
         </form>
       </Field.Field>
-      <Field.Field class="grid items-start gap-3 @[600px]:grid-cols-[112px_minmax(0,1fr)]">
-        <Field.Label for="gateway-endpoint" class="@[600px]:pt-2">接入地址</Field.Label>
+      <Field.Field class="grid items-start gap-3 grid-cols-[112px_minmax(0,1fr)]">
+        <Field.Label for="gateway-endpoint" class="pt-2">接入地址</Field.Label>
         <div class="min-w-0">
           <InputGroup.Root>
             <InputGroup.Input id="gateway-endpoint" value={endpoint} readonly aria-label="本机接入地址" />
@@ -215,8 +215,8 @@
           </InputGroup.Root>
         </div>
       </Field.Field>
-      <Field.Field class="grid items-start gap-3 @[600px]:grid-cols-[112px_minmax(0,1fr)]">
-        <Field.Label for="gateway-access-key" class="@[600px]:pt-2">访问密钥</Field.Label>
+      <Field.Field class="grid items-start gap-3 grid-cols-[112px_minmax(0,1fr)]">
+        <Field.Label for="gateway-access-key" class="pt-2">访问密钥</Field.Label>
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <InputGroup.Root class="min-w-0 flex-1">

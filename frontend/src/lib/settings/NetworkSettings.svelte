@@ -101,8 +101,8 @@
     <div class="px-6 py-5">
       {#if enabled}
         <Field.Group class="gap-6">
-          <div class="grid gap-4 @[480px]:grid-cols-2 @[700px]:grid-cols-[minmax(180px,1fr)_minmax(0,2fr)_minmax(100px,1fr)]">
-            <Field.Field class="@[480px]:col-span-2 @[700px]:col-span-1">
+          <div class="grid gap-4 grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(80px,1fr)]">
+            <Field.Field>
               <Field.Label for="proxy-protocol">代理类型</Field.Label>
               <Select.Root type="single" bind:value={address.protocol} disabled={!desktop || busy}>
                 <Select.Trigger id="proxy-protocol" class="w-full">{proxyProtocols[address.protocol]}</Select.Trigger>
