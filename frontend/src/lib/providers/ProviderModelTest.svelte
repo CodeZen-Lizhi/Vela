@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { Activity, Play, Square } from "@lucide/svelte";
+  import { Activity, ChevronDown, Play, Square } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Label } from "$lib/components/ui/label";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -84,7 +84,7 @@
   <Dialog.Content class="provider-form-dialog provider-model-test-dialog" style="width:min(1040px,88vw)" showCloseButton={!running} interactOutsideBehavior={running ? "ignore" : "close"} escapeKeydownBehavior={running ? "ignore" : "close"}>
     <Dialog.Header>
       <Dialog.Title>模型连通测试</Dialog.Title>
-      <Dialog.Description>{model.name} · {model.modelName}；使用当前供应商真实请求，测试可能产生上游费用。</Dialog.Description>
+      <Dialog.Description class="pr-10 break-words">{model.name} · {model.modelName}<span class="mt-1 block text-xs">使用当前供应商发送真实请求，测试可能产生上游费用。</span></Dialog.Description>
     </Dialog.Header>
     <div class="model-test-layout" aria-busy={running}>
       <section class="model-test-config" aria-label="测试配置">
@@ -94,12 +94,16 @@
           <div class="model-test-field"><Label>执行 Key</Label><Choice bind:value={keyID} disabled={running || loading} label="执行 Key" options={[{value:"",label:"自动（按 Key 顺序尝试）"},...options.keys]} /></div>
           <div class="model-test-field"><Label>请求协议</Label><Choice bind:value={() => protocol, changeProtocol} disabled={running || loading} label="请求协议" options={protocols} /></div>
           <div class="model-test-field"><Label>模型映射</Label><Choice bind:value={requestModel} disabled={running || loading} label="模型映射" options={[{value:"",label:"自动（按映射优先级尝试）"},...options.mappings.map((name) => ({value:name,label:name}))]} /></div>
-          <div class="model-test-field"><Label for="model-test-message">{options.kind === "image" || options.kind === "video" ? "测试提示词" : "测试消息"}</Label><Textarea id="model-test-message" rows={3} bind:value={message} disabled={running} /></div>
+          <div class="model-test-field"><Label for="model-test-message">{options.kind === "image" || options.kind === "video" ? "测试提示词" : "测试消息"}</Label><Textarea variant="outline" id="model-test-message" rows={3} bind:value={message} disabled={running} /></div>
           <Collapsible.Root bind:open={advanced}>
-            <Collapsible.Trigger class="provider-advanced" type="button">高级请求设置</Collapsible.Trigger>
+            <Collapsible.Trigger>
+              {#snippet child({ props })}
+                <Button {...props} variant="ghost" size="sm" class="w-full justify-between">高级请求设置<ChevronDown class={`size-3.5 transition-transform ${advanced ? "rotate-180" : ""}`} /></Button>
+              {/snippet}
+            </Collapsible.Trigger>
             <Collapsible.Content class="model-test-advanced">
-              <div class="model-test-field"><Label for="model-test-headers">请求头（JSON）</Label><Textarea id="model-test-headers" rows={3} bind:value={headers} disabled={running} placeholder={'{"X-Custom-Header":"value"}'} /></div>
-              <div class="model-test-field"><Label for="model-test-body">请求体（JSON）</Label><Textarea id="model-test-body" rows={5} bind:value={body} disabled={running} placeholder="留空使用当前协议的默认非流式请求" /></div>
+              <div class="model-test-field"><Label for="model-test-headers">请求头（JSON）</Label><Textarea variant="outline" id="model-test-headers" rows={3} class="font-mono text-xs" spellcheck={false} bind:value={headers} disabled={running} placeholder={'{"X-Custom-Header":"value"}'} /></div>
+              <div class="model-test-field"><Label for="model-test-body">请求体（JSON）</Label><Textarea variant="outline" id="model-test-body" rows={5} class="font-mono text-xs" spellcheck={false} bind:value={body} disabled={running} placeholder="留空使用当前协议的默认非流式请求" /></div>
               <p class="text-xs text-muted-foreground">填写请求体将覆盖默认正文；认证信息由当前 Key 提供。</p>
             </Collapsible.Content>
           </Collapsible.Root>
@@ -115,11 +119,11 @@
             <div><dt>实际模型</dt><dd>{result.requestModel || "—"}</dd></div><div><dt>实际 Key</dt><dd>{result.keyName || "—"}</dd></div><div><dt>请求协议</dt><dd>{result.protocol}</dd></div>
           </dl>
           {#if result.error}<p class="provider-error" role="alert">{result.error}</p>{/if}
-          <div class="model-test-field"><Label for="model-test-response">响应正文</Label><Textarea id="model-test-response" readonly rows={9} value={result.responseBody || "未收到响应正文"} class="font-mono text-xs" /></div>
+          <div class="model-test-field"><Label for="model-test-response">响应正文</Label><Textarea variant="outline" id="model-test-response" readonly rows={9} value={result.responseBody || "未收到响应正文"} class="font-mono text-xs" /></div>
           <Collapsible.Root><Collapsible.Trigger class="provider-advanced" type="button">尝试详情（{result.attempts.length}）</Collapsible.Trigger><Collapsible.Content>
             {#each result.attempts as attempt, index}<div class="model-test-attempt"><div class="flex flex-wrap justify-between gap-2"><strong>{index + 1}. {attempt.requestModel}</strong><span>{stateLabel(attempt.state)}</span></div><p>{attempt.keyName} · {attempt.durationMillis} ms{attempt.status ? ` · HTTP ${attempt.status}` : ""}</p>{#if attempt.error}<p class="text-destructive">{attempt.error}</p>{/if}</div>{/each}
           </Collapsible.Content></Collapsible.Root>
-          <Collapsible.Root><Collapsible.Trigger class="provider-advanced" type="button">实际请求快照</Collapsible.Trigger><Collapsible.Content class="model-test-advanced"><div class="model-test-field"><Label for="model-test-snapshot-headers">请求头</Label><Textarea id="model-test-snapshot-headers" readonly rows={3} value={result.requestHeaders} class="font-mono text-xs" /></div><div class="model-test-field"><Label for="model-test-snapshot-body">请求体</Label><Textarea id="model-test-snapshot-body" readonly rows={5} value={result.requestBody} class="font-mono text-xs" /></div></Collapsible.Content></Collapsible.Root>
+          <Collapsible.Root><Collapsible.Trigger class="provider-advanced" type="button">实际请求快照</Collapsible.Trigger><Collapsible.Content class="model-test-advanced"><div class="model-test-field"><Label for="model-test-snapshot-headers">请求头</Label><Textarea variant="outline" id="model-test-snapshot-headers" readonly rows={3} value={result.requestHeaders} class="font-mono text-xs" /></div><div class="model-test-field"><Label for="model-test-snapshot-body">请求体</Label><Textarea variant="outline" id="model-test-snapshot-body" readonly rows={5} value={result.requestBody} class="font-mono text-xs" /></div></Collapsible.Content></Collapsible.Root>
         {:else}<div class="model-test-empty"><Activity class="size-5" /><p>{running ? "正在等待上游响应，可随时停止。" : "选择配置并开始测试，结果将在这里展示。"}</p></div>{/if}
       </section>
     </div>
@@ -129,15 +133,22 @@
 </Dialog.Root>
 
 <style>
-  .model-test-layout { display:grid; grid-template-columns:minmax(230px,0.85fr) minmax(0,1.15fr); gap:24px; overflow:auto; min-height:0; }
-  .model-test-config,.model-test-result { display:flex; flex-direction:column; gap:16px; min-width:0; }
-  .model-test-result { border-left:1px solid var(--border); padding-left:24px; }
+  :global(.provider-model-test-dialog[data-slot=dialog-content]) { height:min(720px,88dvh); max-width:88vw; overflow:hidden; }
+  .model-test-layout { display:grid; flex:1; grid-template-columns:minmax(280px,0.85fr) minmax(0,1.15fr); gap:16px; overflow:hidden; min-height:0; }
+  .model-test-config,.model-test-result { border:1px solid var(--border); border-radius:var(--radius); padding:16px; overflow:auto; scrollbar-width:none; }
+  .model-test-config::-webkit-scrollbar,.model-test-result::-webkit-scrollbar { display:none; }
+  .model-test-config,.model-test-result { display:flex; flex-direction:column; gap:16px; min-width:0; min-height:0; }
   .model-test-field,:global(.provider-model-test-dialog .model-test-advanced) { display:flex; flex-direction:column; gap:8px; }
-  :global(.provider-model-test-dialog .model-test-advanced) { padding-top:12px; }
+  :global(.provider-model-test-dialog .model-test-advanced) { padding-top:12px; gap:16px; }
+  :global(.provider-model-test-dialog [data-slot=dialog-footer]) { flex-shrink:0; border-top:1px solid var(--border); padding-top:16px; }
   .model-test-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; font-size:12px; }
   .model-test-metrics dt { color:var(--muted-foreground); }
   .model-test-metrics dd { margin-top:4px; overflow-wrap:anywhere; }
   .model-test-empty { display:flex; flex:1; min-height:220px; flex-direction:column; justify-content:center; align-items:center; gap:12px; color:var(--muted-foreground); text-align:center; font-size:12px; }
   .model-test-attempt { border-bottom:1px solid var(--border); padding:12px 0; font-size:12px; overflow-wrap:anywhere; }
   .model-test-attempt p { margin-top:4px; color:var(--muted-foreground); }
+  @media (max-width:760px) {
+    .model-test-layout { grid-template-columns:1fr; grid-auto-rows:max-content; overflow:auto; scrollbar-width:none; }
+    .model-test-config,.model-test-result { overflow:visible; }
+  }
 </style>
