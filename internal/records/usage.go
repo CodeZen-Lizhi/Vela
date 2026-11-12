@@ -25,6 +25,7 @@ func number(m map[string]any, key string) int64 {
 
 // parseUsage 读取四协议累计用量与媒体计量；未提供 usage 时返回 nil。
 func parseUsage(data []byte, protocol string) *Usage {
+	protocol = strings.TrimPrefix(protocol, "openai:")
 	var root map[string]any
 	if json.Unmarshal(data, &root) != nil {
 		return nil
@@ -34,6 +35,11 @@ func parseUsage(data []byte, protocol string) *Usage {
 	}
 	if message := object(root["message"]); message != nil {
 		root = message
+	}
+	if protocol == "gemini:interactions" {
+		if interaction := object(root["interaction"]); object(interaction["usage"]) != nil {
+			root = interaction
+		}
 	}
 	usage := object(root["usage"])
 	if usage == nil {
@@ -57,11 +63,27 @@ func parseUsage(data []byte, protocol string) *Usage {
 		}
 		return nil
 	}
+	// Realtime 的明细字段使用单数 token，与 Responses 的 tokens 命名不同。
+	if protocol == "realtime" {
+		if object(usage["input_tokens_details"]) == nil {
+			usage["input_tokens_details"] = usage["input_token_details"]
+		}
+		if object(usage["output_tokens_details"]) == nil {
+			usage["output_tokens_details"] = usage["output_token_details"]
+		}
+	}
 	u := &Usage{}
 	if len(usage) == 0 {
 		return nil
 	}
-	if _, ok := usage["promptTokenCount"]; ok {
+	if protocol == "gemini:interactions" {
+		_, u.inputKnown = usage["total_input_tokens"]
+		_, u.outputKnown = usage["total_output_tokens"]
+		u.Context = number(usage, "total_input_tokens")
+		u.CacheRead = number(usage, "total_cached_tokens")
+		u.Input = max(0, u.Context-u.CacheRead)
+		u.Output = number(usage, "total_output_tokens") + number(usage, "total_thought_tokens")
+	} else if _, ok := usage["promptTokenCount"]; ok {
 		u.inputKnown = true
 		_, u.outputKnown = usage["candidatesTokenCount"]
 		raw := number(usage, "promptTokenCount")
@@ -77,7 +99,8 @@ func parseUsage(data []byte, protocol string) *Usage {
 		}
 		raw := number(usage, "prompt_tokens")
 		u.CacheRead = number(object(usage["prompt_tokens_details"]), "cached_tokens")
-		u.Input = max(0, raw-u.CacheRead)
+		u.CacheWrite = openAICacheWrite(usage, number(usage, "cache_creation_input_tokens"))
+		u.Input = max(0, raw-u.CacheRead-u.CacheWrite)
 		u.Context = raw
 		u.Output = number(usage, "completion_tokens")
 	} else {
@@ -95,7 +118,8 @@ func parseUsage(data []byte, protocol string) *Usage {
 		u.CacheWrite = max(0, u.CacheWrite-u.CacheWrite1h)
 		if details := object(usage["input_tokens_details"]); details != nil {
 			u.CacheRead = number(details, "cached_tokens")
-			u.Input = max(0, raw-u.CacheRead)
+			u.CacheWrite = max(0, openAICacheWrite(usage, u.CacheWrite+u.CacheWrite1h)-u.CacheWrite1h)
+			u.Input = max(0, raw-u.CacheRead-u.CacheWrite-u.CacheWrite1h)
 			u.Context = raw
 		} else {
 			u.Input = raw
@@ -131,6 +155,23 @@ func parseUsage(data []byte, protocol string) *Usage {
 	}
 	u.mediaCached = u.CacheRead > 0 && u.ImageInput+u.AudioInput > 0
 	return u
+}
+
+// openAICacheWrite 沿 Aether 映射缓存写入：cache_write_tokens（包括显式零）优先于 cached_creation_tokens。
+func openAICacheWrite(usage map[string]any, value int64) int64 {
+	for _, key := range []string{"input_tokens_details", "prompt_tokens_details"} {
+		details := object(usage[key])
+		if _, ok := details["cached_creation_tokens"]; ok {
+			value = number(details, "cached_creation_tokens")
+		}
+	}
+	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
+		details := object(usage[key])
+		if _, ok := details["cache_write_tokens"]; ok {
+			return number(details, "cache_write_tokens")
+		}
+	}
+	return value
 }
 
 // mergeUsage 按累计快照合并流事件，避免重复累加同一 usage。

@@ -22,7 +22,7 @@ import (
 
 const (
 	// requestBodyLimit 限制客户端请求正文，避免本机入口无界读取内存。
-	requestBodyLimit = 16 << 20
+	requestBodyLimit = 128 << 20
 	// shutdownTimeout 是本机网关停止监听时等待在途请求结束的上限。
 	shutdownTimeout = 2 * time.Second
 )
@@ -59,6 +59,8 @@ type Server struct {
 	paused bool
 	// webSocketClients 跟踪升级后脱离 HTTP 生命周期的连接，暂停/退出时统一关闭。
 	webSocketClients map[*responsesClient]struct{}
+	// uploads 保存本进程分段上传的原生目标路径；认证及具体 Key 由调度资源绑定复核。
+	uploads map[string]uploadBinding
 }
 
 // New 创建网关生命周期；调用 Listen 后才开始接受连接。
@@ -192,8 +194,39 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("/v1/models", s.authorize(s.listModels))
 	mux.HandleFunc("/v1/chat/completions", s.authorize(s.chatCompletions))
 	mux.HandleFunc("/v1/responses", s.authorize(s.responses))
+	mux.HandleFunc("/v1/responses/compact", s.authorize(func(w http.ResponseWriter, r *http.Request) {
+		s.forwardModelRequest(w, r, "openai:responses:compact", "/v1/responses/compact")
+	}))
 	mux.HandleFunc("/v1/messages", s.authorize(s.messages))
+	mux.HandleFunc("/v1/messages/count_tokens", s.authorize(func(w http.ResponseWriter, r *http.Request) {
+		s.forwardModelRequest(w, r, "claude:count_tokens", "/v1/messages/count_tokens")
+	}))
 	mux.HandleFunc("/v1beta/models/", s.authorize(s.generateContent))
+	mux.HandleFunc("/v1/models/", s.authorize(s.generateContent))
+	for path, protocol := range map[string]string{
+		"/v1/embeddings":         "openai:embedding",
+		"/v1/rerank":             "openai:rerank",
+		"/v1/images/generations": "openai:image",
+		"/v1/alpha/search":       "openai:search",
+		"/v1beta/interactions":   "gemini:interactions",
+		"/v1/interactions":       "gemini:interactions",
+	} {
+		mux.HandleFunc(path, s.authorize(func(w http.ResponseWriter, r *http.Request) {
+			s.forwardModelRequest(w, r, protocol, path)
+		}))
+	}
+	mux.HandleFunc("/v1/images/edits", s.authorize(func(w http.ResponseWriter, r *http.Request) {
+		s.multipartRequest(w, r, "openai:image")
+	}))
+	mux.HandleFunc("/v1/videos", s.authorize(s.videos))
+	mux.HandleFunc("/v1/videos/", s.authorize(s.videos))
+	mux.HandleFunc("/v1beta/files", s.authorize(s.files))
+	mux.HandleFunc("/v1beta/files/", s.authorize(s.files))
+	mux.HandleFunc("/upload/v1beta/files", s.authorize(s.files))
+	mux.HandleFunc("/upload/v1beta/files/", s.authorize(s.uploadChunk))
+	mux.HandleFunc("/v1/realtime", s.authorize(s.realtime))
+	mux.HandleFunc("/v1beta/interactions/", s.authorize(s.interactionResource))
+	mux.HandleFunc("/v1/interactions/", s.authorize(s.interactionResource))
 	return mux
 }
 
@@ -223,11 +256,11 @@ func requestToken(r *http.Request) (string, bool) {
 	if value := r.Header.Get("Authorization"); value != "" {
 		return bearerToken(value)
 	}
-	if r.URL.Path == "/v1/messages" {
+	if strings.HasPrefix(r.URL.Path, "/v1/messages") {
 		value := r.Header.Get("X-Api-Key")
 		return value, value != ""
 	}
-	if strings.HasPrefix(r.URL.Path, "/v1beta/models/") {
+	if isGeminiAPI(r.URL.Path) {
 		value := r.Header.Get("X-Goog-Api-Key")
 		if value == "" {
 			value = r.URL.Query().Get("key")
@@ -265,7 +298,7 @@ type modelObject struct {
 	DisplayName string `json:"display_name"`
 }
 
-// listModels 返回模型页全部已添加的对话模型；空列表仍是有效成功结果。
+// listModels 返回模型页全部已添加模型；各协议入口分别校验类型与上游权限。
 func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "仅支持 GET")
@@ -278,9 +311,6 @@ func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	}
 	data := make([]modelObject, 0, len(items))
 	for _, item := range items {
-		if item.Kind != "chat" {
-			continue
-		}
 		data = append(data, modelObject{ID: item.ModelID, Object: "model", OwnedBy: "vela", DisplayName: item.Name})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -309,27 +339,26 @@ func (s *Server) forwardModelRequest(w http.ResponseWriter, r *http.Request, pro
 		writeClientError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "仅支持 POST")
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, requestBodyLimit+1))
+	body, err := readRequestBody(r)
 	if err != nil {
-		writeClientError(w, r, http.StatusBadRequest, "invalid_request", "读取请求正文失败")
-		return
-	}
-	if len(body) > requestBodyLimit {
-		writeClientError(w, r, http.StatusRequestEntityTooLarge, "request_too_large", "请求正文超过 16 MiB")
+		writeClientError(w, r, bodyErrorStatus(err), "invalid_request", err.Error())
 		return
 	}
 	var modelName string
 	var stream bool
-	if protocol == "gemini:generate_content" {
+	var previousInteraction string
+	if isGeminiPath(r.URL.Path) {
 		var document map[string]json.RawMessage
 		if json.Unmarshal(body, &document) != nil || document == nil {
 			err = errors.New("请求正文必须是 JSON 对象")
 		}
-		modelName, _, _ = strings.Cut(strings.TrimPrefix(r.URL.Path, "/v1beta/models/"), ":")
+		modelName, _, _ = strings.Cut(geminiModelPath(r.URL.Path), ":")
 		stream = strings.HasSuffix(r.URL.Path, ":streamGenerateContent")
 		if modelName == "" {
 			err = errors.New("模型路径不能为空")
 		}
+	} else if protocol == "gemini:interactions" {
+		modelName, previousInteraction, stream, err = parseInteractionRequest(body)
 	} else {
 		modelName, stream, err = parseModelRequest(body)
 	}
@@ -337,27 +366,37 @@ func (s *Server) forwardModelRequest(w http.ResponseWriter, r *http.Request, pro
 		writeClientError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	if err = s.requireModel(r, modelName); err != nil {
+	kind := protocolType(protocol)
+	if err = s.requireModelKind(r, modelName, modelKind(kind)); err != nil {
 		writeClientError(w, r, http.StatusNotFound, "model_not_found", err.Error())
 		return
 	}
-	if stream {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-	} else {
-		w.Header().Set("Content-Type", "application/json")
+	s.executeHTTP(w, r, scheduling.ExecutionRequest{
+		Request:            scheduling.Request{Model: modelName, Protocol: protocol},
+		Type:               kind,
+		Path:               path,
+		Body:               body,
+		Headers:            clientHeaders(r.Header),
+		Stream:             stream,
+		RetrySafe:          kind != "video" && kind != "interactions",
+		Principal:          requestPrincipal(r),
+		PreviousResponseID: previousInteraction,
+	})
+}
+
+// finishHTTP 在记录收尾前交付最终错误；已提交的 SSE 明确发送错误事件，禁止伪造正常终态。
+func finishHTTP(w http.ResponseWriter, r *http.Request, output io.Writer, result scheduling.ExecutionResult, err error) {
+	if err == nil {
+		return
 	}
-	result, err := s.executor.Execute(r.Context(), scheduling.ExecutionRequest{
-		Request:   scheduling.Request{Model: modelName, Protocol: protocol},
-		Path:      path,
-		Body:      body,
-		Headers:   clientHeaders(r.Header),
-		Stream:    stream,
-		RetrySafe: true,
-		Principal: requestPrincipal(r),
-	}, w)
-	if err == nil || result.Result.Committed {
+	if result.Result.Committed {
+		if !result.Result.FailureSent && strings.Contains(w.Header().Get("Content-Type"), "text/event-stream") {
+			data, _ := json.Marshal(clientErrorEnvelope(r, http.StatusBadGateway, "upstream_stream_error", "上游流式响应中断或未完整结束"))
+			_, _ = fmt.Fprintf(output, "event: error\ndata: %s\n\n", data)
+			if flusher, ok := output.(interface{ Flush() }); ok {
+				flusher.Flush()
+			}
+		}
 		return
 	}
 	status := result.Result.Status
@@ -371,7 +410,7 @@ func (s *Server) forwardModelRequest(w http.ResponseWriter, r *http.Request, pro
 			status = http.StatusBadGateway
 		}
 	}
-	writeClientError(w, r, status, "upstream_error", err.Error())
+	writeClientErrorTo(w, r, output, status, "upstream_error", err.Error())
 }
 
 // messages 接收原生 Anthropic Messages，不将请求转换为其他协议。
@@ -381,9 +420,9 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 
 // generateContent 只接收 Gemini 同步或 SSE 对话动作，模型身份由路径提供。
 func (s *Server) generateContent(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimPrefix(r.URL.Path, "/v1beta/models/")
+	name := geminiModelPath(r.URL.Path)
 	_, action, ok := strings.Cut(name, ":")
-	if !ok || (action != "generateContent" && action != "streamGenerateContent") {
+	if !ok || (action != "generateContent" && action != "streamGenerateContent" && action != "countTokens" && action != "embedContent" && action != "batchEmbedContents") {
 		writeClientError(w, r, http.StatusNotFound, "invalid_action", "不支持的 Gemini 调用路径")
 		return
 	}
@@ -396,7 +435,28 @@ func (s *Server) generateContent(w http.ResponseWriter, r *http.Request) {
 	if len(query) > 0 {
 		path += "?" + query.Encode()
 	}
-	s.forwardModelRequest(w, r, "gemini:generate_content", path)
+	protocol := "gemini:generate_content"
+	if action == "countTokens" {
+		protocol = "gemini:count_tokens"
+	} else if action == "embedContent" || action == "batchEmbedContents" {
+		protocol = "gemini:embedding"
+	}
+	s.forwardModelRequest(w, r, protocol, path)
+}
+
+// isGeminiPath 识别 Gemini 的稳定版与 beta 模型路径，不与 OpenAI 模型列表混淆。
+func isGeminiPath(path string) bool {
+	return strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/")
+}
+
+// isGeminiAPI 覆盖模型、文件、上传及具名 Interactions 路径，统一原生认证和错误信封。
+func isGeminiAPI(path string) bool {
+	return isGeminiPath(path) || strings.HasPrefix(path, "/v1beta/") || strings.HasPrefix(path, "/upload/v1beta/") || path == "/v1/interactions" || strings.HasPrefix(path, "/v1/interactions/")
+}
+
+// geminiModelPath 去除已知版本前缀，保留模型名及原生操作。
+func geminiModelPath(path string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(path, "/v1beta/models/"), "/v1/models/")
 }
 
 // parseModelRequest 只从聊天类 JSON 对象读取模型和显式流式开关，不重编码客户端正文。
@@ -435,7 +495,13 @@ func clientHeaders(input http.Header) http.Header {
 	blocked := map[string]bool{
 		"authorization": true, "cookie": true, "proxy-authorization": true,
 		"x-api-key": true, "x-goog-api-key": true,
+		"api-key": true, "cookie2": true, "set-cookie": true,
 		"connection": true, "content-length": true, "transfer-encoding": true,
+	}
+	for _, value := range input.Values("Connection") {
+		for _, name := range strings.Split(value, ",") {
+			blocked[strings.ToLower(strings.TrimSpace(name))] = true
+		}
 	}
 	result := make(http.Header)
 	for name, values := range input {
@@ -460,7 +526,19 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 
 // writeClientError 按客户端原生协议返回错误信封，不把 Anthropic/Gemini 错误伪装成另一种协议。
 func writeClientError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
-	if r.URL.Path == "/v1/messages" {
+	writeClientErrorTo(w, r, w, status, code, message)
+}
+
+// writeClientErrorTo 将错误正文写入记录包装器，同时由原 HTTP 出口提交头部和状态。
+func writeClientErrorTo(w http.ResponseWriter, r *http.Request, output io.Writer, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(output).Encode(clientErrorEnvelope(r, status, code, message))
+}
+
+// clientErrorEnvelope 只生成客户端协议信封，供 JSON 错误与已提交 SSE 错误共同使用。
+func clientErrorEnvelope(r *http.Request, status int, code, message string) any {
+	if strings.HasPrefix(r.URL.Path, "/v1/messages") {
 		kind := "api_error"
 		switch status {
 		case 400, 405:
@@ -476,12 +554,9 @@ func writeClientError(w http.ResponseWriter, r *http.Request, status int, code, 
 		case 503:
 			kind = "overloaded_error"
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]string{"type": kind, "message": message}})
-		return
+		return map[string]any{"type": "error", "error": map[string]string{"type": kind, "message": message}}
 	}
-	if strings.HasPrefix(r.URL.Path, "/v1beta/models/") {
+	if isGeminiAPI(r.URL.Path) {
 		kind := "INTERNAL"
 		switch status {
 		case 400, 405:
@@ -499,10 +574,7 @@ func writeClientError(w http.ResponseWriter, r *http.Request, status int, code, 
 		case 504:
 			kind = "DEADLINE_EXCEEDED"
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": status, "status": kind, "message": message}})
-		return
+		return map[string]any{"error": map[string]any{"code": status, "status": kind, "message": message}}
 	}
-	writeError(w, status, code, message)
+	return map[string]any{"error": map[string]any{"message": message, "type": "gateway_error", "code": code}}
 }

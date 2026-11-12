@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// refreshBalance 查询余额并条件写回；保存/删除或供应商出口改变后丢弃在途结果。
+// refreshBalance 认证成功先保存轮换，再查询余额；保存/删除或供应商出口改变后丢弃在途余额。
 func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	a.store.mu.Lock()
 	c, raw, rev, err := a.accountConfig(ctx, "provider_accounts", id)
@@ -37,6 +37,11 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	if queryErr == nil {
 		defer h.transport.CloseIdleConnections()
 		queryErr = a.authenticate(qctx, h)
+		if queryErr == nil {
+			if err := a.saveRotation(qctx, h, "provider_accounts", id, rev); err != nil {
+				return err
+			}
+		}
 	}
 	balance := account.Balance
 	if queryErr == nil {
@@ -59,7 +64,7 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	}
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
-	_, _, current, err := a.accountConfig(ctx, "provider_accounts", id)
+	currentConfig, _, current, err := a.accountConfig(ctx, "provider_accounts", id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -75,37 +80,66 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	}
 	account.Balance = balance
 	account.Config = QueryConfig{}
-	if h != nil && h.rotated != "" {
-		c.RefreshToken = h.rotated
-	}
-	return a.writeAccount(ctx, "provider_accounts", id, c, account, rev)
+	return a.writeAccount(ctx, "provider_accounts", id, currentConfig, account, rev)
 }
 
-// authenticate 在同一查询批次复用 Sub2API 认证，避免余额和复用 Key 反复续期；批次结束清空内存缓存。
+// accountAuthentication 保存同一次认证的访问头和轮换令牌，供每个共享认证的配置分别落库。
+type accountAuthentication struct {
+	// authorization 为查询认证头；rotated 为空表示上游未返回轮换令牌。
+	authorization string
+	rotated       string
+}
+
+// authenticate 在同一查询批次复用 Sub2API 认证及轮换结果；批次结束清空内存缓存。
 func (a *Accounts) authenticate(ctx context.Context, h *accountHTTP) error {
 	if h.config.Mode != "sub2api" {
 		return h.authenticate(ctx)
 	}
 	cacheKey := h.config.BaseURL + "\x00" + h.config.RefreshToken
-	if token := a.tokens[cacheKey]; token != "" {
-		h.headers["Authorization"] = token
+	if auth, ok := a.tokens[cacheKey]; ok {
+		h.headers["Authorization"] = auth.authorization
+		h.rotated = auth.rotated
 		return nil
 	}
 	if err := h.authenticate(ctx); err != nil {
 		return err
 	}
 	if a.tokens == nil {
-		a.tokens = map[string]string{}
+		a.tokens = map[string]accountAuthentication{}
 	}
-	token := h.headers["Authorization"]
-	a.tokens[cacheKey] = token
+	auth := accountAuthentication{authorization: h.headers["Authorization"], rotated: h.rotated}
+	a.tokens[cacheKey] = auth
 	if h.rotated != "" {
-		a.tokens[h.config.BaseURL+"\x00"+h.rotated] = token
+		a.tokens[h.config.BaseURL+"\x00"+h.rotated] = auth
 	}
 	return nil
 }
 
-// refreshKey 对选定来源按字段更新，写回前确认 Key 密文、连接世代、来源和供应商快照仍一致。
+// saveRotation 只按认证所属配置的世代及快照保存轮换，保留最新文档，不受聊天 Key 变化影响。
+// 认证已在上游生效，故本地保存脱离查询取消并限制为 5 秒；不恢复已删除的配置。
+func (a *Accounts) saveRotation(ctx context.Context, h *accountHTTP, table, id, revision string) error {
+	if h.rotated == "" || h.rotated == h.config.RefreshToken {
+		return nil
+	}
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+	c, raw, current, err := a.accountConfig(saveCtx, table, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if current != revision || c != h.config {
+		return nil
+	}
+	c.RefreshToken = h.rotated
+	return a.writeAccount(saveCtx, table, id, c, json.RawMessage(raw), revision)
+}
+
+// refreshKey 先独立保存认证轮换，再按来源更新；结果写回确认 Key 密文、连接世代和供应商快照仍一致。
 func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 	q, err := a.ProviderKeyQuery(ctx, id)
 	if err != nil {
@@ -142,9 +176,11 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 		return err
 	}
 	parentRevision := ""
+	authTable, authID, authRevision := "provider_key_queries", id, rev
 	configErr := error(nil)
 	if q.ReuseProvider {
 		c, _, parentRevision, configErr = a.accountConfig(ctx, "provider_accounts", pid)
+		authTable, authID, authRevision = "provider_accounts", pid, parentRevision
 		if errors.Is(configErr, sql.ErrNoRows) {
 			configErr = errors.New("供应商未配置余额连接，请单独配置 Key 查询")
 		}
@@ -182,6 +218,11 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 	if queryErr == nil {
 		defer h.transport.CloseIdleConnections()
 		queryErr = a.authenticate(qctx, h)
+		if queryErr == nil {
+			if err := a.saveRotation(qctx, h, authTable, authID, authRevision); err != nil {
+				return err
+			}
+		}
 	}
 	if queryErr == nil {
 		info, queryErr = h.keyInfo(qctx, secret, q)
@@ -256,24 +297,6 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 	}
 	if queryErr == nil && info.group != "" {
 		q.GroupName = info.group
-	}
-	if h != nil && h.rotated != "" {
-		if q.ReuseProvider {
-			pc, pr, prev, e := a.accountConfig(ctx, "provider_accounts", pid)
-			if e != nil {
-				return e
-			}
-			var account ProviderAccount
-			if e = json.Unmarshal([]byte(pr), &account); e != nil {
-				return e
-			}
-			pc.RefreshToken = h.rotated
-			if e = a.writeAccount(ctx, "provider_accounts", pid, pc, account, prev); e != nil {
-				return e
-			}
-		} else {
-			currentConfig.RefreshToken = h.rotated
-		}
 	}
 	doc, err := a.store.encodeDocument(kd)
 	if err != nil {

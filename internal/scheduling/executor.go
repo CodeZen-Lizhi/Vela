@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/CodeZen-Lizhi/vela/internal/records"
+	"github.com/coder/websocket"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +18,22 @@ import (
 type ExecutionRequest struct {
 	// Request 包含逻辑模型、协议和会话身份。
 	Request Request
+	// Type 是业务类型，空值沿用 chat；用于候选能力过滤与记录分类。
+	Type string
+	// Method 是实际 HTTP 动作，空值为 POST；非生成资源查询沿用原目标绑定。
+	Method string
+	// WireBody 非 nil 时是 multipart/二进制真实出站正文；Body 仍保存 JSON 路由元数据。
+	WireBody []byte
+	// ResourceID 是入口为无 JSON 的资源创建生成的内部绑定标识；runner 成功后通过 ResponseID 登记。
+	ResourceID string
+	// Revalidate 在内部资源轮询出站前复核当前候选的权限及凭据版本；失败时不得切换目标。
+	Revalidate func(context.Context) (string, error)
+	// Response 在成功提交前传递真实状态及安全响应头，失败尝试不得调用。
+	Response func(int, http.Header)
+	// Realtime 是已升级的原生实时客户端连接，由独立 runner 管理双向传输。
+	Realtime *websocket.Conn
+	// Finalize 在返回前、记录结算前调用一次；出口已接入记录采集，调用者不得在返回后重复写错误。
+	Finalize func(io.Writer, ExecutionResult, error)
 	// Path 是供应商根地址后的协议路径，不允许完整 URL。
 	Path string
 	// Body 是原始 JSON；传输适配器只做模型映射、Codex 独立上下文和流式用量等同格式必要整理。
@@ -49,12 +66,16 @@ type AttemptResult struct {
 	Outcome Outcome
 	// Committed 表示已向调用者输出不可替换内容。
 	Committed bool
+	// FailureSent 表示上游原生错误事件已经写给客户端，入口无需重复附加另一条错误。
+	FailureSent bool
 	// Retryable 表示故障分类允许重试，并仍受请求及配置边界约束。
 	Retryable bool
 	// Status 是上游或本地协议错误状态，诊断不得包含密钥及正文。
 	Status int
 	// ResponseID 仅在完整成功时用于本机续接绑定，不作为普通诊断输出。
 	ResponseID string
+	// ResourceIDs 是同一次成功列表返回的具名资源，全部绑定到本次实际候选及认证主体。
+	ResourceIDs []string
 	// Warmup 表示 generate:false 的有效协议预热，不将无生成内容误判失败，也不给模型健康回分。
 	Warmup bool
 }
@@ -92,6 +113,9 @@ type Executor struct {
 	Persist func(context.Context) error
 }
 
+// ErrUnsupportedBackground 表示尚无 retrieve 支持，禁止创建无法继续跟踪的异步任务。
+var ErrUnsupportedBackground = errors.New("暂不支持 background:true；尚未接入异步任务查询")
+
 // ErrNoCandidates 表示没有符合权限、配置与运行准入的上游，不等同于上游失败。
 var ErrNoCandidates = errors.New("没有可用的调度候选")
 
@@ -100,23 +124,37 @@ var ErrContinuation = errors.New("连续会话的原上游绑定无法验证")
 
 // Execute 按一次配置快照完成选路、有限重试和故障转移；写出结果后绝不重放。
 func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Writer) (result ExecutionResult, executionErr error) {
-	if e.Records != nil {
-		var finish func(error) error
+	var finish func(error) error
+	defer func() {
+		if req.Finalize != nil {
+			req.Finalize(w, result, executionErr)
+		}
+		if finish != nil {
+			executionErr = errors.Join(executionErr, finish(executionErr))
+		}
+	}()
+	if req.Type == "" {
+		req.Type = "chat"
+	}
+	if e.Records != nil && !records.HasSession(ctx) {
 		var err error
-		ctx, finish, err = e.Records.Begin(ctx, records.Input{ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: "chat", Source: "business", Stream: req.Stream, Transport: requestTransport(req), Body: req.Body, Headers: req.Headers})
+		ctx, finish, err = e.Records.Begin(ctx, records.Input{ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: req.Type, Source: "business", Stream: req.Stream, Transport: requestTransport(req), Body: req.Body, Headers: req.Headers, ResourceQuery: (req.Method == http.MethodGet || req.Method == http.MethodDelete) && (req.Type == "video" || req.Type == "files" || req.Type == "interactions")})
 		if err != nil {
 			return result, err
 		}
-		defer func() { executionErr = errors.Join(executionErr, finish(executionErr)) }()
 	}
+	w = records.Writer(ctx, w)
 	if e.Policies == nil || e.Runtime == nil || e.Source == nil || e.Runner == nil {
 		return result, errors.New("调度执行依赖尚未初始化")
 	}
-	w = records.Writer(ctx, w)
 	accepted := time.Now()
 	var input map[string]json.RawMessage
 	if err := json.Unmarshal(req.Body, &input); err != nil || input == nil {
 		return result, errors.New("调用正文必须是 JSON 对象")
+	}
+	if bytes.Equal(bytes.TrimSpace(input["background"]), []byte("true")) {
+		result.Result.Status = http.StatusBadRequest
+		return result, ErrUnsupportedBackground
 	}
 	if previous, present := input["previous_response_id"]; present && !bytes.Equal(bytes.TrimSpace(previous), []byte("null")) {
 		var id string
@@ -262,7 +300,15 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 			result.ProviderID = c.Provider.ID
 			result.KeyID = c.Key.ID
 			result.Attempts++
-			outcome, runErr := e.Runner.Run(records.WithTarget(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}), c, req, secret, w)
+			attemptCtx := records.WithTarget(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier})
+			attemptReq := req
+			attemptReq.Revalidate = func(pollCtx context.Context) (string, error) {
+				return e.Source.Credential(pollCtx, c, req)
+			}
+			outcome, runErr := e.Runner.Run(attemptCtx, c, attemptReq, secret, w)
+			if recordErr := records.AttemptResult(attemptCtx, runErr); recordErr != nil {
+				log.Printf("保存上游尝试结果失败: %v", recordErr)
+			}
 			attempt.Finish(outcome.Outcome)
 			result.Result = outcome
 			if e.Runtime.Health(c.Key.ID, c.CredentialVersion).CircuitOpen {
@@ -280,9 +326,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				}
 			}
 			if runErr == nil && (outcome.Outcome.Success || outcome.Warmup) {
-				if e.Continuations != nil && (req.Request.Protocol == "openai:responses" || req.Request.Protocol == "responses") {
-					e.Continuations.remember(req, c, outcome.ResponseID)
-				}
+				e.rememberResources(req, c, outcome)
 				return result, nil
 			}
 			lastErr = runErr
@@ -299,7 +343,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 
 // requestTransport 为实际客户端连接标注传输方式，WebSocket 不冒充 HTTP 流式。
 func requestTransport(req ExecutionRequest) string {
-	if req.WebSocket != nil {
+	if req.WebSocket != nil || req.Realtime != nil {
 		return "websocket"
 	}
 	if req.Stream {

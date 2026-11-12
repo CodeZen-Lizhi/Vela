@@ -18,6 +18,9 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
+// maxHTTPPayloadBytes 是同步响应及 SSE 单事件的统一 128 MiB 上限，WS 仍使用独立的 16 MiB 约定。
+const maxHTTPPayloadBytes = 128 * 1024 * 1024
+
 // HTTPRunner 是同格式 HTTP/SSE 执行适配器；不会自行重试或转换 API 格式。
 type HTTPRunner struct {
 	// Client 是不跟随重定向的复用客户端；ClientFor 可按候选出口覆盖它。
@@ -40,9 +43,15 @@ func (r *HTTPRunner) Close() {
 
 // Run 完成同格式请求兼容、模型映射与上游认证；SSE 逐事件验证，提交后失败不透明重放。
 func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest, secret string, w io.Writer) (AttemptResult, error) {
+	if req.Type == "realtime" {
+		return r.runRealtime(ctx, c, req, secret, w)
+	}
+	if req.Type != "" && req.Type != "chat" {
+		return r.runSpecialized(ctx, c, req, secret, w)
+	}
 	var result AttemptResult
 	switch req.Request.Protocol {
-	case "openai:chat", "chat", "openai:responses", "responses", "claude:messages", "anthropic", "gemini:generate_content", "gemini":
+	case "openai:chat", "chat", "openai:responses", "responses", "claude:messages", "anthropic", "gemini:generate_content", "gemini", "openai:responses:compact", "claude:count_tokens", "gemini:count_tokens":
 	default:
 		return result, errors.New("此HTTP适配器只接收已确认的四种聊天协议")
 	}
@@ -54,14 +63,21 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	if err = json.Unmarshal(req.Body, &body); err != nil || body == nil {
 		return result, errors.New("调用正文必须是 JSON 对象")
 	}
+	if bytes.Equal(bytes.TrimSpace(body["background"]), []byte("true")) {
+		result.Status = http.StatusBadRequest
+		return result, ErrUnsupportedBackground
+	}
 	if err = prepareRequest(body, req.Request.Protocol, req.Stream); err != nil {
+		return result, err
+	}
+	if err = prepareProviderRequest(body, req, c); err != nil {
 		return result, err
 	}
 	body["model"], err = json.Marshal(c.Model)
 	if err != nil {
 		return result, err
 	}
-	if req.Request.Protocol == "gemini:generate_content" || req.Request.Protocol == "gemini" {
+	if req.Request.Protocol == "gemini:generate_content" || req.Request.Protocol == "gemini" || req.Request.Protocol == "gemini:count_tokens" {
 		delete(body, "model")
 	}
 	if req.WebSocket != nil {
@@ -89,18 +105,14 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		return result, errors.New("供应商地址无效")
 	}
 	call.Header.Set("Content-Type", "application/json")
-	for _, name := range []string{"Accept", "Anthropic-Version", "Anthropic-Beta", "OpenAI-Beta"} {
-		if value := req.Headers.Get(name); value != "" {
-			call.Header.Set(name, value)
-		}
-	}
+	forwardBusinessHeaders(call.Header, req.Headers)
 	switch req.Request.Protocol {
-	case "anthropic", "claude:messages":
+	case "anthropic", "claude:messages", "claude:count_tokens":
 		call.Header.Set("x-api-key", secret)
 		if call.Header.Get("Anthropic-Version") == "" {
 			call.Header.Set("Anthropic-Version", "2023-06-01")
 		}
-	case "gemini", "gemini:generate_content":
+	case "gemini", "gemini:generate_content", "gemini:count_tokens":
 		call.Header.Set("x-goog-api-key", secret)
 	default:
 		call.Header.Set("Authorization", "Bearer "+secret)
@@ -152,14 +164,24 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	defer response.Body.Close()
 	result.Status = response.StatusCode
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		data, readErr := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
-		if readErr != nil {
-			return result, errors.New("读取上游错误响应失败")
-		}
+		// 错误正文读断不抹去已经确认的 HTTP 状态与 Retry-After；完整信封仍可补充结构化分类。
+		data, _ := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
 		result.Outcome = classifyHTTP(response.StatusCode, data)
 		result.Outcome.RetryAfter, result.Outcome.RetryAfterSet = parseRetryAfter(response.Header.Get("Retry-After"), time.Now())
 		result.Retryable = result.Outcome.Penalty == Light || result.Outcome.Penalty == Heavy
 		return result, fmt.Errorf("上游返回状态 %d", response.StatusCode)
+	}
+	if req.Response != nil {
+		headers := response.Header.Clone()
+		headers.Set("Content-Type", "application/json")
+		if req.Stream {
+			headers.Set("Content-Type", "text/event-stream")
+		}
+		w = &httpCommitWriter{destination: w, status: response.StatusCode, headers: headers, respond: req.Response}
+	}
+	result.Outcome.RetryAfter, result.Outcome.RetryAfterSet = parseRetryAfter(response.Header.Get("Retry-After"), time.Now())
+	if !req.Stream && strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
+		return aggregateSSE(ctx, response.Body, w, req.Request.Protocol, result)
 	}
 	if req.Stream {
 		if !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
@@ -170,7 +192,7 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		return forwardSSE(ctx, response.Body, w, req.Request.Protocol, result)
 	}
 	// 非流式 JSON 必须完整解析后才提交，限制只作用于非流式响应，不截断长流输出。
-	data, err = io.ReadAll(io.LimitReader(response.Body, 32*1024*1024+1))
+	data, err = io.ReadAll(io.LimitReader(response.Body, maxHTTPPayloadBytes+1))
 	if err != nil {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
@@ -183,8 +205,8 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		result.Retryable = true
 		return result, errors.New("读取上游响应失败")
 	}
-	if len(data) > 32*1024*1024 {
-		return result, errors.New("非流式响应超过 32 MiB")
+	if len(data) > maxHTTPPayloadBytes {
+		return result, errors.New("非流式响应超过 128 MiB")
 	}
 	if !validJSONTerminal(req.Request.Protocol, data) {
 		result.Outcome = classifyHTTP(200, data)
@@ -211,18 +233,23 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 func classifyHTTP(status int, data []byte) Outcome {
 	var body struct {
 		Error *struct {
-			Code string `json:"code"`
-			Type string `json:"type"`
+			Code   json.RawMessage `json:"code"`
+			Type   string          `json:"type"`
+			Status string          `json:"status"`
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(data, &body)
 	if body.Error != nil {
-		code := body.Error.Code
+		var code string
+		_ = json.Unmarshal(body.Error.Code, &code)
 		if code == "" {
 			code = body.Error.Type
 		}
+		if code == "" {
+			code = body.Error.Status
+		}
 		switch code {
-		case "rate_limit_exceeded", "rate_limit_error", "concurrency_limit_exceeded", "too_many_concurrent_requests", "overloaded_error", "server_overloaded":
+		case "RESOURCE_EXHAUSTED", "rate_limit_exceeded", "rate_limit_error", "concurrency_limit_exceeded", "too_many_concurrent_requests", "overloaded_error", "server_overloaded":
 			return Outcome{Penalty: Light, RateLimited: true}
 		}
 	}
@@ -267,6 +294,27 @@ func validJSONTerminal(protocol string, data []byte) bool {
 		return false
 	}
 	switch protocol {
+	case "claude:count_tokens", "gemini:count_tokens":
+		key := "input_tokens"
+		if protocol == "gemini:count_tokens" {
+			key = "totalTokens"
+		}
+		var count int64
+		return len(body[key]) > 0 && !bytes.Equal(bytes.TrimSpace(body[key]), []byte("null")) && json.Unmarshal(body[key], &count) == nil && count >= 0
+	case "openai:responses:compact":
+		var object string
+		_ = json.Unmarshal(body["object"], &object)
+		var output []map[string]any
+		_ = json.Unmarshal(body["output"], &output)
+		if object != "response.compaction" {
+			return false
+		}
+		for _, item := range output {
+			if responsesItemOutput(item) {
+				return true
+			}
+		}
+		return false
 	case "openai:responses", "responses":
 		terminal, useful := responsesEnvelope(data)
 		return terminal && useful
@@ -280,7 +328,7 @@ func validJSONTerminal(protocol string, data []byte) bool {
 		useful := outputParts(content)
 		for _, raw := range content {
 			item, _ := raw.(map[string]any)
-			useful = useful || item["type"] == "tool_use" && nonemptyText(item["name"])
+			useful = useful || anthropicToolOutput(item)
 		}
 		return kind == "message" && stop != nil && *stop != "" && useful
 	case "gemini", "gemini:generate_content":
@@ -296,10 +344,7 @@ func validJSONTerminal(protocol string, data []byte) bool {
 		for _, c := range candidates {
 			if c.Content != nil {
 				for _, part := range c.Content.Parts {
-					if text, ok := part["text"].(string); ok && text != "" {
-						return true
-					}
-					if part["functionCall"] != nil {
+					if geminiPartOutput(part) {
 						return true
 					}
 				}
@@ -333,6 +378,10 @@ type streamTerminal struct {
 	finished bool
 	done     bool
 	failed   bool
+	// failureEvent 区分已识别的原生错误事件与非法 JSON、意外 EOF 等无协议错误通知的故障。
+	failureEvent bool
+	// failure 保存结构化上游错误分类，限流不能降格为一般协议重故障。
+	failure Outcome
 	// useful 与协议终态、提交边界独立；仅 DONE 或空 completed 不算完整模型成功。
 	useful bool
 	// responseID 是上游 Responses 返回的状态标识，只在完整成功后交给所有权注册表。
@@ -358,9 +407,38 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 	}
 	if body["error"] != nil || event == "error" {
 		s.failed = true
+		s.failureEvent = true
+		s.failure = classifyHTTP(200, []byte(data))
 		return false
 	}
 	switch protocol {
+	case "gemini:interactions":
+		kind, _ := body["event_type"].(string)
+		if kind == "" {
+			kind = event
+		}
+		interaction, _ := body["interaction"].(map[string]any)
+		if id, ok := interaction["id"].(string); ok && id != "" {
+			s.responseID = id
+		}
+		if id, ok := body["interaction_id"].(string); ok && id != "" {
+			s.responseID = id
+		}
+		status, _ := interaction["status"].(string)
+		if status == "" {
+			status, _ = body["status"].(string)
+		}
+		if kind == "error" || status == "failed" || status == "cancelled" || status == "budget_exceeded" {
+			s.failed, s.failureEvent = true, true
+			return false
+		}
+		if (kind == "interaction.completed" || kind == "interaction.status_update") && s.responseID != "" {
+			switch status {
+			case "completed", "incomplete", "requires_action", "requires_continuation":
+				s.finished, s.done, s.useful = true, true, true
+			}
+		}
+		return s.responseID != "" || strings.HasPrefix(kind, "step.") || strings.HasPrefix(kind, "content.")
 	case "openai:responses", "responses":
 		kind, _ := body["type"].(string)
 		if kind == "" {
@@ -386,6 +464,9 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 		}
 		if kind == "response.failed" {
 			s.failed = true
+			s.failureEvent = true
+			raw, _ := json.Marshal(body["response"])
+			s.failure = classifyHTTP(200, raw)
 		}
 		if s.commitSetup && kind == "response.cancelled" {
 			s.failed = true
@@ -408,7 +489,7 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 		}
 		block, _ := body["content_block"].(map[string]any)
 		delta, _ := body["delta"].(map[string]any)
-		s.useful = s.useful || outputParts([]any{block, delta}) || block["type"] == "tool_use" && nonemptyText(block["name"]) || nonemptyText(delta["partial_json"])
+		s.useful = s.useful || outputParts([]any{block, delta}) || anthropicToolOutput(block) || nonemptyText(delta["partial_json"])
 		return kind == "content_block_start" || kind == "content_block_delta"
 	case "gemini", "gemini:generate_content":
 		candidates, _ := body["candidates"].([]any)
@@ -416,14 +497,12 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 			c, _ := item.(map[string]any)
 			if value, ok := c["finishReason"].(string); ok && value != "" {
 				s.finished = true
-				s.done = true
 			}
 			if content, ok := c["content"].(map[string]any); ok {
 				parts, _ := content["parts"].([]any)
 				for _, item := range parts {
 					part, _ := item.(map[string]any)
-					text, _ := part["text"].(string)
-					if text != "" || part["functionCall"] != nil {
+					if geminiPartOutput(part) {
 						s.finished = true
 						s.useful = true
 						return true
@@ -456,7 +535,7 @@ func forwardSSE(ctx context.Context, body io.Reader, w io.Writer, protocol strin
 // forwardEventStream 共享事件校验和输出提交，WebSocket 允许明确的无生成预热并沿用其 16 MiB 消息上限。
 func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protocol string, result AttemptResult, state streamTerminal) (AttemptResult, error) {
 	// maxEventBytes 限制单行和单事件；预读预算只决定提交时机，不用于判定 Responses 上游失败。
-	maxEventBytes := 4 * 1024 * 1024
+	maxEventBytes := maxHTTPPayloadBytes
 	if state.commitSetup {
 		maxEventBytes = 16*1024*1024 + 16
 	}
@@ -500,13 +579,17 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 		eventBytes = 0
 		event = ""
 		data = nil
-		return writePending()
+		if err := writePending(); err != nil {
+			return err
+		}
+		result.FailureSent = result.Committed && state.failureEvent
+		return nil
 	}
 	for scanner.Scan() {
 		line := scanner.Text()
 		eventBytes += len(line) + 1
-		// 单事件始终有界；其他协议保留原有 64 KiB 前奏边界。
-		if eventBytes > maxEventBytes || (!responses && !result.Committed && pending.Len()+len(line)+1 > 64*1024) {
+		// 单事件始终有界；其他协议的提交前缓冲同样受载荷边界约束。
+		if eventBytes > maxEventBytes || (!responses && !result.Committed && pending.Len()+len(line)+1 > maxHTTPPayloadBytes) {
 			result.Outcome.Penalty = Heavy
 			result.Retryable = !result.Committed
 			return result, errors.New("上游SSE单事件或前奏过长")
@@ -548,6 +631,10 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 	}
 	if scanner.Err() != nil || state.failed || !state.finished || !state.useful && !state.allowEmpty {
 		result.Outcome.Penalty = Heavy
+		if state.failure.Penalty != Neutral {
+			state.failure.RetryAfter, state.failure.RetryAfterSet = result.Outcome.RetryAfter, result.Outcome.RetryAfterSet
+			result.Outcome = state.failure
+		}
 		result.Retryable = !result.Committed
 		return result, errors.New("上游流式响应错误或缺少有效终态")
 	}
@@ -568,7 +655,7 @@ func upstreamPath(req ExecutionRequest, model string) string {
 		query.Del(key)
 	}
 	parsed.RawQuery = query.Encode()
-	if req.Request.Protocol == "gemini" || req.Request.Protocol == "gemini:generate_content" {
+	if req.Request.Protocol == "gemini" || req.Request.Protocol == "gemini:generate_content" || req.Request.Protocol == "gemini:count_tokens" {
 		marker := "/models/"
 		start := strings.Index(parsed.Path, marker)
 		if start >= 0 {

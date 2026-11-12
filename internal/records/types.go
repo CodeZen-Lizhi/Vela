@@ -18,6 +18,8 @@ type Input struct {
 	Stream   bool
 	// Transport 是客户端实际传输：standard、stream 或 websocket。
 	Transport string
+	// ResourceQuery 标识入口已确认的纯资源查询或删除，不产生新的模型用量；仅供内部记录会话使用。
+	ResourceQuery bool
 	// ProviderID、KeyID 仅用于固定目标诊断，普通调度在实际尝试处填充。
 	ProviderID string
 	KeyID      string

@@ -65,7 +65,7 @@ func (s *Server) responsesWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.CloseNow()
-	conn.SetReadLimit(requestBodyLimit)
+	conn.SetReadLimit(16 << 20)
 	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
 	defer cancel()
 	client := &responsesClient{conn: conn, cancel: cancel, done: make(chan struct{})}

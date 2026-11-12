@@ -21,7 +21,7 @@ type accountHTTP struct {
 	client    *http.Client
 	transport *http.Transport
 	config    QueryConfig
-	// headers 保存本轮认证，rotated 是续期后需要条件写回的新令牌。
+	// headers 保存本轮查询认证，rotated 供认证成功后立即按配置世代保存。
 	headers map[string]string
 	rotated string
 }
@@ -117,7 +117,7 @@ func (h *accountHTTP) request(ctx context.Context, method, path, body string) (a
 	return result, nil
 }
 
-// authenticate 交换 Sub2API 令牌或安装固定认证；轮换令牌只保留后端内存待条件写回。
+// authenticate 交换 Sub2API 令牌或安装固定认证；调用者须在后续查询前保存轮换结果。
 func (h *accountHTTP) authenticate(ctx context.Context) error {
 	c := h.config
 	switch c.Mode {

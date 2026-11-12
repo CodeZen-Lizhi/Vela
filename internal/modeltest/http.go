@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -17,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
+
+	"github.com/CodeZen-Lizhi/vela/internal/protocol"
 )
 
 // transportResult 是单个固定 Key 与模型的诊断；快照脱敏且最多 32 KiB，Error 不包含凭据。
@@ -299,36 +300,11 @@ func diagnosticHeaders(raw string) (http.Header, error) {
 
 // videoForm 按 Videos API 使用 multipart 提交 JSON 配置中的标量字段，不接受文件路径或嵌套对象。
 func videoForm(data []byte, headers http.Header) ([]byte, error) {
-	var body map[string]json.RawMessage
-	if err := json.Unmarshal(data, &body); err != nil {
-		return nil, errors.New("视频配置无效")
+	data, contentType, err := protocol.VideoForm(data, 1<<20)
+	if err == nil {
+		headers.Set("Content-Type", contentType)
 	}
-	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
-	for key, raw := range body {
-		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return nil, errors.New("视频配置不支持 null 字段")
-		}
-		var value string
-		if json.Unmarshal(raw, &value) != nil {
-			var number json.Number
-			if json.Unmarshal(raw, &number) != nil || string(raw) == "null" {
-				return nil, errors.New("视频配置只支持字符串或数字字段")
-			}
-			value = number.String()
-		}
-		if err := writer.WriteField(key, value); err != nil {
-			return nil, errors.New("无法编码视频请求")
-		}
-	}
-	if err := writer.Close(); err != nil {
-		return nil, errors.New("无法完成视频请求")
-	}
-	if buffer.Len() > 1<<20 {
-		return nil, errors.New("请求正文超过 1 MiB")
-	}
-	headers.Set("Content-Type", writer.FormDataContentType())
-	return buffer.Bytes(), nil
+	return data, err
 }
 
 // diagnosticExchange 对每次网络调用限制首次响应期限，收到首字节后仅受总体 ctx 约束；保留最多 4 MiB 的完整响应供验证。

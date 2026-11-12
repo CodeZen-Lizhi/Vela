@@ -69,6 +69,27 @@ func MarkCircuit(ctx context.Context, key, version string) error {
 	return err
 }
 
+// AttemptResult 在 Runner 返回且响应已关闭后补写协议执行错误，保留上游实际 HTTP 状态。
+// ctx 必须是该次 WithTarget 返回的 context；未真正出站或 cause 为 nil 时不改写任何尝试。
+func AttemptResult(ctx context.Context, cause error) error {
+	run, _ := ctx.Value(sessionKey{}).(*session)
+	scope, _ := ctx.Value(attemptKey{}).(*attemptScope)
+	if run == nil || scope == nil || cause == nil {
+		return nil
+	}
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if scope.number == 0 {
+		return nil
+	}
+	run.record.Attempts[scope.number-1].Error = sanitize(cause.Error(), run.secrets)
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	err := run.store.save(saveCtx, run.record, false)
+	run.writeErr = errors.Join(run.writeErr, err)
+	return err
+}
+
 // responseWriter 旁路保留真正提交给客户端的内容，不复制被丢弃的上游失败响应。
 type responseWriter struct {
 	// destination 是原客户端出口；run 为当前逻辑请求；raw 仅保留有界快照。
@@ -76,12 +97,19 @@ type responseWriter struct {
 	run         *session
 	raw         bytes.Buffer
 	truncated   bool
+	// omitted 标识实际写出过非文本媒体，正文快照只留元信息。
+	omitted bool
 }
 
-// Writer 将客户端正文记录接入原输出，不改变 io.Writer 的返回语义。
+// Writer 将客户端正文记录接入原输出；同一会话只安装一次，嵌套调用保留原出口及其刷新语义。
 func Writer(ctx context.Context, w io.Writer) io.Writer {
 	run, _ := ctx.Value(sessionKey{}).(*session)
 	if run == nil {
+		return w
+	}
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if run.clientOutput != nil {
 		return w
 	}
 	result := &responseWriter{destination: w, run: run}
@@ -94,6 +122,16 @@ func (w *responseWriter) Write(p []byte) (int, error) {
 	n, err := w.destination.Write(p)
 	w.run.mu.Lock()
 	defer w.run.mu.Unlock()
+	omit := w.run.binaryResponse
+	if destination, ok := w.destination.(interface{ Header() http.Header }); ok {
+		if contentType := destination.Header().Get("Content-Type"); contentType != "" {
+			omit = !textResponse(contentType)
+		}
+	}
+	if omit && n > 0 {
+		w.omitted = true
+		return n, err
+	}
 	room := captureLimit - w.raw.Len()
 	if room > 0 {
 		w.raw.Write(p[:min(n, room)])
@@ -118,7 +156,16 @@ func (s *session) saveClient(ctx context.Context) error {
 		return err
 	}
 	p.ResponseBody = sanitize(s.clientOutput.raw.String(), s.secrets)
-	p.BodyState = "available"
+	if s.clientOutput.omitted && s.clientOutput.raw.Len() == 0 {
+		p.ResponseBody = omittedResponseBody
+		if p.BodyState != "truncated" {
+			p.BodyState = "unavailable"
+		}
+		return s.store.putPayload(ctx, s.record.ID, 0, p)
+	}
+	if p.BodyState == "unavailable" {
+		p.BodyState = "available"
+	}
 	if s.clientOutput.truncated {
 		p.BodyState = "truncated"
 	}

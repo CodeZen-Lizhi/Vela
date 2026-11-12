@@ -1,10 +1,16 @@
 package scheduling
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"net/url"
+	"strings"
+)
 
 // prepareRequest 仅整理同格式必要兼容：Responses 独立上下文与 Chat 流式用量；不转换协议或伪造工具标识。
 func prepareRequest(body map[string]json.RawMessage, protocol string, stream bool) error {
-	if protocol == "openai:responses" || protocol == "responses" {
+	if protocol == "openai:responses" || protocol == "responses" || protocol == "openai:responses:compact" {
 		return normalizeStandaloneOutputs(body)
 	}
 	if stream && (protocol == "openai:chat" || protocol == "chat") {
@@ -102,4 +108,116 @@ func normalizeStandaloneOutputs(body map[string]json.RawMessage) error {
 		body["input"] = raw
 	}
 	return err
+}
+
+// prepareProviderRequest 仅在标准协议出站处恢复旧版 Gemini 与 Responses 历史兼容，不推断私有供应商 family。
+func prepareProviderRequest(body map[string]json.RawMessage, req ExecutionRequest, c Candidate) error {
+	switch req.Request.Protocol {
+	case "gemini", "gemini:generate_content", "gemini:count_tokens":
+		var value map[string]any
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&value); err != nil {
+			return err
+		}
+		stripGeminiResponseIDs(value)
+		tools, _ := value["tools"].([]any)
+		functions, builtin := false, false
+		for _, raw := range tools {
+			tool, _ := raw.(map[string]any)
+			for key, raw := range tool {
+				if key == "functionDeclarations" || key == "function_declarations" {
+					items, _ := raw.([]any)
+					functions = functions || len(items) > 0
+				} else {
+					builtin = true
+				}
+			}
+		}
+		if functions && builtin {
+			config, ok := value["toolConfig"].(map[string]any)
+			if !ok && value["toolConfig"] != nil {
+				return errors.New("Gemini toolConfig 必须为对象")
+			}
+			if config == nil {
+				config = map[string]any{}
+			}
+			delete(config, "include_server_side_tool_invocations")
+			config["includeServerSideToolInvocations"] = true
+			value["toolConfig"] = config
+		}
+		for key, value := range value {
+			body[key], err = json.Marshal(value)
+			if err != nil {
+				return err
+			}
+		}
+	case "responses", "openai:responses", "openai:responses:compact":
+		var input []json.RawMessage
+		if json.Unmarshal(body["input"], &input) != nil || input == nil {
+			return nil
+		}
+		providerURL, _ := url.Parse(c.Provider.URL)
+		deepseek := providerURL != nil && strings.EqualFold(providerURL.Hostname(), "api.deepseek.com") && req.Request.Protocol != "openai:responses:compact" && !strings.HasSuffix(strings.Split(req.Path, "?")[0], "/compact")
+		for _, raw := range input {
+			var item map[string]any
+			_ = json.Unmarshal(raw, &item)
+			if item["type"] == "compaction_trigger" {
+				deepseek = false
+			}
+		}
+		output := make([]json.RawMessage, 0, len(input))
+		for _, raw := range input {
+			var item map[string]any
+			_ = json.Unmarshal(raw, &item)
+			if item["type"] != "reasoning" || replayableReasoning(item, deepseek) {
+				output = append(output, raw)
+			}
+		}
+		var err error
+		body["input"], err = json.Marshal(output)
+		return err
+	}
+	return nil
+}
+
+// stripGeminiResponseIDs 清理旧版上游拒绝的函数结果 ID，其余函数结果内容保持原样。
+func stripGeminiResponseIDs(value any) {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if key == "functionResponse" || key == "function_response" {
+				if response, ok := child.(map[string]any); ok {
+					delete(response, "id")
+				}
+			}
+			stripGeminiResponseIDs(child)
+		}
+	case []any:
+		for _, child := range value {
+			stripGeminiResponseIDs(child)
+		}
+	}
+}
+
+// replayableReasoning 保留 OpenAI rs 引用与带密文的合成项；DeepSeek 普通续接额外允许无 ID 的不透明 reasoning_text。
+func replayableReasoning(item map[string]any, deepseek bool) bool {
+	id, isString := item["id"].(string)
+	encrypted, _ := item["encrypted_content"].(string)
+	if deepseek && (item["id"] == nil || isString && strings.TrimSpace(id) == "") && strings.TrimSpace(encrypted) != "" {
+		parts, _ := item["content"].([]any)
+		for _, raw := range parts {
+			part, _ := raw.(map[string]any)
+			_, text := part["text"].(string)
+			if part["type"] == "reasoning_text" && text {
+				return true
+			}
+		}
+	}
+	id = strings.TrimSpace(id)
+	return strings.HasPrefix(id, "rs") && (!strings.HasPrefix(id, "rs_aether_") || strings.TrimSpace(encrypted) != "")
 }

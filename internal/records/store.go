@@ -54,6 +54,10 @@ type session struct {
 	store   *Store
 	record  Record
 	secrets []string
+	// resourceQuery 为入口确认的非生成资源操作，只在会话内控制零模型消耗结算。
+	resourceQuery bool
+	// binaryResponse 指示当前响应仅留元信息；没有 HTTP 头的客户端出口也不得保存媒体字节。
+	binaryResponse bool
 	// mediaSpecification、mediaQuality 让视频轮询沿用创建任务时的实际规格。
 	mediaSpecification string
 	mediaQuality       string
@@ -66,6 +70,15 @@ type session struct {
 // sessionKey、targetKey 是私有 context 键，防止调用方伪造请求记录。
 type sessionKey struct{}
 type targetKey struct{}
+
+// attemptKey 关联一次 Runner 调用；未真正出站时不能改写前一次尝试。
+type attemptKey struct{}
+
+// attemptScope 的 number 在真实出站登记时赋值，由 session.mu 保护。
+type attemptScope struct {
+	// number 为当前 Runner 最后一次真实出站序号，零表示尚未出站。
+	number int
+}
 
 // New 建立表并清理上次进程中断的活跃状态，不能将进程中断冒充成功。
 func New(db *sql.DB) (*Store, error) {
@@ -137,9 +150,16 @@ func New(db *sql.DB) (*Store, error) {
 	return s, s.Expire(context.Background())
 }
 
-// WithTarget 将实际候选身份关联到一次 HTTP 调用，不创建新的逻辑请求。
+// WithTarget 关联实际候选并新建执行结果作用域；AttemptResult 必须使用本次返回的 context。
 func WithTarget(ctx context.Context, t Target) context.Context {
-	return context.WithValue(ctx, targetKey{}, t)
+	ctx = context.WithValue(ctx, targetKey{}, t)
+	return context.WithValue(ctx, attemptKey{}, &attemptScope{})
+}
+
+// HasSession 表示入口已建立逻辑记录；嵌套执行器应复用它，由入口写完最终响应后统一收尾。
+func HasSession(ctx context.Context) bool {
+	run, _ := ctx.Value(sessionKey{}).(*session)
+	return run != nil
 }
 
 // Begin 在出站前保存进行中请求和开始时价格，失败时拒绝继续产生不可记录的调用。
@@ -151,6 +171,11 @@ func (s *Store) Begin(ctx context.Context, in Input) (context.Context, func(erro
 	r := Record{ID: hex.EncodeToString(key[:]), StartedAt: s.now().UnixMilli(), ModelID: in.ModelID, Model: in.ModelID, Source: in.Source, Protocol: in.Protocol, Type: in.Type, Stream: in.Stream, Transport: in.Transport, State: "active", Execution: "direct", Attempts: []Attempt{}, Charges: []Charge{}}
 	r.ProviderID = in.ProviderID
 	r.KeyID = in.KeyID
+	if in.ResourceQuery {
+		r.Usage = &Usage{}
+		zero := 0.0
+		r.Cost = &zero
+	}
 	var raw string
 	err := s.db.QueryRowContext(ctx, `SELECT document FROM models WHERE id=? OR model_id=? LIMIT 1`, in.ModelID, in.ModelID).Scan(&raw)
 	if err == nil {
@@ -188,11 +213,13 @@ func (s *Store) Begin(ctx context.Context, in Input) (context.Context, func(erro
 	client := Payload{RequestHeaders: safeHeaders(in.Headers), RequestBody: sanitize(string(in.Body), headerSecrets(in.Headers)), BodyState: "available"}
 	if len(in.Body) == 0 {
 		client.BodyState = "unavailable"
+	} else if len(in.Body) > captureLimit {
+		client.BodyState = "truncated"
 	}
 	if err = s.putPayload(ctx, r.ID, 0, client); err != nil {
 		return ctx, nil, err
 	}
-	run := &session{store: s, record: r, secrets: headerSecrets(in.Headers)}
+	run := &session{store: s, record: r, secrets: headerSecrets(in.Headers), resourceQuery: in.ResourceQuery}
 	return context.WithValue(ctx, sessionKey{}, run), run.finish, nil
 }
 
@@ -318,6 +345,10 @@ func (s *session) finish(cause error) error {
 	}
 	// 任一次尝试未提供完整用量时，总用量保持未知；已知分项仍保留在尝试详情。
 	for _, a := range r.Attempts {
+		// Realtime 未升级成功的握手没有生成会话，保留其未知用量，不抹去后来实际连接的累计值。
+		if r.Protocol == "openai:realtime" && a.Status != 101 {
+			continue
+		}
 		if a.Usage == nil && !a.BillingPending {
 			r.Usage = nil
 			break

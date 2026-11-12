@@ -34,8 +34,8 @@ type Accounts struct {
 	globalProxy func(context.Context) (bool, string, error)
 	// queryMu 串行化本管理器发起的查询；不阻塞本地配置保存与读取。
 	queryMu chan struct{}
-	// tokens 只在 queryMu 保护的单批查询内缓存认证，不持久化 Access Token。
-	tokens map[string]string
+	// tokens 在 queryMu 保护的单批查询内缓存访问认证和轮换结果，不持久化 Access Token。
+	tokens map[string]accountAuthentication
 }
 
 // NewAccounts 建立外键级联账户表，不改变 Store 结构；调用方负责 Store 生命周期。

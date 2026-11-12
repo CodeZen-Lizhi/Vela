@@ -28,7 +28,11 @@ type schedulingSource struct {
 func (s *schedulingSource) Candidates(ctx context.Context, req scheduling.ExecutionRequest) ([]scheduling.Candidate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	routes, err := s.providers.ExecutionCandidates(ctx, req.Request.Model)
+	kind := req.Type
+	if kind == "" {
+		kind = "chat"
+	}
+	routes, err := s.providers.ExecutionCandidatesFor(ctx, req.Request.Model, kind)
 	s.order++
 	if err != nil {
 		return nil, err
@@ -42,7 +46,11 @@ func (s *schedulingSource) Candidates(ctx context.Context, req scheduling.Execut
 
 // Credential 在每次真实出站前复核模型、启停、Key权限和凭据版本。
 func (s *schedulingSource) Credential(ctx context.Context, c scheduling.Candidate, req scheduling.ExecutionRequest) (string, error) {
-	return s.providers.ExecutionSecret(ctx, req.Request.Model, c.Key.ID, c.CredentialVersion, c.Model)
+	kind := req.Type
+	if kind == "" {
+		kind = "chat"
+	}
+	return s.providers.ExecutionSecretFor(ctx, req.Request.Model, kind, c.Key.ID, c.CredentialVersion, c.Model)
 }
 
 // SchedulingExecution 是宿主或未来HTTP网关持有的调度生命周期，不暴露到前端。

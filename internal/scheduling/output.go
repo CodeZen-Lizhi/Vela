@@ -61,9 +61,15 @@ func responsesItemOutput(item map[string]any) bool {
 	case "function_call":
 		return nonemptyText(item["name"]) && nonemptyText(item["arguments"])
 	case "custom_tool_call":
-		return nonemptyText(item["name"]) && nonemptyText(item["input"])
+		_, hasInput := item["input"].(string)
+		return nonemptyText(item["name"]) && hasInput
 	case "image_generation_call":
 		return nonemptyText(item["result"])
+	case "computer_call":
+		action, _ := item["action"].(map[string]any)
+		return nonemptyText(item["call_id"]) && nonemptyText(action["type"])
+	case "web_search_call", "file_search_call", "code_interpreter_call", "local_shell_call", "shell_call", "apply_patch_call", "mcp_call", "mcp_list_tools", "mcp_approval_request", "tool_search_call":
+		return nonemptyText(item["id"]) && (nonemptyText(item["status"]) || item["action"] != nil || item["queries"] != nil || item["code"] != nil || item["tools"] != nil || nonemptyText(item["name"]))
 	}
 	return false
 }
@@ -98,6 +104,34 @@ func responsesEventOutput(kind string, body map[string]any) bool {
 	case "response.output_item.added", "response.output_item.done":
 		item, _ := body["item"].(map[string]any)
 		return responsesItemOutput(item)
+	}
+	return false
+}
+
+// anthropicToolOutput 识别客户端工具和服务端工具调用、工具结果及不透明推理块，空容器不算内容。
+func anthropicToolOutput(item map[string]any) bool {
+	kind, _ := item["type"].(string)
+	switch kind {
+	case "tool_use", "server_tool_use", "mcp_tool_use":
+		return nonemptyText(item["name"])
+	case "web_search_tool_result", "web_fetch_tool_result", "code_execution_tool_result", "bash_code_execution_tool_result", "text_editor_code_execution_tool_result", "mcp_tool_result", "tool_search_tool_result":
+		return nonemptyText(item["tool_use_id"]) && item["content"] != nil
+	case "redacted_thinking":
+		return nonemptyText(item["data"])
+	}
+	return false
+}
+
+// geminiPartOutput 识别 Gemini 原生文本、工具与多模态输出，空对象不作为有效生成。
+func geminiPartOutput(part map[string]any) bool {
+	if nonemptyText(part["text"]) {
+		return true
+	}
+	for _, key := range []string{"functionCall", "functionResponse", "inlineData", "fileData", "executableCode", "codeExecutionResult"} {
+		value, _ := part[key].(map[string]any)
+		if len(value) > 0 {
+			return true
+		}
 	}
 	return false
 }

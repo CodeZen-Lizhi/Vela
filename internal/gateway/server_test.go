@@ -75,8 +75,8 @@ func TestAuthorizationRejectsMissingAndWrongKeys(t *testing.T) {
 	}
 }
 
-// TestModelsListsOnlyChatModels 验证模型页的对话模型以统一模型名公开。
-func TestModelsListsOnlyChatModels(t *testing.T) {
+// TestModelsListsConfiguredModels 验证全部已添加类型以统一模型名公开，入口另行校验业务类别。
+func TestModelsListsConfiguredModels(t *testing.T) {
 	server := newGatewayTestServer(t, &fakeExecutor{})
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header.Set("Authorization", "Bearer test-access-key")
@@ -91,7 +91,7 @@ func TestModelsListsOnlyChatModels(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Data) != 1 || payload.Data[0].ID != "chat-model" {
+	if len(payload.Data) != 2 || payload.Data[0].ID != "chat-model" || payload.Data[1].ID != "image-model" {
 		t.Fatalf("模型列表 = %+v", payload.Data)
 	}
 }
