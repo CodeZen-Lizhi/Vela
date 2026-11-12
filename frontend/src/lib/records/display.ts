@@ -18,6 +18,7 @@ export const executions = [
 export const transports = [
   { value: "stream", label: "流式" },
   { value: "standard", label: "标准" },
+  { value: "websocket", label: "WebSocket" },
 ];
 /** 来源区分普通业务、模型联通与指纹采样。 */
 export const sources = [
@@ -125,7 +126,7 @@ export function matches(record: RecordsRecord, q: Query): boolean {
     (!q.states.length || q.states.includes(record.state)) &&
     (!q.types.length || q.types.includes(record.type)) &&
     (!q.transports.length ||
-      q.transports.includes(record.stream ? "stream" : "standard")) &&
+      q.transports.includes(record.transport || (record.stream ? "stream" : "standard"))) &&
     (!q.executions.length || q.executions.includes(record.execution))
   );
 }

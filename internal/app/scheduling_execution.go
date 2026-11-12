@@ -72,7 +72,7 @@ func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendo
 	value := &SchedulingExecution{models: catalog, clients: map[string]*http.Client{}}
 	runner := scheduling.NewHTTPRunner()
 	runner.ClientFor = value.clientFor
-	value.Executor = &scheduling.Executor{Policies: policy, Runtime: runtime, Source: &schedulingSource{providers: vendors}, Runner: runner, Persist: func(ctx context.Context) error { return policy.SaveRuntime(ctx, runtime) }}
+	value.Executor = &scheduling.Executor{Continuations: scheduling.NewContinuations(), Policies: policy, Runtime: runtime, Source: &schedulingSource{providers: vendors}, Runner: runner, Persist: func(ctx context.Context) error { return policy.SaveRuntime(ctx, runtime) }}
 	if len(history) > 0 {
 		value.Executor.Records = history[0]
 	}

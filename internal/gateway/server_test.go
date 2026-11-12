@@ -120,6 +120,31 @@ func TestChatCompletionsBuildsSchedulingRequest(t *testing.T) {
 	}
 }
 
+// TestResponsesBuildsSchedulingRequest 验证 Responses 请求使用同格式协议并保留原始正文。
+func TestResponsesBuildsSchedulingRequest(t *testing.T) {
+	body := `{"model":"chat-model","input":"hello","stream":false}`
+	executor := &fakeExecutor{body: `{"status":"completed","output":[]}`}
+	server := newGatewayTestServer(t, executor)
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(body))
+	request.Header.Set("Authorization", "Bearer test-access-key")
+	request.Header.Set("OpenAI-Beta", "responses=experimental")
+	request.Header.Set("Cookie", "private=value")
+	response := httptest.NewRecorder()
+	server.handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("状态码 = %d，正文 = %s", response.Code, response.Body.String())
+	}
+	if executor.request.Request.Model != "chat-model" || executor.request.Request.Protocol != "openai:responses" || executor.request.Stream || executor.request.Path != "/v1/responses" {
+		t.Fatalf("调度请求 = %+v", executor.request)
+	}
+	if string(executor.request.Body) != body {
+		t.Fatalf("正文 = %s，期望原样传递", executor.request.Body)
+	}
+	if executor.request.Headers.Get("Cookie") != "" || executor.request.Headers.Get("OpenAI-Beta") != "responses=experimental" {
+		t.Fatalf("转发头 = %v", executor.request.Headers)
+	}
+}
+
 // TestChatCompletionsRejectsUnknownModel 验证未出现在模型页的名称不会进入调度。
 func TestChatCompletionsRejectsUnknownModel(t *testing.T) {
 	executor := &fakeExecutor{}
@@ -133,5 +158,29 @@ func TestChatCompletionsRejectsUnknownModel(t *testing.T) {
 	}
 	if executor.request.Request.Model != "" {
 		t.Fatal("未知模型进入了执行器")
+	}
+}
+
+// TestNativeProtocolAuthenticationErrors 验证原生协议错误信封与错误密钥拒绝，不把客户端密钥作为上游凭据。
+func TestNativeProtocolAuthenticationErrors(t *testing.T) {
+	server := newGatewayTestServer(t, &fakeExecutor{})
+	for _, path := range []string{"/v1/messages", "/v1beta/models/chat-model:generateContent"} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		response := httptest.NewRecorder()
+		server.handler().ServeHTTP(response, request)
+		if response.Code != 401 {
+			t.Fatal(response.Code)
+		}
+		var body map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		envelope, _ := body["error"].(map[string]any)
+		if path == "/v1/messages" && (body["type"] != "error" || envelope["type"] != "authentication_error") {
+			t.Fatal(body)
+		}
+		if strings.Contains(path, "v1beta") && envelope["status"] != "UNAUTHENTICATED" {
+			t.Fatal(body)
+		}
 	}
 }

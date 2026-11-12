@@ -46,7 +46,7 @@ func conditions(q Query) (string, []any, error) {
 	}{
 		{"state", q.States, []string{"active", "success", "failed", "local"}},
 		{"json_extract(document,'$.type')", q.Types, []string{"chat", "image", "video", "embedding", "rerank"}},
-		{"CASE json_extract(document,'$.stream') WHEN 1 THEN 'stream' ELSE 'standard' END", q.Transports, []string{"stream", "standard"}},
+		{"CASE WHEN json_extract(document,'$.transport')='websocket' THEN 'websocket' WHEN json_extract(document,'$.stream')=1 THEN 'stream' ELSE 'standard' END", q.Transports, []string{"stream", "standard", "websocket"}},
 		{"json_extract(document,'$.execution')", q.Executions, []string{"direct", "retry", "transfer", "both"}},
 	} {
 		if len(group.values) > len(group.allowed) {

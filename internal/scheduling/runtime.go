@@ -262,3 +262,17 @@ func (r *Runtime) RestoreHealth(records []HealthRecord) error {
 	r.keys = states
 	return nil
 }
+
+// UnavailableReason 在不取得资格或占用额度的情况下读取候选的当前准入原因，供请求记录展示。
+func (r *Runtime) UnavailableReason(c Candidate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !candidateEnabled(c) {
+		return ErrUnavailable
+	}
+	state := r.stateForRank(c)
+	if state == nil {
+		return ErrUnavailable
+	}
+	return state.unavailable(c, r.now())
+}

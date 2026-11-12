@@ -16,6 +16,8 @@ type Input struct {
 	Protocol string
 	Type     string
 	Stream   bool
+	// Transport 是客户端实际传输：standard、stream 或 websocket。
+	Transport string
 	// ProviderID、KeyID 仅用于固定目标诊断，普通调度在实际尝试处填充。
 	ProviderID string
 	KeyID      string
@@ -131,6 +133,8 @@ type Record struct {
 	Protocol string `json:"protocol"`
 	Type     string `json:"type"`
 	Stream   bool   `json:"stream"`
+	// Transport 记录真实连接方式；旧记录为空时由 Stream 解释为 HTTP 标准或流式。
+	Transport string `json:"transport"`
 	// State 为 active、success、failed 或 local；Execution 为 direct、retry、transfer 或 both。
 	State     string `json:"state"`
 	Execution string `json:"execution"`
@@ -167,7 +171,7 @@ type Query struct {
 	ProviderID string `json:"providerId"`
 	Protocol   string `json:"protocol"`
 	Source     string `json:"source"`
-	// States、Types、Transports、Executions 在组内或、组间且；传输取 stream 或 standard。
+	// States、Types、Transports、Executions 在组内或、组间且；传输取 stream、standard 或 websocket。
 	States     []string `json:"states"`
 	Types      []string `json:"types"`
 	Transports []string `json:"transports"`

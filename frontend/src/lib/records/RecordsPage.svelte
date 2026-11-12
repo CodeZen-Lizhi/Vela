@@ -537,7 +537,7 @@
                 ></Table.Cell
               ><Table.Cell>{@render stateCell(row)}</Table.Cell><Table.Cell
                 >{label(types, row.type)}<small
-                  >{row.stream ? "流式" : "标准"}</small
+                  >{row.transport === "websocket" ? "WebSocket" : row.stream ? "流式" : "标准"}</small
                 ></Table.Cell
               ><Table.Cell>{@render usageCell(row)}</Table.Cell><Table.Cell
                 ><span class="record-value" title={money(row.cost)}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -18,7 +19,7 @@ type ExecutionRequest struct {
 	Request Request
 	// Path 是供应商根地址后的协议路径，不允许完整 URL。
 	Path string
-	// Body 是原始 JSON，传输适配器只替换明确的模型字段。
+	// Body 是原始 JSON；传输适配器只做模型映射、Codex 独立上下文和流式用量等同格式必要整理。
 	Body []byte
 	// Headers 只允许转发必要的协议头，不转发客户端鉴权和 Cookie。
 	Headers http.Header
@@ -26,8 +27,12 @@ type ExecutionRequest struct {
 	Stream bool
 	// RetrySafe 由协议入口确认尚未提交结果且创建语义允许重试；未知异步创建必须为 false。
 	RetrySafe bool
-	// PreviousResponseID 非空时必须由 Continuation 解析原执行目标，不能普通选路。
+	// PreviousResponseID 非空时必须核对原响应绑定，不能普通选路。
 	PreviousResponseID string
+	// Principal 是网关认证主体的不可逆摘要；访问密钥变化后不能续接旧主体的上游状态。
+	Principal string
+	// WebSocket 非空表示原生 Responses 会话；普通 HTTP/SSE 不使用供应商 WebSocket 开关。
+	WebSocket *WebSocketSession
 }
 
 // CandidateSource 是供应商模块提供给调度的可信配置与凭据边界，不能暴露为前端绑定。
@@ -48,6 +53,10 @@ type AttemptResult struct {
 	Retryable bool
 	// Status 是上游或本地协议错误状态，诊断不得包含密钥及正文。
 	Status int
+	// ResponseID 仅在完整成功时用于本机续接绑定，不作为普通诊断输出。
+	ResponseID string
+	// Warmup 表示 generate:false 的有效协议预热，不将无生成内容误判失败，也不给模型健康回分。
+	Warmup bool
 }
 
 // AttemptRunner 实际执行一次同格式上游调用，不负责重试、准入与健康结算。
@@ -77,7 +86,9 @@ type Executor struct {
 	Runner   AttemptRunner
 	// Continuation 返回连续请求原有目标；缺失或无法验证时返回409，不建立第二份生成。
 	Continuation func(context.Context, ExecutionRequest) (string, string, bool)
-	// Persist 将健康状态在每次真实尝试结算后持久化；失败须报告，不能伪装成功。
+	// Continuations 保存实际成功响应的完整目标身份，优先于旧的宿主解析回调。
+	Continuations *Continuations
+	// Persist 在每次真实尝试结算后保存健康；本地保存失败单独报告，不改变已确认的上游结果。
 	Persist func(context.Context) error
 }
 
@@ -92,7 +103,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	if e.Records != nil {
 		var finish func(error) error
 		var err error
-		ctx, finish, err = e.Records.Begin(ctx, records.Input{ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: "chat", Source: "business", Stream: req.Stream, Body: req.Body, Headers: req.Headers})
+		ctx, finish, err = e.Records.Begin(ctx, records.Input{ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: "chat", Source: "business", Stream: req.Stream, Transport: requestTransport(req), Body: req.Body, Headers: req.Headers})
 		if err != nil {
 			return result, err
 		}
@@ -108,7 +119,14 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		return result, errors.New("调用正文必须是 JSON 对象")
 	}
 	if previous, present := input["previous_response_id"]; present && !bytes.Equal(bytes.TrimSpace(previous), []byte("null")) {
-		return result, ErrContinuation
+		var id string
+		if json.Unmarshal(previous, &id) != nil || id == "" || len(id) > 256 || (req.PreviousResponseID != "" && req.PreviousResponseID != id) {
+			return result, ErrContinuation
+		}
+		if req.Request.Protocol != "openai:responses" && req.Request.Protocol != "responses" {
+			return result, ErrContinuation
+		}
+		req.PreviousResponseID = id
 	}
 	if req.Request.Session == "" {
 		req.Request.Session = SessionFromRequest(req.Request.Protocol, req.Headers, req.Body)
@@ -121,27 +139,37 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	if err != nil {
 		return result, err
 	}
+	if req.WebSocket != nil {
+		candidates = req.WebSocket.filter(req, candidates)
+	}
 	if req.PreviousResponseID != "" {
-		if e.Continuation == nil {
-			return result, ErrContinuation
-		}
-		provider, key, ok := e.Continuation(ctx, req)
-		if !ok {
-			return result, ErrContinuation
-		}
-		filtered := candidates[:0]
-		for _, c := range candidates {
-			if c.Provider.ID == provider && c.Key.ID == key {
-				filtered = append(filtered, c)
+		if e.Continuations != nil {
+			candidates = e.Continuations.resolve(req, candidates)
+		} else {
+			if e.Continuation == nil {
+				return result, ErrContinuation
 			}
+			provider, key, ok := e.Continuation(ctx, req)
+			if !ok {
+				return result, ErrContinuation
+			}
+			filtered := candidates[:0]
+			for _, c := range candidates {
+				if c.Provider.ID == provider && c.Key.ID == key {
+					filtered = append(filtered, c)
+				}
+			}
+			candidates = filtered
 		}
-		candidates = filtered
 		if len(candidates) == 0 {
 			return result, ErrContinuation
 		}
 	}
 	allCandidates := candidates
 	candidates = e.Runtime.Rank(policy, req.Request, candidates)
+	if req.PreviousResponseID != "" && len(candidates) == 0 {
+		return result, ErrContinuation
+	}
 	targets := make([]records.Target, 0, len(candidates))
 	for _, c := range candidates {
 		targets = append(targets, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier})
@@ -162,13 +190,13 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		return result, err
 	}
 	for _, c := range allCandidates {
-		health := e.Runtime.Health(c.Key.ID, c.CredentialVersion)
-		if health.CircuitOpen && health.NextProbe.After(time.Now()) {
-			if err := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, ErrCircuit.Error(), true); err != nil {
+		if reason := e.Runtime.UnavailableReason(c); reason != nil {
+			if err := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, reason.Error(), errors.Is(reason, ErrCircuit)); err != nil {
 				return result, err
 			}
 		}
 	}
+
 	deadlineSet := false
 	lastErr := error(ErrNoCandidates)
 	for _, c := range candidates {
@@ -184,6 +212,9 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 			secret, checkErr := e.Source.Credential(ctx, c, req)
 			if checkErr != nil {
 				lastErr = checkErr
+				if recordErr := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, "候选配置或凭据已失效", false); recordErr != nil {
+					return result, recordErr
+				}
 				break
 			}
 			attempt, acquireErr := e.Runtime.Acquire(c)
@@ -233,22 +264,25 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 			result.Attempts++
 			outcome, runErr := e.Runner.Run(records.WithTarget(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}), c, req, secret, w)
 			attempt.Finish(outcome.Outcome)
+			result.Result = outcome
 			if e.Runtime.Health(c.Key.ID, c.CredentialVersion).CircuitOpen {
 				if err := records.MarkCircuit(ctx, c.Key.ID, c.CredentialVersion); err != nil {
-					return result, err
+					log.Printf("保存熔断来源失败: %v", err)
 				}
 			}
-			result.Result = outcome
 			if e.Persist != nil {
 				// 请求结束或取消也要落健康事实；持久化使用独立、有限的清理上下文。
 				saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 				saveErr := e.Persist(saveCtx)
 				saveCancel()
 				if saveErr != nil {
-					return result, fmt.Errorf("保存调度健康状态失败: %w", saveErr)
+					log.Printf("保存调度健康状态失败: %v", saveErr)
 				}
 			}
-			if runErr == nil && outcome.Outcome.Success {
+			if runErr == nil && (outcome.Outcome.Success || outcome.Warmup) {
+				if e.Continuations != nil && (req.Request.Protocol == "openai:responses" || req.Request.Protocol == "responses") {
+					e.Continuations.remember(req, c, outcome.ResponseID)
+				}
 				return result, nil
 			}
 			lastErr = runErr
@@ -261,4 +295,15 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		}
 	}
 	return result, lastErr
+}
+
+// requestTransport 为实际客户端连接标注传输方式，WebSocket 不冒充 HTTP 流式。
+func requestTransport(req ExecutionRequest) string {
+	if req.WebSocket != nil {
+		return "websocket"
+	}
+	if req.Stream {
+		return "stream"
+	}
+	return "standard"
 }

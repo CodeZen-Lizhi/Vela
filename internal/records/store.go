@@ -148,7 +148,7 @@ func (s *Store) Begin(ctx context.Context, in Input) (context.Context, func(erro
 	if _, err := rand.Read(key[:]); err != nil {
 		return ctx, nil, err
 	}
-	r := Record{ID: hex.EncodeToString(key[:]), StartedAt: s.now().UnixMilli(), ModelID: in.ModelID, Model: in.ModelID, Source: in.Source, Protocol: in.Protocol, Type: in.Type, Stream: in.Stream, State: "active", Execution: "direct", Attempts: []Attempt{}, Charges: []Charge{}}
+	r := Record{ID: hex.EncodeToString(key[:]), StartedAt: s.now().UnixMilli(), ModelID: in.ModelID, Model: in.ModelID, Source: in.Source, Protocol: in.Protocol, Type: in.Type, Stream: in.Stream, Transport: in.Transport, State: "active", Execution: "direct", Attempts: []Attempt{}, Charges: []Charge{}}
 	r.ProviderID = in.ProviderID
 	r.KeyID = in.KeyID
 	var raw string

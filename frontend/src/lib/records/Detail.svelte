@@ -249,7 +249,7 @@
           {date(record.startedAt)} · {protocol(record.protocol)} · {label(
             types,
             record.type,
-          )} / {record.stream ? "流式" : "标准"} · {label(
+          )} / {record.transport === "websocket" ? "WebSocket" : record.stream ? "流式" : "标准"} · {label(
             sources,
             record.source,
           )}

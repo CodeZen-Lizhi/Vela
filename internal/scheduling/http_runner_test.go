@@ -6,11 +6,117 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 )
+
+// TestResponsesLargePrelude 验证携带指令和工具定义的双事件前奏可完整转发，错误与缺失终态仍不会提交。
+func TestResponsesLargePrelude(t *testing.T) {
+	var prelude strings.Builder
+	for _, kind := range []string{"response.created", "response.in_progress"} {
+		prelude.WriteString("event: " + kind + "\ndata: {\"type\":\"" + kind + "\",\"response\":{\"status\":\"in_progress\",\"instructions\":\"" + strings.Repeat("i", 22000) + "\",\"tools\":[{\"description\":\"" + strings.Repeat("t", 27000) + "\"}]}}\n\n")
+	}
+	for _, tc := range []struct {
+		// name 标识终态场景；ending 是原始事件；success 是预期成功与提交状态。
+		name, ending string
+		success      bool
+	}{
+		{"completed", "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n", true},
+		{"failed", "event: response.failed\ndata: {\"type\":\"response.failed\"}\n\n", false},
+		{"missing-terminal", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := prelude.String() + tc.ending
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, body)
+			}))
+			defer upstream.Close()
+			runner := NewHTTPRunner()
+			defer runner.Close()
+			var out bytes.Buffer
+			result, err := runner.Run(context.Background(), Candidate{Provider: providers.Provider{URL: upstream.URL}, Model: "m"}, ExecutionRequest{Request: Request{Protocol: "openai:responses"}, Path: "/v1/responses", Body: []byte(`{}`), Stream: true}, "key", &out)
+			if (err == nil) != tc.success || result.Outcome.Success != tc.success || result.Committed != tc.success {
+				t.Fatalf("前奏判定: result=%+v error=%v", result, err)
+			}
+			if tc.success && out.String() != body || !tc.success && (out.Len() != 0 || !result.Retryable) {
+				t.Fatalf("前奏转发或重试状态错误: bytes=%d retryable=%v", out.Len(), result.Retryable)
+			}
+		})
+	}
+}
+
+// TestResponsesPrefetchBoundary 验证前奏超过字节或事件预读边界后继续完整转发，之后失败不允许重试。
+func TestResponsesPrefetchBoundary(t *testing.T) {
+	completed := "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n"
+	failed := "data: {\"type\":\"response.failed\"}\n\n"
+	for _, prelude := range []string{
+		strings.Repeat("data: {\"type\":\"response.created\"}\n\n", 5),
+		"data: {\"type\":\"response.created\",\"response\":{\"instructions\":\"" + strings.Repeat("i", 300*1024) + "\"}}\n\n",
+		strings.Repeat("data: {\"type\":\"response.created\",\"response\":{\"instructions\":\""+strings.Repeat("i", 1024*1024)+"\"}}\n\n", 5),
+	} {
+		for _, ending := range []string{completed, failed, ""} {
+			var out bytes.Buffer
+			body := prelude + ending
+			result, err := forwardSSE(context.Background(), strings.NewReader(body), &out, "openai:responses", AttemptResult{})
+			success := ending == completed
+			if (err == nil) != success || result.Outcome.Success != success || !result.Committed || result.Retryable || out.String() != body {
+				t.Fatalf("预读边界处理错误: input=%d output=%d result=%+v err=%v", len(body), out.Len(), result, err)
+			}
+		}
+	}
+}
+
+// TestResponsesOversizedEvent 验证提交后的单事件仍有 4 MiB 上限，过长事件不能无限累计。
+func TestResponsesOversizedEvent(t *testing.T) {
+	var out bytes.Buffer
+	body := strings.Repeat("data: {\"type\":\"response.created\"}\n\n", 5) + strings.Repeat(": keepalive\n", 400000)
+	result, err := forwardSSE(context.Background(), strings.NewReader(body), &out, "openai:responses", AttemptResult{})
+	if err == nil || !result.Committed || result.Retryable || result.Outcome.Penalty != Heavy {
+		t.Fatalf("单事件上限失效: %+v %v", result, err)
+	}
+}
+
+// TestResponsesPrefetchStreamsBeforeEventEnd 验证大事件未结束时达到预读预算就向客户端转发，不等待后续终态。
+func TestResponsesPrefetchStreamsBeforeEventEnd(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	release := make(chan struct{})
+	prefix := "data: {\"type\":\"response.created\",\"response\":{\"instructions\":\"" + strings.Repeat("i", 300*1024) + "\"}}\n"
+	suffix := "\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, prefix)
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+			_, _ = io.WriteString(w, suffix)
+		case <-r.Context().Done():
+		}
+	}))
+	defer upstream.Close()
+	runner := NewHTTPRunner()
+	defer runner.Close()
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	finished := make(chan error, 1)
+	go func() {
+		_, err := runner.Run(ctx, Candidate{Provider: providers.Provider{URL: upstream.URL}, Model: "m"}, ExecutionRequest{Request: Request{Protocol: "openai:responses"}, Path: "/v1/responses", Body: []byte(`{}`), Stream: true}, "key", writer)
+		_ = writer.CloseWithError(err)
+		finished <- err
+	}()
+	var first [1]byte
+	_, firstErr := io.ReadFull(reader, first[:])
+	close(release)
+	rest, readErr := io.ReadAll(reader)
+	runErr := <-finished
+	if firstErr != nil || readErr != nil || runErr != nil || string(first[:])+string(rest) != prefix+suffix {
+		t.Fatalf("预读未及时转发或丢失内容: first=%v read=%v run=%v", firstErr, readErr, runErr)
+	}
+}
 
 // TestHTTPProtocolTerminals 通过真实HTTP验证各协议成功终态、200错误体和SSE中断，不复制被测解析逻辑。
 func TestHTTPProtocolTerminals(t *testing.T) {
@@ -24,15 +130,15 @@ func TestHTTPProtocolTerminals(t *testing.T) {
 		{"chat-json", "openai:chat", `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`, false, true, true},
 		{"200-error", "openai:chat", `{"error":{"message":"failed"}}`, false, false, false},
 		{"chat-missing-terminal", "openai:chat", `{"choices":[{"message":{"content":"partial"}}]}`, false, false, false},
-		{"responses-json", "openai:responses", `{"status":"completed","output":[]}`, false, true, true},
-		{"responses-failed", "openai:responses", `{"status":"failed","output":[]}`, false, false, false},
-		{"anthropic-json", "claude:messages", `{"type":"message","stop_reason":"end_turn","content":[]}`, false, true, true},
+		{"responses-json", "openai:responses", `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}`, false, true, true},
+		{"responses-failed", "openai:responses", `{"status":"failed","output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}`, false, false, false},
+		{"anthropic-json", "claude:messages", `{"type":"message","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}`, false, true, true},
 		{"gemini-json", "gemini:generate_content", `{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}`, false, true, true},
 		{"chat-done", "openai:chat", "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n", true, true, true},
 		{"chat-partial", "openai:chat", "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n", true, false, true},
-		{"responses-stream", "openai:responses", "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n", true, true, true},
+		{"responses-stream", "openai:responses", "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n", true, true, true},
 		{"responses-item-is-not-terminal", "openai:responses", "data: {\"type\":\"response.output_item.done\",\"item\":{}}\n\n", true, false, true},
-		{"anthropic-stop", "claude:messages", "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", true, true, true},
+		{"anthropic-stop", "claude:messages", "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", true, true, true},
 		{"anthropic-done-is-not-terminal", "claude:messages", "data: [DONE]\n\n", true, false, false},
 		{"gemini-stream", "gemini:generate_content", "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]}}]}\n\n", true, true, true},
 	}

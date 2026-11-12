@@ -6,7 +6,7 @@
 
 Vela 是 Aether 重构后的新项目。它把多家 AI 供应商、不同协议、模型映射、调度、额度和请求诊断收束到一个本机入口，桌面宿主使用 MyGo，业务核心使用 Go，界面使用 Svelte。
 
-当前已提供桌面壳、类型化前后端绑定和模型管理第一阶段：真实目录添加、完整价格配置、本地修改保护、同步与恢复来源值。供应商配置、Key、模型关联/权限/映射和账户查询已接入真实持久化；请求记录已接入现有调度与独立诊断执行链；仅监听本机的 OpenAI Chat 兼容网关已接入真实模型清单、访问密钥、流式调用、暂停/恢复与端口热切换。
+当前已提供桌面壳、类型化前后端绑定和模型管理第一阶段：真实目录添加、完整价格配置、本地修改保护、同步与恢复来源值。供应商配置、Key、模型关联/权限/映射和账户查询已接入真实持久化；请求记录已接入现有调度与独立诊断执行链；仅监听本机的四协议 HTTP/SSE 网关已接入真实模型清单、访问密钥、流式调用、暂停/恢复与端口热切换。
 
 ## 技术栈
 
@@ -27,7 +27,7 @@ Vela 是 Aether 重构后的新项目。它把多家 AI 供应商、不同协议
 ├── internal/app/             最小类型化应用服务
 ├── internal/models/          模型目录、价格规则与 SQLite 持久化
 ├── internal/providers/       供应商、加密凭据、模型关联与账户查询
-├── internal/gateway/         仅监听本机的 OpenAI Chat 兼容入口
+├── internal/gateway/         仅监听本机的四协议 HTTP/SSE 入口
 ├── internal/records/         请求诊断、用量估算、长期累计与保留清理
 ├── internal/buildinfo/       构建信息
 ├── frontend/                 Svelte 前端
@@ -68,9 +68,9 @@ npm run build
 
 应用运行期间在 `127.0.0.1` 监听，默认端口为 `18080`。设置页可修改端口和唯一访问密钥；新端口先实际绑定成功再保存，绑定失败保留原配置和原监听。菜单栏“暂停网关/恢复网关”直接控制同一监听生命周期。
 
-当前提供 `GET /v1/health`、`GET /v1/models` 和 `POST /v1/chat/completions`。所有接口使用 Bearer 访问密钥鉴权；模型清单只公开“模型”页中的对话模型。聊天请求复用现有供应商、Key 权限、调度、健康与请求记录链路，支持普通响应和 SSE 流式响应，不向客户端转发 `Authorization`、Cookie 或代理认证头。
+当前提供 `GET /v1/health`、`GET /v1/models`、`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/messages` 和 `POST /v1beta/models/{model}:generateContent` / `:streamGenerateContent`。同一个网关密钥支持 Bearer 认证；Anthropic 另支持 `x-api-key`，Gemini 另支持 `x-goog-api-key` 或 `key` 查询参数。模型清单只公开“模型”页中的对话模型。四种协议复用现有供应商、Key 权限、调度、健康与请求记录链路，支持普通响应和 SSE 流式响应；出站只使用选中供应商的认证，不转发客户端密钥、Cookie 或代理认证头。
 
-当前网关只实现 OpenAI Chat Completions 兼容入口；OpenAI Responses、Anthropic Messages、Gemini `generateContent`、WebSocket 与媒体专用执行路径仍待接入。网关随桌面应用退出而停止，不是独立系统服务。
+当前网关已实现 OpenAI Chat Completions、Responses、Anthropic Messages 与 Gemini `generateContent` / `streamGenerateContent` 同格式 HTTP/SSE 入口；标准 Responses WebSocket 默认通道已接入；媒体专用执行路径仍待接入。网关随桌面应用退出而停止，不是独立系统服务。
 
 ## 模型管理
 
@@ -94,7 +94,7 @@ npm run build
 
 “使用记录”模块的独立需求与验收见 [请求记录需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md)。功能以旧 Aether 为迁移基线，界面参考已认可 Svelte 原型；筛选布局与实时阅读规则已确认，真实记录页面与清理能力已接入本机网关、模型测试和模型验证链路。
 
-本机网关已公开模型页中的全部对话模型并支持普通 Chat Completions 调用；其他客户端协议和媒体专用执行路径仍未接入。费用记录按本地价格规则估算，不代表供应商实际账单。模型指纹验证已提供独立计划及真实采样评分。分时例外日期可手动维护，自动法定节假日日历未接入；目录未提供的媒体矩阵、缓存或价格字段保持未知，可本地补充。详情与编辑参考原型，使用白底蓝色和 shadcn-svelte 控件。
+本机网关已公开模型页中的全部对话模型并支持四种同格式 HTTP/SSE 对话协议；媒体专用执行路径仍未接入。费用记录按本地价格规则估算，不代表供应商实际账单。模型指纹验证已提供独立计划及真实采样评分。分时例外日期可手动维护，自动法定节假日日历未接入；目录未提供的媒体矩阵、缓存或价格字段保持未知，可本地补充。详情与编辑参考原型，使用白底蓝色和 shadcn-svelte 控件。
 
 ## 本地凭据与隐私
 
@@ -110,7 +110,7 @@ npm run build
 
 `internal/scheduling` 提供排序、5分钟会话亲和、实际准入、同Key重试、候选故障转移、整Key健康与恢复试探；`app.NewSchedulingExecution` 将其与SQLite、加密凭据、模型权限及同格式HTTP/SSE执行接通。健康与冷却跨重启保留，亲和按旧版只存进程内。首次响应默认30秒、HTTP聊天流式总期限默认120秒、熔断等待上限默认10分钟。
 
-该 Go 入口及本机 OpenAI Chat 网关已通过真实 Aether 供应商链路验证。当前不能把该入口称为四协议网关交付：Responses、Anthropic Messages、Gemini 和 WebSocket/媒体独立执行路径仍需对应模块接入。供应商模型/权限编辑复用已有供应商模块；余额提醒与跨机整份配置搬运仍需对应模块接入。迁移依据、测试与集成边界见 [调度迁移记录](docs/tasks/scheduling-migration.md)。
+该 Go 入口及本机 OpenAI Chat / Responses 网关已通过真实 Aether 供应商链路验证。Anthropic Messages 与 Gemini 已通过本机网关和严格本地上游验证；真实远端供应商尚待组合验收，标准 Responses WebSocket 已通过双端本地上游组合验证，真实远端供应商待验收；媒体独立执行路径仍待接入。供应商模型/权限编辑复用已有供应商模块；余额提醒与跨机整份配置搬运仍需对应模块接入。迁移依据、测试与集成边界见 [调度迁移记录](docs/tasks/scheduling-migration.md)。
 
 ## 模型验证
 
@@ -122,4 +122,10 @@ npm run build
 
 “使用记录”提供真实请求查询、组合筛选、默认每页 20 条、五项摘要、可选实时刷新，以及按模型/供应商折叠的长期用量分析。详情展示逐次上游尝试、熔断来源、历史价格、脱敏头/正文、JSON/对话切换和安全 cURL 复制。供应商最近调用可跳到对应记录。
 
-记录来自本机 HTTP 网关、内部模型测试和模型验证的实际调用；正文结束后保留 7 天，明细保留 30 天，设置中的清理须预览确认，长期累计独立保留。WebSocket 网关入口仍未接入。需求以 [RR：请求记录](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md) 为准，验证覆盖和限制见 [交付记录](docs/request-records-delivery.md)。
+记录来自本机 HTTP 网关、内部模型测试和模型验证的实际调用；正文结束后保留 7 天，明细保留 30 天，设置中的清理须预览确认，长期累计独立保留。Responses WebSocket 每个 response.create 独立记录，并在传输方式中明确显示和筛选。需求以 [RR：请求记录](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md) 为准，验证覆盖和限制见 [交付记录](docs/request-records-delivery.md)。
+
+
+Responses 出站前保留 Codex 独立上下文兼容：没有或空字符串 `call_id` 的独立工具通知转为用户上下文，正常工具配对、文字/图片和 `previous_response_id` 保留。完整成功返回的响应 ID 可在本进程续接原 Key；绑定核对与期限见调度需求 SCH-R11，重启、凭据/地址/映射变化或未知 ID 返回 409。Chat SSE 主动合并 `stream_options.include_usage=true`，费用仍取决于上游实际用量及本地价格。空模型回答不算完整成功；本地记录准备故障不计为上游故障，健康保存故障不改写已完成回答。
+
+
+Responses WebSocket：客户端使用同一网关密钥升级 `GET /v1/responses`（`ws://127.0.0.1:18080/v1/responses`），发送标准 `response.create` 文本消息。供应商高级设置中的开关默认关闭，开启后才可用于 WebSocket；普通 HTTP/SSE 请求仍走 HTTP。连接复用、逐轮权限、原目标续接、预热、重试边界、代理及暂停/退出清理见 [ADR 0003](docs/adr/0003-responses-websocket.md)。当前支持默认通道；像 Aether 一样明确拒绝命名 stream_id，不恢复私有原生账号适配和跨格式转换。

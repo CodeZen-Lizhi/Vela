@@ -650,7 +650,7 @@ export interface Query {
   providerId: string;
   protocol: string;
   source: string;
-  /** States、Types、Transports、Executions 在组内或、组间且；传输取 stream 或 standard。 */
+  /** States、Types、Transports、Executions 在组内或、组间且；传输取 stream、standard 或 websocket。 */
   states: string[];
   types: string[];
   transports: string[];
@@ -734,6 +734,8 @@ export interface RecordsRecord {
   protocol: string;
   type: string;
   stream: boolean;
+  /** Transport 记录真实连接方式；旧记录为空时由 Stream 解释为 HTTP 标准或流式。 */
+  transport: string;
   /** State 为 active、success、failed 或 local；Execution 为 direct、retry、transfer 或 both。 */
   state: string;
   execution: string;

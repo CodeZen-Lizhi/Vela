@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,10 +21,75 @@ import (
 	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/credentials"
+	"github.com/CodeZen-Lizhi/vela/internal/gateway"
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 )
+
+// TestGatewayResponsesLargePrelude 通过鉴权本机 HTTP 入口、真实调度和持久化模块验证大前奏流式调用，避免再次返回 502。
+func TestGatewayResponsesLargePrelude(t *testing.T) {
+	for _, tc := range []struct {
+		// name 标识前奏与终态场景，size 是每个准备事件的指令字节数，failed 控制提交后失败。
+		name   string
+		size   int
+		failed bool
+	}{{"original", 22000, false}, {"over-four-mib", 2200000, false}, {"failed-after-commit", 300000, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newExecutionFixture(t)
+			var stream strings.Builder
+			for _, kind := range []string{"response.created", "response.in_progress"} {
+				stream.WriteString("event: " + kind + "\ndata: {\"type\":\"" + kind + "\",\"response\":{\"instructions\":\"" + strings.Repeat("i", tc.size) + "\",\"tools\":[{\"description\":\"" + strings.Repeat("t", 27000) + "\"}]}}\n\n")
+			}
+			if tc.failed {
+				stream.WriteString("event: response.failed\ndata: {\"type\":\"response.failed\"}\n\n")
+			} else {
+				stream.WriteString("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n")
+				stream.WriteString("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n")
+			}
+			f.stream = stream.String()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			address := listener.Addr().String()
+			port := listener.Addr().(*net.TCPAddr).Port
+			if err = listener.Close(); err != nil {
+				t.Fatal(err)
+			}
+			server := gateway.New(f.catalog, f.execution.Executor)
+			server.SetAccessKey("gateway-test-key")
+			if err = server.Listen(ctx, port); err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close(context.Background())
+			request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+address+"/v1/responses", strings.NewReader(`{"model":"logical-model","stream":true,"input":"hello"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("Authorization", "Bearer gateway-test-key")
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.StatusCode != http.StatusOK || string(body) != f.stream {
+				t.Fatalf("网关流式响应: status=%d bytes=%d，期望完整 %d 字节", response.StatusCode, len(body), len(f.stream))
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if len(f.calls) != 1 {
+				t.Fatalf("正常前奏不应触发重试: calls=%d", len(f.calls))
+			}
+		})
+	}
+}
 
 // testKeys 是隔离测试的内存凭据主密钥保存位置，不使用用户钥匙串。
 type testKeys struct{ data []byte }
@@ -57,6 +123,10 @@ type executionFixture struct {
 	stream string
 	// delay 是本地上游每次响应前的等待，用于保留真实请求期限条件。
 	delay time.Duration
+	// handle 覆盖本地上游响应以检查真实出站协议，不替换调度、认证、记录与传输。
+	handle func(http.ResponseWriter, *http.Request, map[string]any)
+	// gateway 暴露本地验收监听器，便于验证暂停与升级连接的生命周期。
+	gateway *gateway.Server
 }
 
 // newExecutionFixture 从真实模块操作建立两把Key、明确模型关联和可控HTTP上游。
@@ -68,7 +138,7 @@ func newExecutionFixture(t *testing.T) *executionFixture {
 		secret := r.Header.Get("Authorization")
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body["model"] != "upstream-model" {
+		if r.Method != http.MethodGet && body["model"] != "upstream-model" && !strings.Contains(r.URL.Path, "/models/upstream-model:") {
 			t.Errorf("出站模型未映射: %v", body["model"])
 		}
 		if r.Header.Get("Cookie") != "" {
@@ -79,7 +149,12 @@ func newExecutionFixture(t *testing.T) *executionFixture {
 		fail := f.fail && secret == "Bearer key-a"
 		stream := f.stream
 		delay := f.delay
+		handle := f.handle
 		f.mu.Unlock()
+		if handle != nil {
+			handle(w, r, body)
+			return
+		}
 		if delay > 0 {
 			timer := time.NewTimer(delay)
 			defer timer.Stop()
@@ -109,8 +184,8 @@ func newExecutionFixture(t *testing.T) *executionFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.catalog.Close() })
-	// 本例只需统一模型身份；记录使用生产模型表和真实外键，价格与目录无关。
-	if _, err = f.catalog.DB().Exec(`INSERT INTO models VALUES('model-1','logical-model','{"kind":"chat"}')`); err != nil {
+	// 保留网关读取所需的完整模型身份；记录使用生产模型表和真实外键，价格与目录无关。
+	if _, err = f.catalog.DB().Exec(`INSERT INTO models VALUES('model-1','logical-model','{"id":"model-1","modelId":"logical-model","name":"Logical Model","kind":"chat"}')`); err != nil {
 		t.Fatal(err)
 	}
 	secrets, err := credentials.New(t.TempDir(), nil)

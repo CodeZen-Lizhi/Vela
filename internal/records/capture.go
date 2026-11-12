@@ -16,6 +16,18 @@ import (
 // captureLimit 是单个正文快照的上限，不限制真实转发的响应大小。
 const captureLimit = 1 << 20
 
+// LocalError 标识实际出站前的本地采集错误，调用方不得将其计为上游健康故障或重试。
+type LocalError struct {
+	// Cause 是保留给本机诊断的原始错误，对外只返回稳定说明。
+	Cause error
+}
+
+// Error 返回无凭据和数据库细节的本地错误说明。
+func (e *LocalError) Error() string { return "本地请求记录准备失败" }
+
+// Unwrap 保留本机错误链用于定位。
+func (e *LocalError) Unwrap() error { return e.Cause }
+
 // Transport 在真实出站位置旁路记录，未关联逻辑请求时原样转发。
 type Transport struct {
 	// Base 为项目已有代理与 TLS 传输；不改变认证、重试或重定向规则。
@@ -28,9 +40,20 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if base == nil {
 		base = http.DefaultTransport
 	}
+	finish, err := PrepareStreamCapture(req, false)
+	if err != nil {
+		return nil, err
+	}
+	response, err := base.RoundTrip(req)
+	return finish(response, err)
+}
+
+// PrepareStreamCapture 在真实出站前登记尝试，返回用于旁路读取响应的包装器；WebSocket 可复用相同的脱敏、用量和费用结算。
+// forceStream 允许 WebSocket 事件以内部 SSE 形状采集，握手状态仍保留为真实的 101。
+func PrepareStreamCapture(req *http.Request, forceStream bool) (func(*http.Response, error) (*http.Response, error), error) {
 	run, _ := req.Context().Value(sessionKey{}).(*session)
 	if run == nil {
-		return base.RoundTrip(req)
+		return func(response *http.Response, err error) (*http.Response, error) { return response, err }, nil
 	}
 	target, _ := req.Context().Value(targetKey{}).(Target)
 	secrets := headerSecrets(req.Header)
@@ -38,12 +61,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
-			return nil, err
+			return nil, &LocalError{Cause: err}
 		}
 		requestBody, err = io.ReadAll(io.LimitReader(body, captureLimit+1))
 		body.Close()
 		if err != nil {
-			return nil, err
+			return nil, &LocalError{Cause: err}
 		}
 	}
 	started := time.Now()
@@ -87,12 +110,17 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	specification, quality := run.mediaSpecification, run.mediaQuality
 	saveErr := run.store.save(context.WithoutCancel(req.Context()), run.record, false)
+	if saveErr != nil {
+		run.record.Attempts = run.record.Attempts[:len(run.record.Attempts)-1]
+	}
 	run.mu.Unlock()
 	if saveErr != nil {
-		return nil, saveErr
+		return nil, &LocalError{Cause: saveErr}
 	}
-	resp, err := base.RoundTrip(req)
-	b := &captureBody{run: run, attempt: a, payload: payload, started: started, secrets: secrets, specification: specification, quality: quality, stream: resp != nil && strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")}
+	b := &captureBody{run: run, attempt: a, payload: payload, started: started, secrets: secrets, specification: specification, quality: quality, stream: forceStream}
+	if forceStream {
+		b.eventLimit = 16*1024*1024 + 16
+	}
 	if spec, ok := model["size"].(string); ok {
 		b.specification = spec
 	}
@@ -102,16 +130,19 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if quality, ok := model["quality"].(string); ok {
 		b.quality = quality
 	}
-	if err != nil {
-		b.attempt.Error = "上游连接失败"
-		b.complete()
-		return nil, err
-	}
-	b.ReadCloser = resp.Body
-	b.attempt.Status = resp.StatusCode
-	b.payload.ResponseHeaders = sanitize(safeHeaders(resp.Header), secrets)
-	resp.Body = b
-	return resp, nil
+	return func(resp *http.Response, err error) (*http.Response, error) {
+		if err != nil {
+			b.attempt.Error = "上游连接失败"
+			b.complete()
+			return nil, err
+		}
+		b.stream = b.stream || strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
+		b.ReadCloser = resp.Body
+		b.attempt.Status = resp.StatusCode
+		b.payload.ResponseHeaders = sanitize(safeHeaders(resp.Header), secrets)
+		resp.Body = b
+		return resp, nil
+	}, nil
 }
 
 // CloseIdleConnections 将连接池释放传递到原有传输。
@@ -134,8 +165,10 @@ type captureBody struct {
 	// raw 保存有界文本；pending 只保存未完成的 SSE 行；usage 为最近完整用量快照。
 	raw     bytes.Buffer
 	pending []byte
-	usage   *Usage
-	stream  bool
+	// eventLimit 只约束用量观察的单事件缓冲；WebSocket 为 16 MiB，正文快照仍单独限制为 1 MiB。
+	eventLimit int
+	usage      *Usage
+	stream     bool
 	// specification、quality 来自该次真实请求，不从当前模型配置猜测媒体规格。
 	specification string
 	quality       string
@@ -174,7 +207,11 @@ func (b *captureBody) Read(p []byte) (int, error) {
 				b.accept(line)
 				b.pending = rest
 			}
-			if len(b.pending) > captureLimit {
+			limit := b.eventLimit
+			if limit == 0 {
+				limit = captureLimit
+			}
+			if len(b.pending) > limit {
 				b.pending = nil
 				b.truncated = true
 			}

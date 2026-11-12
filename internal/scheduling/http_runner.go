@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/outbound"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
 // HTTPRunner 是同格式 HTTP/SSE 执行适配器；不会自行重试或转换 API 格式。
@@ -37,7 +38,7 @@ func (r *HTTPRunner) Close() {
 	}
 }
 
-// Run 只改写 JSON 顶层模型名和上游认证；SSE 逐事件验证，输出后失败不透明重放。
+// Run 完成同格式请求兼容、模型映射与上游认证；SSE 逐事件验证，提交后失败不透明重放。
 func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest, secret string, w io.Writer) (AttemptResult, error) {
 	var result AttemptResult
 	switch req.Request.Protocol {
@@ -53,9 +54,20 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	if err = json.Unmarshal(req.Body, &body); err != nil || body == nil {
 		return result, errors.New("调用正文必须是 JSON 对象")
 	}
+	if err = prepareRequest(body, req.Request.Protocol, req.Stream); err != nil {
+		return result, err
+	}
 	body["model"], err = json.Marshal(c.Model)
 	if err != nil {
 		return result, err
+	}
+	if req.Request.Protocol == "gemini:generate_content" || req.Request.Protocol == "gemini" {
+		delete(body, "model")
+	}
+	if req.WebSocket != nil {
+		body["type"] = json.RawMessage(`"response.create"`)
+		delete(body, "stream")
+		delete(body, "background")
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -103,6 +115,9 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	if client == nil {
 		return result, errors.New("上游 HTTP 客户端尚未初始化")
 	}
+	if req.WebSocket != nil {
+		return r.runWebSocket(ctx, c, req, call, client, w)
+	}
 	first := c.Provider.Request.FirstByteSeconds
 	if first == 0 {
 		first = 30
@@ -118,6 +133,11 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		stopped = timer.Stop()
 	}
 	if err != nil {
+		var local *records.LocalError
+		if errors.As(err, &local) {
+			result.Status = 500
+			return result, errors.New("本地请求记录准备失败，未发送上游")
+		}
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
@@ -174,6 +194,11 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		result.Retryable = true
 		return result, errors.New("上游缺少有效模型终态")
 	}
+	var responseObject struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(data, &responseObject)
+	result.ResponseID = responseObject.ID
 	result.Committed = true
 	if _, err = w.Write(data); err != nil {
 		return result, err
@@ -243,15 +268,21 @@ func validJSONTerminal(protocol string, data []byte) bool {
 	}
 	switch protocol {
 	case "openai:responses", "responses":
-		var status string
-		_ = json.Unmarshal(body["status"], &status)
-		return (status == "completed" || status == "incomplete") && bytes.HasPrefix(bytes.TrimSpace(body["output"]), []byte("["))
+		terminal, useful := responsesEnvelope(data)
+		return terminal && useful
 	case "anthropic", "claude:messages":
 		var stop *string
 		_ = json.Unmarshal(body["stop_reason"], &stop)
 		var kind string
 		_ = json.Unmarshal(body["type"], &kind)
-		return kind == "message" && stop != nil && *stop != "" && len(body["content"]) > 0 && bytes.HasPrefix(bytes.TrimSpace(body["content"]), []byte("["))
+		var content []any
+		_ = json.Unmarshal(body["content"], &content)
+		useful := outputParts(content)
+		for _, raw := range content {
+			item, _ := raw.(map[string]any)
+			useful = useful || item["type"] == "tool_use" && nonemptyText(item["name"])
+		}
+		return kind == "message" && stop != nil && *stop != "" && useful
 	case "gemini", "gemini:generate_content":
 		var candidates []struct {
 			FinishReason string `json:"finishReason"`
@@ -283,12 +314,16 @@ func validJSONTerminal(protocol string, data []byte) bool {
 		if json.Unmarshal(body["choices"], &choices) != nil || len(choices) == 0 {
 			return false
 		}
+		useful := false
 		for _, c := range choices {
+			var message map[string]any
+			_ = json.Unmarshal(c.Message, &message)
+			useful = useful || chatOutput(message)
 			if c.FinishReason == nil || *c.FinishReason == "" || !bytes.HasPrefix(bytes.TrimSpace(c.Message), []byte("{")) {
 				return false
 			}
 		}
-		return true
+		return useful
 	}
 }
 
@@ -298,6 +333,13 @@ type streamTerminal struct {
 	finished bool
 	done     bool
 	failed   bool
+	// useful 与协议终态、提交边界独立；仅 DONE 或空 completed 不算完整模型成功。
+	useful bool
+	// responseID 是上游 Responses 返回的状态标识，只在完整成功后交给所有权注册表。
+	responseID string
+	// commitSetup 使 WebSocket response.created 的公开状态立即成为不可重放边界；allowEmpty 仅用于明确 generate:false 的预热。
+	commitSetup bool
+	allowEmpty  bool
 }
 
 // observe 按协议识别终态，返回此事件是否已包含不可替换的模型/工具状态。
@@ -324,11 +366,18 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 		if kind == "" {
 			kind = event
 		}
+		if response, ok := body["response"].(map[string]any); ok {
+			if id, ok := response["id"].(string); ok && id != "" {
+				s.responseID = id
+			}
+		}
 		if kind == "response.completed" || kind == "response.incomplete" || kind == "response.done" {
 			response, ok := body["response"]
 			if ok {
 				raw, _ := json.Marshal(response)
-				s.finished = validJSONTerminal(protocol, raw)
+				terminal, useful := responsesEnvelope(raw)
+				s.useful = s.useful || useful
+				s.finished = terminal
 				s.done = s.finished
 			}
 			if !s.finished {
@@ -338,8 +387,13 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 		if kind == "response.failed" {
 			s.failed = true
 		}
-		delta, _ := body["delta"].(string)
-		return delta != "" || kind == "response.output_item.added" || kind == "response.output_item.done"
+		if s.commitSetup && kind == "response.cancelled" {
+			s.failed = true
+			s.done = true
+		}
+		useful := responsesEventOutput(kind, body)
+		s.useful = s.useful || useful
+		return useful || s.commitSetup && s.responseID != "" && (kind == "response.created" || kind == "response.in_progress") || kind == "response.output_item.added" || kind == "response.output_item.done"
 	case "anthropic", "claude:messages":
 		kind, _ := body["type"].(string)
 		if kind == "" {
@@ -352,6 +406,9 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 				s.failed = true
 			}
 		}
+		block, _ := body["content_block"].(map[string]any)
+		delta, _ := body["delta"].(map[string]any)
+		s.useful = s.useful || outputParts([]any{block, delta}) || block["type"] == "tool_use" && nonemptyText(block["name"]) || nonemptyText(delta["partial_json"])
 		return kind == "content_block_start" || kind == "content_block_delta"
 	case "gemini", "gemini:generate_content":
 		candidates, _ := body["candidates"].([]any)
@@ -368,6 +425,7 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 					text, _ := part["text"].(string)
 					if text != "" || part["functionCall"] != nil {
 						s.finished = true
+						s.useful = true
 						return true
 					}
 				}
@@ -383,60 +441,78 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 				s.finished = true
 			}
 			delta, _ := choice["delta"].(map[string]any)
-			for _, key := range []string{"content", "reasoning_content", "tool_calls", "function_call"} {
-				v := delta[key]
-				if v != nil && v != "" {
-					meaningful = true
-				}
-			}
+			meaningful = meaningful || chatOutput(delta)
 		}
+		s.useful = s.useful || meaningful
 		return meaningful
 	}
 }
 
-// forwardSSE 缓冲提交前的协议前奏，之后逐事件转发；缺失终态或错误信封不回分，也不重放已输出内容。
+// forwardSSE 有界预读 SSE 后逐事件转发；Responses 达到分类预算即提交，之后失败不重放，只有有效终态才算成功。
 func forwardSSE(ctx context.Context, body io.Reader, w io.Writer, protocol string, result AttemptResult) (AttemptResult, error) {
+	return forwardEventStream(ctx, body, w, protocol, result, streamTerminal{})
+}
+
+// forwardEventStream 共享事件校验和输出提交，WebSocket 允许明确的无生成预热并沿用其 16 MiB 消息上限。
+func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protocol string, result AttemptResult, state streamTerminal) (AttemptResult, error) {
+	// maxEventBytes 限制单行和单事件；预读预算只决定提交时机，不用于判定 Responses 上游失败。
+	maxEventBytes := 4 * 1024 * 1024
+	if state.commitSetup {
+		maxEventBytes = 16*1024*1024 + 16
+	}
+	// responsesPrefetchBytes、responsesPrefetchEvents 分别是 Responses 分类预读的字节与完整事件预算。
+	const responsesPrefetchBytes = 256 * 1024
+	const responsesPrefetchEvents = 5
+	responses := protocol == "openai:responses" || protocol == "responses"
 	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 4096), 4*1024*1024)
-	var pending, eventBlock bytes.Buffer
+	scanner.Buffer(make([]byte, 4096), maxEventBytes)
+	var pending bytes.Buffer
 	var event string
 	var data []string
-	state := streamTerminal{}
-	flush := func() error {
-		if len(data) > 0 {
-			meaningful := state.observe(protocol, event, strings.Join(data, "\n"))
-			if meaningful || state.finished {
-				result.Committed = true
-			}
+	eventBytes, prefetchEvents := 0, 0
+	// 提交前保留原始协议字节；提交后任何失败都不得切换目标重放。
+	writePending := func() error {
+		if !result.Committed || pending.Len() == 0 {
+			return nil
 		}
-		pending.Write(eventBlock.Bytes())
-		eventBlock.Reset()
-		event = ""
-		data = nil
-		if !result.Committed && pending.Len() > 64*1024 {
-			return errors.New("上游在有效输出前返回过长的 SSE 前奏")
+		result.Retryable = false
+		if _, err := w.Write(pending.Bytes()); err != nil {
+			return err
 		}
-		if result.Committed && pending.Len() > 0 {
-			if _, err := w.Write(pending.Bytes()); err != nil {
-				return err
-			}
-			pending.Reset()
-			if flusher, ok := w.(interface{ Flush() }); ok {
-				flusher.Flush()
-			}
+		pending.Reset()
+		if flusher, ok := w.(interface{ Flush() }); ok {
+			flusher.Flush()
 		}
 		return nil
 	}
+	flush := func() error {
+		if len(data) > 0 {
+			meaningful := state.observe(protocol, event, strings.Join(data, "\n"))
+			if meaningful || state.finished && (state.useful || state.allowEmpty) {
+				result.Committed = true
+			}
+		}
+		prefetchEvents++
+		// Aether 的传输帧在此读取器中不可见，以完整 SSE 事件限制小前奏的等待次数。
+		if responses && !state.failed && prefetchEvents >= responsesPrefetchEvents {
+			result.Committed = true
+		}
+		eventBytes = 0
+		event = ""
+		data = nil
+		return writePending()
+	}
 	for scanner.Scan() {
 		line := scanner.Text()
-		// Scanner只限制单行，事件总量也必须有界，避免无空行的keepalive无限累积。
-		if eventBlock.Len()+len(line)+1 > 4*1024*1024 || (!result.Committed && pending.Len()+eventBlock.Len()+len(line)+1 > 64*1024) {
+		eventBytes += len(line) + 1
+		// 单事件始终有界；其他协议保留原有 64 KiB 前奏边界。
+		if eventBytes > maxEventBytes || (!responses && !result.Committed && pending.Len()+len(line)+1 > 64*1024) {
 			result.Outcome.Penalty = Heavy
 			result.Retryable = !result.Committed
 			return result, errors.New("上游SSE单事件或前奏过长")
 		}
-		eventBlock.WriteString(line)
-		eventBlock.WriteByte('\n')
+		pending.WriteString(line)
+		pending.WriteByte('\n')
 		if line == "" {
 			if err := flush(); err != nil {
 				return result, err
@@ -444,29 +520,43 @@ func forwardSSE(ctx context.Context, body io.Reader, w io.Writer, protocol strin
 			if state.failed || state.done {
 				break
 			}
-			continue
+		} else {
+			if strings.HasPrefix(line, "event:") {
+				event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			}
+			if strings.HasPrefix(line, "data:") {
+				data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			}
 		}
-		if strings.HasPrefix(line, "event:") {
-			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		// 达到分类预算只结束预读，不能把仍在传输的正常前奏误判为失败；允许在事件中途提交。
+		if responses && !result.Committed && pending.Len() >= responsesPrefetchBytes {
+			result.Committed = true
 		}
-		if strings.HasPrefix(line, "data:") {
-			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		if responses {
+			if err := writePending(); err != nil {
+				return result, err
+			}
 		}
 	}
 	if ctx.Err() != nil {
 		return result, ctx.Err()
 	}
-	if eventBlock.Len() > 0 {
+	if eventBytes > 0 {
 		if err := flush(); err != nil {
 			return result, err
 		}
 	}
-	if scanner.Err() != nil || state.failed || !state.finished {
+	if scanner.Err() != nil || state.failed || !state.finished || !state.useful && !state.allowEmpty {
 		result.Outcome.Penalty = Heavy
 		result.Retryable = !result.Committed
 		return result, errors.New("上游流式响应错误或缺少有效终态")
 	}
 	result.Outcome.Success = true
+	result.Warmup = state.allowEmpty
+	if result.Warmup {
+		result.Outcome.Success = false
+	}
+	result.ResponseID = state.responseID
 	return result, nil
 }
 
