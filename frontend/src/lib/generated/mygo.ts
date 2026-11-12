@@ -157,8 +157,10 @@ export interface CleanupPreview {
 export interface Create {
   /** ProviderID 精确目录来源；为空时不关联任何目录。 */
   providerId: string;
-  /** ModelID 目录候选 ID 或手动填写的真实调用名称。 */
+  /** ModelID 创建后对外使用的本地统一模型 ID；在线新增允许覆盖目录默认值，创建后只读。 */
   modelId: string;
+  /** SourceModelID 在线目录中的来源模型 ID，用于保存来源身份及后续价格同步；手动模型为空。 */
+  sourceModelId: string;
   /** Name 用户确认的显示名称，1～80 个字符。 */
   name: string;
   /** Kind 仅用于手动模型，取 chat、image、video 或 vector。 */

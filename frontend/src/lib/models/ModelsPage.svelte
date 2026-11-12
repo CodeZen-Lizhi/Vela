@@ -114,7 +114,7 @@
     createEntry = entry;
     dialogError = "";
     const pricing: Pricing = {base: [], tiers: [], modes: [], schedules: [], baseline: "", images: [], videos: []};
-    createDraft = {id: "", revision: 0, modelId: entry?.modelId ?? "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
+    createDraft = {id: "", revision: 0, modelId: entry?.canonicalId.split("/")[1] || entry?.modelId || "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
   }
   /** 返回目录丢弃未提交草稿，保留目录筛选和滚动位置；焦点回到搜索框。 */
   async function returnToCatalog(): Promise<void> {
@@ -131,7 +131,7 @@
     busy = true;
     dialogError = "";
     try {
-      await VelaService.createModel({providerId: createEntry?.providerId ?? "", modelId: createEntry?.modelId ?? createDraft.modelId, name: createDraft.name, kind: createDraft.kind, pricing: createDraft.pricing});
+      await VelaService.createModel({providerId: createEntry?.providerId ?? "", modelId: createDraft.modelId, sourceModelId: createEntry?.modelId ?? "", name: createDraft.name, kind: createDraft.kind, pricing: createDraft.pricing});
       await load();
       addOpen = false;
     } catch (e) {

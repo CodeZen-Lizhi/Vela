@@ -78,11 +78,14 @@
     <div>
       <p class="detail-eyebrow">{model.providerName}</p>
       <h2>{model.name}</h2>
-      <code>{model.modelId}</code>
     </div>
   </header>
 
   <dl class="detail-metadata">
+    <div>
+      <dt>模型 ID</dt>
+      <dd><code class="detail-model-id">{model.modelId}</code></dd>
+    </div>
     <div>
       <dt>模型类型</dt>
       <dd>
@@ -312,13 +315,6 @@
     line-height: 1.4;
     overflow-wrap: anywhere;
   }
-  .detail-identity code {
-    display: block;
-    color: var(--muted-foreground);
-    font-size: 12px;
-    margin-top: 3px;
-    overflow-wrap: anywhere;
-  }
   .detail-metadata {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -336,6 +332,9 @@
     margin: 6px 0 0;
     font-size: 13px;
     overflow-wrap: anywhere;
+  }
+  .detail-model-id {
+    font-size: 12px;
   }
   .detail-capabilities {
     display: flex;

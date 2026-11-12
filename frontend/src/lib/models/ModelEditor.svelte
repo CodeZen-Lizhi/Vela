@@ -10,7 +10,7 @@
   import PriceEditor from "./PriceEditor.svelte";
   import { kinds, modelInitial } from "./display";
 
-  /** 编辑仅修改父级独立草稿；保存与来源恢复仍由真实业务入口负责。 */
+  /** 编辑仅修改父级独立草稿；模型 ID 仅创建时可改，保存与来源恢复由真实业务入口负责。 */
   let {
     model = $bindable(),
     busy,
@@ -26,7 +26,7 @@
     onsave: (event: SubmitEvent) => Promise<void>;
     onrestore: (group: string) => void;
     onclose: () => void;
-    /** 创建时复用名称和价格表单，手动模式额外开放 ID 与类型。 */
+    /** 创建时复用名称、模型 ID 和价格表单；手动模式额外开放类型，编辑模式模型 ID 只读。 */
     mode?: "edit" | "online" | "manual";
   } = $props();
   /** 无效输入的提示和所属规则组，继续输入或重新提交时清除。 */
@@ -75,9 +75,12 @@
           !model.providerId,
         )}</span
       >
-      <div><strong>{model.providerName}</strong><code>{model.modelId}</code></div>
+      <div>
+        <strong>{model.providerName}</strong>
+        {#if model.providerId}<code title="来源模型 ID">{model.sourceModelId}</code>{/if}
+      </div>
     </div>
-    <Field.FieldGroup class={mode === "manual" ? "grid gap-3 sm:grid-cols-2" : "grid gap-3"}>
+    <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">
       <Field.Field
         ><Field.Label for={`${prefix}-name`}>显示名称</Field.Label><Input
           id={`${prefix}-name`}
@@ -86,8 +89,19 @@
           required
         /></Field.Field
       >
+      <Field.Field>
+        <Field.Label for={`${prefix}-id`}>模型 ID</Field.Label>
+        <Input
+          id={`${prefix}-id`}
+          bind:value={model.modelId}
+          readonly={mode === "edit"}
+          aria-describedby={mode === "edit" ? `${prefix}-id-note` : undefined}
+          required
+          maxlength={256}
+        />
+        {#if mode === "edit"}<Field.Description id={`${prefix}-id-note`}>创建后不可修改。</Field.Description>{/if}
+      </Field.Field>
       {#if mode === "manual"}
-        <Field.Field><Field.Label for={`${prefix}-id`}>模型 ID</Field.Label><Input id={`${prefix}-id`} bind:value={model.modelId} required maxlength={256} /></Field.Field>
         <Field.Field><Field.Label for={`${prefix}-kind`}>模型类型</Field.Label>
           <Select.Root type="single" bind:value={model.kind}><Select.Trigger id={`${prefix}-kind`} class="w-full">{kinds[model.kind]}</Select.Trigger><Select.Content><Select.Group>{#each Object.entries(kinds) as [value, label]}<Select.Item {value}>{label}</Select.Item>{/each}</Select.Group></Select.Content></Select.Root>
         </Field.Field>

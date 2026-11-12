@@ -113,12 +113,12 @@ func (s *Store) Add(ctx context.Context, providerID, modelID string) (Model, err
 	return s.add(ctx, providerID, modelID, nil)
 }
 
-// add 在写入锁内构造来源模型，一次保存确认草稿与可信来源快照。
-func (s *Store) add(ctx context.Context, providerID, modelID string, draft *Create) (Model, error) {
+// add 在写入锁内按来源模型 ID 构造模型，一次保存确认草稿与可信来源快照。
+func (s *Store) add(ctx context.Context, providerID, sourceModelID string, draft *Create) (Model, error) {
 	var entry *CatalogEntry
 	for i := range s.catalog {
 		e := &s.catalog[i]
-		if e.ProviderID == providerID && e.ModelID == modelID {
+		if e.ProviderID == providerID && e.ModelID == sourceModelID {
 			entry = e
 			break
 		}
@@ -142,6 +142,8 @@ func (s *Store) add(ctx context.Context, providerID, modelID string, draft *Crea
 		}
 	}
 	if draft != nil {
+		// 用户确认的本地模型 ID 与目录来源 ID 分离；后续同步仍按 SourceModelID 命中来源。
+		m.ModelID = draft.ModelID
 		m.Name = draft.Name
 		m.Pricing = draft.Pricing
 		for _, g := range groups {
@@ -287,14 +289,20 @@ func (s *Store) Create(ctx context.Context, draft Create) (Model, error) {
 	if err := validatePricing(draft.Pricing); err != nil {
 		return Model{}, err
 	}
+	modelID, err := normalizeModelID(draft.ModelID)
+	if err != nil {
+		return Model{}, err
+	}
+	draft.ModelID = modelID
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if draft.ProviderID != "" {
-		return s.add(ctx, draft.ProviderID, draft.ModelID, &draft)
-	}
-	draft.ModelID = strings.TrimSpace(draft.ModelID)
-	if draft.ModelID == "" || len(draft.ModelID) > 256 || strings.ContainsAny(draft.ModelID, " \t\r\n") {
-		return Model{}, errors.New("请填写有效的模型 ID（不能包含空白，最长 256 字节）")
+		// 兼容旧调用方只传目录 ID 的请求；新调用方显式区分来源 ID 与本地统一 ID。
+		draft.SourceModelID = strings.TrimSpace(draft.SourceModelID)
+		if draft.SourceModelID == "" {
+			draft.SourceModelID = draft.ModelID
+		}
+		return s.add(ctx, draft.ProviderID, draft.SourceModelID, &draft)
 	}
 	if !contains([]string{"chat", "image", "video", "vector"}, draft.Kind) {
 		return Model{}, errors.New("请选择模型类型")
@@ -304,4 +312,13 @@ func (s *Store) Create(ctx context.Context, draft Create) (Model, error) {
 		return Model{}, err
 	}
 	return s.insert(ctx, Model{ID: id, ModelID: draft.ModelID, Name: draft.Name, Kind: draft.Kind, ProviderName: "手动创建", Capabilities: []string{}, Pricing: draft.Pricing, SourcePricing: Pricing{}, Overrides: []string{}})
+}
+
+// normalizeModelID 清理本地统一模型 ID 的首尾空白，并拒绝空值、超过 256 字节或包含空白的输入。
+func normalizeModelID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 256 || strings.ContainsAny(value, " \t\r\n") {
+		return "", errors.New("请填写有效的模型 ID（不能包含空白，最长 256 字节）")
+	}
+	return value, nil
 }
