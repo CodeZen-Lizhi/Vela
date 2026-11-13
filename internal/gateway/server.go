@@ -23,7 +23,7 @@ import (
 const (
 	// requestBodyLimit 限制客户端请求正文，避免本机入口无界读取内存。
 	requestBodyLimit = 128 << 20
-	// shutdownTimeout 是本机网关停止监听时等待在途请求结束的上限。
+	// shutdownTimeout 是停止接入后允许在途请求自然完成的时间，超时后取消并等待业务收尾。
 	shutdownTimeout = 2 * time.Second
 )
 
@@ -46,6 +46,8 @@ type Server struct {
 	catalog *models.Store
 	// executor 是复用真实调度链路的执行入口。
 	executor Executor
+	// lifecycleMu 串行化监听替换、暂停和关闭；等待请求收尾时不得持有 mu。
+	lifecycleMu sync.Mutex
 	// mu 保护密钥、监听端口和替换中的 HTTP 服务。
 	mu sync.Mutex
 	// accessKey 是最近一次成功保存的网关访问密钥。
@@ -53,7 +55,7 @@ type Server struct {
 	// port 是最近一次成功开始监听的端口。
 	port int
 	// server、listener 在监听期间非空；暂停或关闭后清空。
-	server   *http.Server
+	server   *httpLifecycle
 	listener net.Listener
 	// paused 区分用户主动暂停和尚未配置，供菜单栏恢复入口使用。
 	paused bool
@@ -77,6 +79,13 @@ func (s *Server) SetAccessKey(value string) {
 
 // Listen 在 127.0.0.1 的指定端口开始监听；新端口绑定失败时保留原监听。
 func (s *Server) Listen(ctx context.Context, port int) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	return s.listen(ctx, port)
+}
+
+// listen 在持有 lifecycleMu 时绑定并替换监听，返回前完成旧 HTTP 请求的取消及收尾。
+func (s *Server) listen(ctx context.Context, port int) error {
 	s.mu.Lock()
 	if strings.TrimSpace(s.accessKey) == "" {
 		s.mu.Unlock()
@@ -91,11 +100,7 @@ func (s *Server) Listen(ctx context.Context, port int) error {
 		s.mu.Unlock()
 		return fmt.Errorf("监听 127.0.0.1:%d 失败: %w", port, err)
 	}
-	next := &http.Server{
-		Handler:           s.handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
+	next := newHTTPLifecycle(s.handler())
 	previous := s.server
 	s.server = next
 	s.listener = listener
@@ -110,13 +115,15 @@ func (s *Server) Listen(ctx context.Context, port int) error {
 		}
 	}()
 	if previous != nil {
-		shutdownServer(ctx, previous)
+		return shutdownServer(ctx, previous)
 	}
 	return nil
 }
 
-// Pause 停止接收新请求并等待在途请求结束；未监听时保持幂等。
+// Pause 停止接入并在自然等待超时后取消 HTTP 请求，等业务收尾完成；未监听时保持幂等。
 func (s *Server) Pause(ctx context.Context) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	s.mu.Lock()
 	if s.server == nil {
 		s.paused = true
@@ -129,29 +136,37 @@ func (s *Server) Pause(ctx context.Context) error {
 	s.listener = nil
 	s.paused = true
 	s.mu.Unlock()
+	server.stopAdmission()
 	s.closeWebSockets(ctx)
 	return shutdownServer(ctx, server)
 }
 
 // Resume 按最近保存的端口恢复监听；端口或访问密钥不可用时返回明确错误。
 func (s *Server) Resume(ctx context.Context) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	s.mu.Lock()
 	port := s.port
 	s.mu.Unlock()
 	if port == 0 {
 		return ErrNotListening
 	}
-	return s.Listen(ctx, port)
+	return s.listen(ctx, port)
 }
 
-// Close 停止监听并禁止后续自动恢复，供应用退出时释放端口。
+// Close 停止监听并等普通 HTTP handler 收尾完成，返回后宿主可关闭其数据库；仍允许显式重新 Listen。
 func (s *Server) Close(ctx context.Context) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	s.mu.Lock()
 	server := s.server
 	s.server = nil
 	s.listener = nil
 	s.paused = false
 	s.mu.Unlock()
+	if server != nil {
+		server.stopAdmission()
+	}
 	s.closeWebSockets(ctx)
 	if server == nil {
 		return nil
@@ -180,11 +195,23 @@ func (s *Server) Configured() bool {
 	return strings.TrimSpace(s.accessKey) != "" && s.port != 0
 }
 
-// shutdownServer 使用独立有限期限关闭服务，调用方取消不延长退出等待。
-func shutdownServer(ctx context.Context, server *http.Server) error {
+// shutdownServer 先拒绝新业务并有界等待，超时强制取消普通连接，始终等待已进入的 handler 收尾。
+// 自然等待超时但强制关闭成功返回 nil；收尾等待不受调用方取消影响，避免宿主提前释放数据库。
+func shutdownServer(ctx context.Context, server *httpLifecycle) error {
+	server.stopAdmission()
 	closeContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
-	return server.Shutdown(closeContext)
+	err := server.Shutdown(closeContext)
+	if err != nil {
+		closeErr := server.Close()
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = closeErr
+		} else {
+			err = errors.Join(err, closeErr)
+		}
+	}
+	server.handlers.Wait()
+	return err
 }
 
 // handler 构造本机路由；所有请求先完成访问密钥验证。

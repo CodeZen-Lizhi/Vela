@@ -4,128 +4,81 @@
 
 > Many models. One course.
 
-Vela 是 Aether 重构后的新项目。它把多家 AI 供应商、不同协议、模型映射、调度、额度和请求诊断收束到一个本机入口，桌面宿主使用 MyGo，业务核心使用 Go，界面使用 Svelte。
+在一个本机入口管理 AI 供应商、API Key、模型映射、调度和请求记录。桌面使用 MyGo 和系统 WebView，业务核心为 Go，界面为 Svelte。
 
-当前已提供桌面壳、类型化前后端绑定和模型管理第一阶段：真实目录添加、完整价格配置、本地修改保护、同步与恢复来源值。供应商配置、Key、模型关联/权限/映射和账户查询已接入真实持久化；请求记录已接入现有调度与独立诊断执行链；仅监听本机的四协议 HTTP/SSE 网关已接入真实模型清单、访问密钥、流式调用、暂停/恢复与端口热切换。
+当前准备首个公开测试版 **0.1.0-beta.1**，目标为 **macOS 14+、Apple Silicon（arm64）**。本地候选包已生成，验收覆盖和剩余边界见[交付记录](docs/public-beta-delivery.md)。尚未对外发布，不代表稳定版或全部性能目标已通过。
 
-## 技术栈
+## 下载与安装
 
-- Go 1.27.3
-- MyGo 0.8.3，系统 WebView 模式
-- Svelte 5
-- TypeScript
-- Vite 8
-- Tailwind CSS 4
-- shadcn-svelte
-- SQLite，使用 modernc.org/sqlite 纯 Go 驱动
+[源码与开发入口](https://github.com/CodeZen-Lizhi/Vela) · [Releases 下载页](https://github.com/CodeZen-Lizhi/Vela/releases) · [0.1.0-beta.1 说明](docs/releases/0.1.0-beta.1.md)
 
-## 目录
+发布后请从 Releases 选择对应版本的 arm64 安装包。本次采用 ad-hoc 签名，未经过 Apple 公证，首次打开可能被 macOS 拦截。核对下载来源后，将 `Vela.app` 放入“应用程序”，尝试打开，再按系统提示到“系统设置 → 隐私与安全性”选择“仍要打开”。提示随系统版本变化；不需要关闭系统安全保护。详细升级及异常恢复步骤见[版本说明](docs/releases/0.1.0-beta.1.md#升级与应急恢复)。
 
-```text
-.
-├── cmd/vela/                 MyGo 桌面应用入口
-├── internal/app/             最小类型化应用服务
-├── internal/models/          模型目录、价格规则与 SQLite 持久化
-├── internal/providers/       供应商、加密凭据、模型关联与账户查询
-├── internal/gateway/         仅监听本机的四协议 HTTP/SSE 入口
-├── internal/records/         请求诊断、用量估算、长期累计与保留清理
-├── internal/buildinfo/       构建信息
-├── frontend/                 Svelte 前端
-├── resources/                桌面应用资源
-├── docs/adr/                 架构决策记录
-└── mygo.config.ts            MyGo 开发与打包配置
+## 快速上手：完成第一个 Chat 请求
+
+1. 打开 Vela，在“模型”页在线添加或手动创建一个对话模型，记下本地模型 ID。
+2. 在“供应商”页添加支持 Chat Completions 的上游地址和 API Key，启用供应商与 Key，关联刚创建的模型并允许该 Key 使用；上游模型名不同时配置请求名映射。
+3. 打开“设置 → 接入与访问”的“网关接入”。首次“访问密钥”显示“尚未设置”，点击“设置密钥”填写并“保存密钥”（已有密钥时按钮为“修改密钥”）；应用不会自动生成密钥。默认地址为 `http://127.0.0.1:18080`，若保存后提示“密钥已保存，但网关未生效”且原因为端口占用，修改“监听地址”中的端口并点击“保存端口”重试。生效后复制“接入地址”和“访问密钥”。
+4. 在终端运行以下示例，将 `你的本地模型ID` 换成第 1 步的值；`read` 后输入第 3 步的网关密钥（输入不回显）。这里使用网关密钥，上游 API Key 只填在供应商配置中。
+
+```bash
+read -r -s VELA_GATEWAY_KEY
+curl --fail-with-body --show-error http://127.0.0.1:18080/v1/chat/completions \
+  -H "Authorization: Bearer ${VELA_GATEWAY_KEY}" \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"你的本地模型ID","messages":[{"role":"user","content":"请只回复：Hello Vela"}],"stream":false}'
+unset VELA_GATEWAY_KEY
 ```
+
+成功应得到 HTTP 200 和包含 `choices[0].message` 回答的 JSON，并在“使用记录”看到对应请求及最终结果。健康检查或模型列表成功只说明本机入口可用，不能代替真实上游回答。401 检查网关密钥；模型不存在或无候选时检查本地模型 ID、关联、Key 权限及启用状态；上游拒绝与余额问题在请求详情中排查。候选包已通过本机可控上游的真实 Chat 调用；各远端供应商的兼容性仍取决于其实际实现。
+
+## 协议与能力
+
+网关只监听 `127.0.0.1`，四种对话协议同时提供，按上游原格式发送，不做跨协议转换。客户端的 Base URL 规则不同，请避免重复拼接 `/v1` 或 `/v1beta`。
+
+| 协议 | 本机请求路径 | 鉴权 |
+| --- | --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` | `Authorization: Bearer <网关密钥>` |
+| OpenAI Responses | `POST /v1/responses` | 同上 |
+| Anthropic Messages | `POST /v1/messages` | Bearer 或 `x-api-key` |
+| Gemini | `POST /v1beta/models/{model}:generateContent`、`:streamGenerateContent`；也接受 `/v1/models/` 路径 | Bearer 或 `x-goog-api-key` |
+
+上述路径支持各自的普通响应与 SSE。OpenAI SDK 通常将 Base URL 配为 `http://127.0.0.1:18080/v1`；自动追加版本路径的客户端应使用根地址。`GET /v1/health`、`GET /v1/models` 同样需要网关密钥，模型列表包含所有已添加类型，各调用入口分别核对模型类型及权限。
+
+- 模型目录、完整价格编辑、同步及本地修改保护；供应商、多 Key、模型权限、映射与账户查询。
+- 固定顺序、会话亲和、成本优先三种调度策略，以及重试、故障转移、健康状态与冷却。
+- 总览、请求详情、用量与估算费用、长期统计、手动清理，以及模型指纹采样和计划。
+- 源码已接入 Responses Compact / WebSocket、Token 计数、向量、排序、图片、视频、Search、Gemini Interactions / Files 及标准 OpenAI Realtime；具体路径和限制见[版本说明](docs/releases/0.1.0-beta.1.md#协议入口与兼容边界)，这些入口不代表每种远端供应商及候选包组合都已验收。
+
+关闭窗口可按偏好继续在后台运行；菜单栏可打开主窗口、暂停或恢复网关。真正退出应用会停止网关，它随桌面应用运行，不是独立系统服务。
+
+## 本地数据与隐私
+
+默认数据目录为 `~/Library/Application Support/Vela/`，包含 `vela.sqlite` 与 `credentials/`。网关密钥、上游 API Key、账户认证及代理凭据加密保存在本机，不上传给开发者；实际请求仍会将内容和必要认证发送给你配置的上游。在线模型目录和主动/定时账户查询也会访问相应外部服务。
+
+请求与响应文本正文在请求结束后保留 **7 天**，请求明细与诊断保留 **30 天**，累计统计独立保留；进行中请求不按期限删除。这些是内置规则，没有正文采集开关或保留期限表单。媒体记录只保留文本与元信息，不保留媒体二进制或完整内嵌 base64，不承诺完整回放。
+
+`credentials/master.key` 是解密必需的本机主密钥，`credentials/secrets.enc` 保存密文；凭据目录权限为 0700，文件为 0600。不要删除或单独搬运它们，也不要公开数据目录、日志或请求正文。同时取得主密钥和密文仍可解密，此机制不隔离同一 macOS 用户下的恶意程序；不承诺安全擦除旧数据库页或历史副本。旧网关密钥首次从钥匙串迁移可能需要一次系统授权。
+
+## 测试版限制
+
+- 配置导入导出尚未实现；应用不提供整库备份/恢复功能。
+- Responses HTTP 的 `background:true` 尚未支持，会在出站前返回 400。
+- Responses 续接、视频、Gemini 文件/上传和 Interactions 的资源绑定只存在于当前进程。重启、过期、淘汰或原凭据/地址/映射失效后可能返回 409；不能跨进程续接或自动改选其他 Key。
+- 费用根据上游可用用量和本地价格估算，不是供应商账单；缺失用量/价格保持未知。指纹结果仅表示参考库内统计相似性，不能认证模型身份或单凭结果认定渠道造假，检测会产生真实上游费用。
+- 自动更新未接入，Intel、Windows、Linux 不属于本次包的支持范围。20 并发及 100 万条历史规模尚未验收。
 
 ## 开发
 
-需要 Go 1.27.3+ 和 Node.js 22.12+。
+使用 Go 1.27.3+、Node.js 22.12+。技术栈为 MyGo 0.8.3、Svelte 5、TypeScript、Vite 8、Tailwind CSS 4、shadcn-svelte 和 SQLite（modernc.org/sqlite）。
 
 ```bash
 npm install
-npm run check
 npm run dev
 ```
 
-只在浏览器预览界面时运行：
+`npm run dev:web` 仅预览界面，不含桌面服务。使用 `VELA_DATA_DIR=/tmp/vela-dev npm run dev` 可隔离开发数据；隔离目录使用独立凭据，不读取日常钥匙串。版本修改后运行 `npm run version:sync`，更新依赖后运行 `npm run licenses:generate`。检查入口为 `go test ./...`、`npm run check`、`npm run test:release`；`npm run build` 构建桌面产物到 `build/`。本地候选发布命令为 `npm run release:prepare -- --notes docs/releases/0.1.0-beta.1.md`；未提交改动用于本地验收时可显式加 `--allow-dirty`，源码状态会记入包内元数据。构建成功不能替代安装包验收；本轮状态见[公开测试版交付记录](docs/public-beta-delivery.md)。
 
-```bash
-npm run dev:web
-```
+## 许可
 
-浏览器模式不包含 MyGo 运行时，页面会明确显示为浏览器预览。
-
-## 验证
-
-```bash
-go test ./...
-npm run check
-npm run build
-```
-
-桌面应用构建产物位于 `build/`。
-
-## 本机网关
-
-应用运行期间在 `127.0.0.1` 监听，默认端口为 `18080`。设置页可修改端口和唯一访问密钥；新端口先实际绑定成功再保存，绑定失败保留原配置和原监听。菜单栏“暂停网关/恢复网关”直接控制同一监听生命周期。
-
-当前提供 `GET /v1/health`、`GET /v1/models`、`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/messages` 和 `POST /v1beta/models/{model}:generateContent` / `:streamGenerateContent`。同一个网关密钥支持 Bearer 认证；Anthropic 另支持 `x-api-key`，Gemini 另支持 `x-goog-api-key` 或 `key` 查询参数。模型清单只公开“模型”页中的对话模型。四种协议复用现有供应商、Key 权限、调度、健康与请求记录链路，支持普通响应和 SSE 流式响应；出站只使用选中供应商的认证，不转发客户端密钥、Cookie 或代理认证头。
-
-当前网关已实现 OpenAI Chat Completions、Responses、Anthropic Messages 与 Gemini `generateContent` / `streamGenerateContent` 同格式 HTTP/SSE 入口；标准 Responses WebSocket 默认通道已接入；媒体专用执行路径仍待接入。网关随桌面应用退出而停止，不是独立系统服务。
-
-## 模型管理
-
-打开“模型”页，通过“在线添加”从 models.dev 目录选择模型并确认创建，或通过“手动创建”填写目录外的模型；在线目录的厂商条只列热门官方厂商，其他来源通过搜索选取。在线确认和手动创建均可调整本地模型 ID，来源模型 ID 独立保留，创建后模型 ID 在编辑与详情中只读展示。列表提供搜索、类型筛选、详情、编辑和确认删除。价格编辑按基础、上下文阶梯、Fast、峰谷、图片和视频分组；同步保留本地修改，恢复来源值随表单保存生效，取消不写入。来源下架保留配置，单模型同步失败不阻止其他模型更新。
-
-“设置”提供唯一全局代理开关和地址，目录下载跟随此设置；关闭时直连。默认数据保存在 macOS `~/Library/Application Support/Vela/vela.sqlite`。本地验收可使用 `VELA_DATA_DIR=/tmp/vela-acceptance npm run dev` 隔离数据。
-
-模块通过 Go 的 `internal/models` 操作接口维护完整价格，SQLite 在每次模型写入中保存完整文档，来源身份和统一模型名有唯一性约束。前端只使用生成的 MyGo 绑定；浏览器模式明确标为预览，不模拟业务成功。
-
-## 供应商管理
-
-“供应商”页提供搜索/筛选、增删改、启停、首选 Key/倍率及账户余额。右侧详情维护 Key、关联模型、Key 模型权限和有序请求名映射；映射支持全部操作或仅会话压缩，保留已有自定义操作范围。统一模型删除时级联清理从属关联、权限和映射。
-
-账户支持 Sub2API、New API、兼容 `/v1/usage` 的 API Key 查询和自定义 GET/POST JSON 查询。供应商只配置余额；Key 默认复用连接，也可单独配置查询名称/分组/倍率。查询失败保留配置和上次有效值，首次未知不补成零余额或 1 倍。余额按原币种显示，不自动换汇。页面进入和恢复只读本地；主动刷新、配置保存及全局定时开关分别控制网络查询。
-
-调用密钥与账户认证使用本机加密凭据存储保存的主密钥加密，页面读取只获得掩码，主动复制由后端写入剪贴板。Key 基本配置和查询来源在一个 SQLite 事务中保存，网络同步在提交后独立执行。供应商仅选择跟随全局代理或不使用代理；Key 仅选择跟随供应商或不使用代理。代理地址统一在全局设置维护。
-
-供应商本轮验证记录见 [供应商开发与验收记录](docs/provider-management-delivery.md)。
-
-## 当前边界
-
-“使用记录”模块的独立需求与验收见 [请求记录需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md)。功能以旧 Aether 为迁移基线，界面参考已认可 Svelte 原型；筛选布局与实时阅读规则已确认，真实记录页面与清理能力已接入本机网关、模型测试和模型验证链路。
-
-本机网关已公开模型页中的全部对话模型并支持四种同格式 HTTP/SSE 对话协议；媒体专用执行路径仍未接入。费用记录按本地价格规则估算，不代表供应商实际账单。模型指纹验证已提供独立计划及真实采样评分。分时例外日期可手动维护，自动法定节假日日历未接入；目录未提供的媒体矩阵、缓存或价格字段保持未知，可本地补充。详情与编辑参考原型，使用白底蓝色和 shadcn-svelte 控件。
-
-## 本地凭据与隐私
-
-网关访问密钥与供应商 API Key 只在本机加密保存，不上传给开发者。`~/Library/Application Support/Vela/credentials/` 中的 `master.key` 是随机 256 位主密钥，`secrets.enc` 保存 AES-256-GCM 密文；上游 API Key 的密文位于 SQLite，全局及供应商/Key 代理配置文档也加密保存，避免代理账号密码明文落库。已有代理 JSON 自动迁移；不承诺安全擦除旧数据库页或历史副本。凭据目录为 0700，凭据文件为 0600；普通配置、日志和默认导出不得包含凭据及主密钥。隔离目录同样使用独立凭据文件，不读取日常钥匙串。
-
-旧网关访问密钥首次读取时迁移，可能要求一次系统授权；成功后不再访问旧钥匙串，旧项保留。拒绝授权可重试，主密钥丢失或密文损坏时拒绝覆盖数据。不要删除或单独搬运主密钥；普通配置导出不承担凭据恢复。
-
-此保护防止直接查看明文与数据库单独泄露，不隔离同一 macOS 用户下的恶意程序；同时取得主密钥与密文仍可解密。未公证 App 的首次打开提示属于 macOS 的独立检查，不保证所有安装和更新路径都免系统授权。账户令牌复用本机凭据保护；正式自动更新与跨机加密导出仍按各模块需求实施。
-
-## 调度
-
-调度页直接读取真实供应商，提供三种策略、整行拖动和上下方向键排序，修改即时保存，失败恢复旧值。停用供应商保留顺位；新增追加末尾、删除后其他相对顺序保持，供应商列表按启用状态和调度顺位展示。
-
-`internal/scheduling` 提供排序、5分钟会话亲和、实际准入、同Key重试、候选故障转移、整Key健康与恢复试探；`app.NewSchedulingExecution` 将其与SQLite、加密凭据、模型权限及同格式HTTP/SSE执行接通。健康与冷却跨重启保留，亲和按旧版只存进程内。首次响应默认30秒、HTTP聊天流式总期限默认120秒、熔断等待上限默认10分钟。
-
-该 Go 入口及本机 OpenAI Chat / Responses 网关已通过真实 Aether 供应商链路验证。Anthropic Messages 与 Gemini 已通过本机网关和严格本地上游验证；真实远端供应商尚待组合验收，标准 Responses WebSocket 已通过双端本地上游组合验证，真实远端供应商待验收；媒体独立执行路径仍待接入。供应商模型/权限编辑复用已有供应商模块；余额提醒与跨机整份配置搬运仍需对应模块接入。迁移依据、测试与集成边界见 [调度迁移记录](docs/tasks/scheduling-migration.md)。
-
-## 模型验证
-
-“模型验证”页为供应商显式配置模型、Key、请求协议与思考强度，自动运行默认关闭，可手动立即检测或复测最近结果。支持 Chat Completions、Responses、Anthropic Messages 与 Gemini 原生采样，固定目标失败不切换 Key、模型或协议。题目、解析与本地评分使用内置固定版本开源核心及 69 模型参考库；列表展示接近、差异或证据不足，详情提供真实候选排名、参考库内置信度及最近一轮原始回答。
-
-首次开启不立即执行；手动检测不重置周期；睡眠和退出期间不执行，唤醒或重启不补测。删除资源仅清理相关线路和报告；修改地址或实际映射清理受影响旧结果。检测产生真实上游消耗，取消不能撤回费用；目前未接入完整用量/费用记录与总览提醒，结果不是模型身份认证。实现、证据和剩余集成边界见 [模型验证开发与验收记录](docs/model-verification-delivery.md)。
-
-## 请求记录
-
-“使用记录”提供真实请求查询、组合筛选、默认每页 20 条、五项摘要、可选实时刷新，以及按模型/供应商折叠的长期用量分析。详情展示逐次上游尝试、熔断来源、历史价格、脱敏头/正文、JSON/对话切换和安全 cURL 复制。供应商最近调用可跳到对应记录。
-
-记录来自本机 HTTP 网关、内部模型测试和模型验证的实际调用；正文结束后保留 7 天，明细保留 30 天，设置中的清理须预览确认，长期累计独立保留。Responses WebSocket 每个 response.create 独立记录，并在传输方式中明确显示和筛选。需求以 [RR：请求记录](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/request-records.md) 为准，验证覆盖和限制见 [交付记录](docs/request-records-delivery.md)。
-
-
-Responses 出站前保留 Codex 独立上下文兼容：没有或空字符串 `call_id` 的独立工具通知转为用户上下文，正常工具配对、文字/图片和 `previous_response_id` 保留。完整成功返回的响应 ID 可在本进程续接原 Key；绑定核对与期限见调度需求 SCH-R11，重启、凭据/地址/映射变化或未知 ID 返回 409。Chat SSE 主动合并 `stream_options.include_usage=true`，费用仍取决于上游实际用量及本地价格。空模型回答不算完整成功；本地记录准备故障不计为上游故障，健康保存故障不改写已完成回答。
-
-
-Responses WebSocket：客户端使用同一网关密钥升级 `GET /v1/responses`（`ws://127.0.0.1:18080/v1/responses`），发送标准 `response.create` 文本消息。供应商高级设置中的开关默认关闭，开启后才可用于 WebSocket；普通 HTTP/SSE 请求仍走 HTTP。连接复用、逐轮权限、原目标续接、预热、重试边界、代理及暂停/退出清理见 [ADR 0003](docs/adr/0003-responses-websocket.md)。当前支持默认通道；像 Aether 一样明确拒绝命名 stream_id，不恢复私有原生账号适配和跨格式转换。
+本项目采用 MIT 许可，具体条款见 [LICENSE](LICENSE)。第三方依赖与模型指纹内置核心/数据的许可说明见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。

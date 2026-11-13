@@ -4,10 +4,12 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/app"
@@ -44,26 +46,76 @@ func main() {
 		}
 		return
 	}
+	if err := runDesktop(); err != nil {
+		log.Printf("Vela 启动失败: %v", err)
+		if !mygo.App.IsReady() {
+			showStartupError(err)
+		}
+		os.Exit(1)
+	}
+}
 
+// runDesktop 在打开数据库前取得数据目录独占权，并在所有业务资源关闭后释放。
+func runDesktop() error {
 	dataDir := os.Getenv("VELA_DATA_DIR")
 	isolated := dataDir != ""
 	if !isolated {
 		base, err := os.UserConfigDir()
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("定位应用数据目录: %w", err)
 		}
 		dataDir = filepath.Join(base, "Vela")
 	} else {
 		// 隔离数据目录同时承载窗口状态，验收运行不改动日常窗口位置。
 		mygo.App.SetPath(mygo.PathUserData, dataDir)
 	}
+	// 普通重复启动交由宿主唤回窗口；开发版和安装版共用数据时仍由下方文件锁保护。
+	if !isolated {
+		mygo.App.OnSecondInstance(func([]string, string) {
+			if mygo.App.IsReady() {
+				openMainWindow()
+			}
+		})
+		if !mygo.App.RequestSingleInstanceLock() {
+			return nil
+		}
+	}
+	lock, err := lockDataDirectory(dataDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := lock.Close(); err != nil {
+			log.Printf("释放数据目录锁失败: %v", err)
+		}
+	}()
+	logFile, err := openDesktopLog(dataDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		log.SetOutput(os.Stderr)
+		if err := logFile.Close(); err != nil {
+			log.Printf("关闭诊断日志失败: %v", err)
+		}
+	}()
+	log.Printf("Vela %s 启动", buildinfo.Version)
+	if err := startApplication(dataDir, isolated); err != nil {
+		log.Printf("启动失败，数据目录 %s: %v", dataDir, err)
+		return fmt.Errorf("%w\n\n数据目录：%s\n诊断日志：%s", err, dataDir, filepath.Join(dataDir, "vela.log"))
+	}
+	return nil
+}
+
+// startApplication 装配真实业务依赖；初始化失败会运行已有清理，再由入口显示原生错误。
+func startApplication(dataDir string, isolated bool) error {
 	secrets, err := credentials.New(dataDir, legacyCredentials(isolated))
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("读取本机凭据: %w", err)
 	}
 	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, "https://models.dev/api.json")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("打开模型数据库: %w", err)
 	}
 	defer func() {
 		if err := store.Close(); err != nil {
@@ -71,26 +123,26 @@ func main() {
 		}
 	}()
 	if err := store.ProtectProxy(secrets); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("读取代理配置: %w", err)
 	}
 	preferences, err := settings.New(store.DB())
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化设置: %w", err)
 	}
 	policies, err := scheduling.New(store.DB())
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化调度: %w", err)
 	}
 	upstreams, err := providers.New(store.DB(), credentialEntry{store: secrets}, secrets)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化供应商: %w", err)
 	}
 	if err = upstreams.InitModels(); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化供应商模型: %w", err)
 	}
 	history, err := records.New(store.DB())
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化请求记录: %w", err)
 	}
 	historyContext, stopHistory := context.WithCancel(context.Background())
 	historyDone := make(chan struct{})
@@ -103,7 +155,7 @@ func main() {
 	}()
 	execution, err := app.NewSchedulingExecution(context.Background(), policies, upstreams, store, history)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化请求执行: %w", err)
 	}
 	defer execution.Close()
 	gatewayServer = gateway.New(store, execution.Executor)
@@ -130,7 +182,7 @@ func main() {
 	}()
 	modelTests, err := app.NewModelTests(store, upstreams, execution)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化模型测试: %w", err)
 	}
 	modelTests.Records = history
 	defer modelTests.Close()
@@ -139,11 +191,15 @@ func main() {
 		return proxy.Enabled, proxy.URL, readErr
 	})
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化账户查询: %w", err)
 	}
 	queryContext, stopQueries := context.WithCancel(context.Background())
-	defer stopQueries()
+	// 定时和窗口恢复查询都须在关闭共用数据库前退出。
+	var queryWork sync.WaitGroup
+	defer func() { stopQueries(); queryWork.Wait() }()
+	queryWork.Add(1)
 	go func() {
+		defer queryWork.Done()
 		if err := accounts.Run(queryContext, preferences.AccountRefresh); err != nil && queryContext.Err() == nil {
 			log.Printf("账户定时刷新停止: %v", err)
 		}
@@ -154,7 +210,7 @@ func main() {
 	}
 	verifier, err := verification.New(store.DB(), upstreams, store)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("初始化模型验证: %w", err)
 	}
 	verifier.Records = history
 	verifier.SetProgressHandler(func(progress verification.VerificationProgress) {
@@ -169,8 +225,10 @@ func main() {
 		}
 	})
 	verificationContext, stopVerification := context.WithCancel(context.Background())
-	defer func() { stopVerification(); verifier.Close() }()
+	verificationDone := make(chan struct{})
+	defer func() { stopVerification(); verifier.Close(); <-verificationDone }()
 	go func() {
+		defer close(verificationDone)
 		if err := verifier.Run(verificationContext); err != nil && verificationContext.Err() == nil {
 			log.Printf("模型验证定时执行停止: %v", err)
 		}
@@ -195,7 +253,9 @@ func main() {
 		if err := windowVisible.Broadcast(true); err != nil {
 			log.Printf("推送窗口恢复事件失败: %v", err)
 		}
+		queryWork.Add(1)
 		go func() {
+			defer queryWork.Done()
 			config, err := preferences.AccountRefresh(queryContext)
 			if err == nil && config.OnVisible {
 				_ = accounts.RefreshBackground(queryContext, true, true)
@@ -220,7 +280,5 @@ func main() {
 		}
 	})
 
-	if err := mygo.App.Run(); err != nil {
-		log.Fatal(err)
-	}
+	return mygo.App.Run()
 }

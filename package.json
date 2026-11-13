@@ -1,12 +1,22 @@
 {
   "name": "vela",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "workspaces": [
     "frontend"
   ],
   "scripts": {
+    "version:sync": "node scripts/release-version.mjs",
+    "version:check": "node scripts/release-version.mjs --check",
+    "licenses:generate": "node scripts/release-notices.mjs",
+    "licenses:check": "node scripts/release-notices.mjs --check",
+    "release:prepare": "node scripts/release.mjs",
+    "test:release": "node --test scripts/release.test.mjs",
+    "predev": "npm run version:check",
+    "prebuild": "npm run version:check && npm run licenses:check",
+    "pregenerate": "npm run version:check",
     "dev": "mygo dev",
     "build": "mygo build",
     "generate": "mygo generate",

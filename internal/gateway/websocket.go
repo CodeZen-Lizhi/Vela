@@ -29,8 +29,8 @@ type socketFrame struct {
 	data []byte
 }
 
-// closeWebSockets 关闭所有升级连接并取消生成，不依赖 http.Server.Shutdown 对 hijacked 连接的处理。
-func (s *Server) closeWebSockets(ctx context.Context) {
+// closeWebSockets 取消并关闭所有升级连接，等待各业务按自身清理期限完成收尾，防止宿主提前关闭数据库。
+func (s *Server) closeWebSockets(_ context.Context) {
 	s.mu.Lock()
 	clients := s.webSocketClients
 	s.webSocketClients = make(map[*responsesClient]struct{})
@@ -39,14 +39,8 @@ func (s *Server) closeWebSockets(ctx context.Context) {
 		client.cancel()
 		_ = client.conn.CloseNow()
 	}
-	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
-	defer cancel()
 	for client := range clients {
-		select {
-		case <-client.done:
-		case <-bounded.Done():
-			return
-		}
+		<-client.done
 	}
 }
 

@@ -1,11 +1,12 @@
 {
   "name": "vela-frontend",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "npm run check && vite build",
+    "dev": "node ../scripts/release-version.mjs --frontend dev",
+    "build": "npm run check && node ../scripts/release-version.mjs --frontend build",
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {

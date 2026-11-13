@@ -155,7 +155,7 @@
         </nav>
       {/if}
     </div>
-    <p class="px-3 pt-4 text-xs text-muted-foreground">Vela 0.1.0</p>
+    <p class="px-3 pt-4 text-xs text-muted-foreground">Vela {import.meta.env.VITE_VELA_VERSION}</p>
   </aside>
   </Resizable.Pane>
   <Resizable.Handle  aria-label="调整侧栏宽度"  />
