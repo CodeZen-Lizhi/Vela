@@ -10,7 +10,7 @@
   import { isMyGo } from "mygo-runtime";
   import { Plus, RefreshCw, Search, SlidersHorizontal, Pencil, Wallet, Trash2, ExternalLink } from "@lucide/svelte";
   import PageHeader from "$lib/components/PageHeader.svelte";
-  import * as Tabs from "$lib/components/ui/tabs";
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
   import * as InputGroup from "$lib/components/ui/input-group";
@@ -125,9 +125,11 @@
   <PageHeader title="供应商" description="管理上游站点、密钥、模型关联与账户信息。">{#snippet actions()}<Button onclick={refresh} variant="ghost" size="icon-sm" aria-label={refreshing?"正在刷新上游信息":"刷新上游信息"}  aria-busy={refreshing} disabled={!isMyGo()||refreshing||loading||!rows.length} ><RefreshCw class={refreshing ? "animate-spin" : ""}/></Button><Button disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加供应商</Button>{/snippet}</PageHeader>
   {#if !isMyGo()}<Alert.Root variant="info"><Alert.Description>浏览器预览：供应商业务需在桌面应用中使用；此处不生成演示数据或模拟保存。</Alert.Description></Alert.Root>{/if}
   {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button></Alert.Description></Alert.Root>{/if}
-  <Tabs.Root bind:value={status} class="provider-surface list-surface">
-    <div class="provider-toolbar"><InputGroup.Root class="provider-search"><InputGroup.Input aria-label="搜索供应商" bind:value={query} placeholder="搜索名称、主站或关联模型"/><InputGroup.Addon><Search/></InputGroup.Addon></InputGroup.Root><div class="provider-filter"><Choice bind:value={modelFilter} label="按关联模型筛选" options={modelOptions}/></div><Tabs.List aria-label="供应商状态筛选">{#each [{value:"all",label:"全部",count:rows.length},{value:"enabled",label:"已启用",count:rows.filter((row)=>row.provider.enabled).length},{value:"disabled",label:"已停用",count:rows.filter((row)=>!row.provider.enabled).length}] as item}<Tabs.Trigger value={item.value}>{item.label} <span>{item.count}</span></Tabs.Trigger>{/each}</Tabs.List></div>
-    <Tabs.Content value={status} class="list-scroll" aria-label="供应商列表内容">
+  <section class="provider-surface list-surface">
+    <div class="provider-toolbar"><InputGroup.Root class="provider-search"><InputGroup.Input aria-label="搜索供应商" bind:value={query} placeholder="搜索名称、主站或关联模型"/><InputGroup.Addon><Search/></InputGroup.Addon></InputGroup.Root><div class="provider-filter"><Choice bind:value={modelFilter} label="按关联模型筛选" options={modelOptions}/></div><ToggleGroup.Root type="single" value={status} onValueChange={(value)=>{if(value)status=value;}} variant="segmented" size="xs" spacing={1} aria-label="供应商状态筛选">{#each [{value:"all",label:"全部",count:rows.length},{value:"enabled",label:"已启用",count:rows.filter((row)=>row.provider.enabled).length},{value:"disabled",label:"已停用",count:rows.filter((row)=>!row.provider.enabled).length}] as item}<ToggleGroup.Item value={item.value}>{item.label} <span>{item.count}</span></ToggleGroup.Item>{/each}</ToggleGroup.Root></div>
+    <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0">
     <Table.Root class="provider-table"><Table.Header><Table.Row><Table.Head>供应商</Table.Head><Table.Head data-align="number">余额</Table.Head><Table.Head>首选 Key / 倍率</Table.Head><Table.Head>健康</Table.Head><Table.Head>模型验证</Table.Head><Table.Head data-align="control">状态</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
       <!-- 名称按钮提供键盘入口，整行点击仅扩展鼠标命中区域。 -->
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
@@ -142,8 +144,8 @@
       </Table.Row>
     {/each}</Table.Body></Table.Root>
     {#if loading}<Empty.Root>正在读取供应商…</Empty.Root>{:else if !filtered.length}<Empty.Root>{rows.length?"没有符合条件的供应商":"尚未添加供应商"}{#if rows.length}<Button variant="outline" onclick={()=>{query="";status="all";modelFilter="all";}}>清空筛选</Button>{:else}<Button variant="outline" disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}>添加供应商</Button>{/if}</Empty.Root>{/if}
-    </Tabs.Content>
-  </Tabs.Root>
+    </div>
+  </section>
 </section>
 <Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy)editorOpen=value;}}><Dialog.Content class="provider-form-dialog provider-editor-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{editing?"编辑供应商":"添加供应商"}</Dialog.Title><Dialog.Description>密钥和模型在创建后的供应商详情中维护。</Dialog.Description></Dialog.Header>{#if editorOpen&&defaults}<ProviderForm provider={editing} {defaults} {busy} error={formError} onsave={saveProvider} onclose={()=>editorOpen=false}/>{/if}</Dialog.Content></Dialog.Root>
 <Sheet.Root open={selected!==null} onOpenChange={(value)=>{if(!value)detailID="";}}><Sheet.Content variant="wide" class="provider-drawer">{#if selected&&defaults}{#key selected.id}<ProviderDetails provider={selected} {defaults} refreshSeconds={listSeconds} onupdated={load} {notify} {openRecords}/>{/key}{/if}</Sheet.Content></Sheet.Root>

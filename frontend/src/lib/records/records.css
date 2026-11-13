@@ -229,12 +229,13 @@
 .record-speed { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .record-missing { color: var(--muted-foreground); font-weight: 400; }
 
-/* 旧版详情使用右侧全高抽屉，标题固定，正文独立滚动。 */
+/* 详情使用固定比例右侧全高抽屉，标题固定，正文独立滚动。 */
 .record-detail[data-slot="sheet-content"] {
-  width: min(1000px, 94vw);
-  max-width: min(1000px, 94vw);
+  width: min(960px, 75vw);
+  max-width: min(960px, 75vw);
   min-width: 0;
   overflow: hidden;
+  container: record-detail / inline-size;
 }
 .record-row { cursor: pointer; height: 72px; }
 /* 进行中柔光从四边向内晕开，呼吸只改变覆盖层透明度，不影响文字与行点击。 */
@@ -310,6 +311,12 @@
 .record-detail-metrics [data-slot="card-content"] { padding-inline:12px; }
 .record-detail-metrics strong { display:block; margin:6px 0 5px; font-size:20px; line-height:1.2; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .record-detail-metrics span,.record-detail-metrics small { display:block; font-size:11px; color:var(--muted-foreground); }
+/* 比例抽屉变窄后五项指标按三列加两列排布，保持数值和说明可读。 */
+@container record-detail (max-width: 760px) {
+  .record-detail-metrics { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .record-detail-metrics > [data-slot="card"] { grid-column:span 2; }
+  .record-detail-metrics > [data-slot="card"]:nth-child(n+4) { grid-column:span 3; }
+}
 .record-detail-tabs { min-width:0; }
 .record-detail-tabs > [data-slot="tabs-list"] { flex-wrap:wrap; height:auto; }
 .record-detail-billing { display:flex; flex-direction:column; gap:14px; }
@@ -368,6 +375,7 @@
 /* 详情在窄窗将关键指标重排，内容滚动不带动固定头部。 */
 @media(max-width:700px){
  .record-detail-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .record-detail-metrics>[data-slot="card"]{grid-column:auto}
  .record-detail-metrics>[data-slot="card"]:last-child{grid-column:1/-1}
  .record-detail-metrics strong{font-size:18px}
  .record-detail-meta{font-size:11px}
