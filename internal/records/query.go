@@ -70,7 +70,7 @@ func conditions(q Query) (string, []any, error) {
 	return strings.Join(clauses, " AND "), args, nil
 }
 
-// Query 在一个只读事务取得整组摘要和分页，正文始终不进入列表；Before 支持稳定阅读。
+// Query 在只读事务取得摘要和分页，并按历史价格补充标准费用；正文不进入列表，Before 支持稳定阅读。
 func (s *Store) Query(ctx context.Context, q Query) (Page, error) {
 	page := Page{Records: []Record{}, Models: []Option{}, Providers: []Option{}, Protocols: []Option{}, Types: []Option{}}
 	if q.Page == 0 {
@@ -125,6 +125,12 @@ func (s *Store) Query(ctx context.Context, q Query) (Page, error) {
 		}
 		if err != nil {
 			break
+		}
+		if record.State != "active" {
+			metrics := overviewMetrics(record)
+			if metrics.UnknownStandard == 0 {
+				record.StandardCost = &metrics.StandardCost
+			}
 		}
 		page.Records = append(page.Records, record)
 	}

@@ -67,7 +67,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return finish(response, err)
 }
 
-// PrepareStreamCapture 在真实出站前登记尝试，返回用于旁路读取响应的包装器；WebSocket 可复用相同的脱敏、用量和费用结算。
+// PrepareStreamCapture 在真实出站前登记尝试，从完整正文副本提取模型，再旁路读取响应；WebSocket 复用脱敏、用量和费用结算。
 // forceStream 允许 WebSocket 事件以内部 SSE 形状采集，握手状态仍保留为真实的 101。
 func PrepareStreamCapture(req *http.Request, forceStream bool) (func(*http.Response, error) (*http.Response, error), error) {
 	run, _ := req.Context().Value(sessionKey{}).(*session)
@@ -77,12 +77,24 @@ func PrepareStreamCapture(req *http.Request, forceStream bool) (func(*http.Respo
 	target, _ := req.Context().Value(targetKey{}).(Target)
 	secrets := headerSecrets(req.Header)
 	var requestBody []byte
+	var upstreamModel *string
 	if req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
 			return nil, &LocalError{Cause: err}
 		}
 		requestBody, err = io.ReadAll(io.LimitReader(body, captureLimit+1))
+		if err == nil {
+			var metadata struct {
+				// Model 只取实际出站正文中的顶层模型，不将大段输入保留为元数据。
+				Model *string `json:"model"`
+			}
+			// 快照截断不能影响模型身份；解析副本的完整 JSON，不读取或改写实际转发流。
+			// 非 JSON 或无效 model 沿用未知及 URL 提取规则，不阻断原有转发。
+			if json.NewDecoder(io.MultiReader(bytes.NewReader(requestBody), body)).Decode(&metadata) == nil {
+				upstreamModel = metadata.Model
+			}
+		}
 		body.Close()
 		if err != nil {
 			return nil, &LocalError{Cause: err}
@@ -114,8 +126,8 @@ func PrepareStreamCapture(req *http.Request, forceStream bool) (func(*http.Respo
 		}
 		run.record.Tier, _ = model["service_tier"].(string)
 	}
-	if value, ok := model["model"].(string); ok {
-		run.record.UpstreamModel = value
+	if upstreamModel != nil {
+		run.record.UpstreamModel = *upstreamModel
 	}
 	if run.record.UpstreamModel == "" && strings.Contains(req.URL.Path, "/models/") {
 		part := strings.SplitN(req.URL.Path, "/models/", 2)[1]

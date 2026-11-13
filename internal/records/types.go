@@ -151,6 +151,8 @@ type Record struct {
 	Usage        *Usage   `json:"usage"`
 	Cost         *float64 `json:"cost"`
 	UnknownCosts int      `json:"unknownCosts"`
+	// StandardCost 仅在列表读取时按历史价格和倍率一派生；进行中或不能完整计价时为 nil。
+	StandardCost *float64 `json:"standardCost"`
 	// Pricing 固定开始时完整模型规则；Charges 包含实际各尝试费用。
 	Pricing models.Pricing `json:"pricing"`
 	Charges []Charge       `json:"charges"`

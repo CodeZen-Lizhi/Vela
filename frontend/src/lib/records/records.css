@@ -77,32 +77,37 @@
   text-transform: none;
   white-space: nowrap;
 }
-/* 短字段共占390px；按表格容器分配剩余宽度，避免固定表格将百分比混合计算视为自动列宽。 */
-.records-table th:nth-child(1) { width: 84px; }
-.records-table th:nth-child(2) { width: calc((100cqw - 390px) * .26); }
-.records-table th:nth-child(3) { width: calc((100cqw - 390px) * .24); }
-.records-table th:nth-child(4) { width: 96px; }
-.records-table th:nth-child(5) { width: 72px; }
-.records-table th:nth-child(6) { width: 60px; }
-.records-table th:nth-child(7) { width: calc((100cqw - 390px) * .27); }
-.records-table th:nth-child(8) { width: 78px; }
-.records-table th:nth-child(9) { width: calc((100cqw - 390px) * .23); }
+/* 短字段共占392px；按表格容器分配剩余宽度，避免固定表格将百分比混合计算视为自动列宽。 */
+.records-table th:nth-child(1) { width: 80px; }
+.records-table th:nth-child(2) { width: calc((100cqw - 392px) * .26); }
+.records-table th:nth-child(3) { width: calc((100cqw - 392px) * .23); }
+.records-table th:nth-child(4) { width: 88px; }
+.records-table th:nth-child(5) { width: 66px; }
+.records-table th:nth-child(6) { width: 56px; }
+.records-table th:nth-child(7) { width: calc((100cqw - 392px) * .29); }
+.records-table th:nth-child(8) { width: 102px; }
+.records-table th:nth-child(9) { width: calc((100cqw - 392px) * .22); }
 .record-column-heading { display: flex; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
 .record-column-heading > span:first-child { white-space: nowrap; }
 .record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
+/* 窄表格将计量说明放到标题下方，避免说明挤入下一列。 */
+@container (max-width: 850px) {
+  .record-column-heading { flex-wrap: wrap; row-gap: 2px; }
+}
 /* 按实际内容宽度分配紧凑列，状态、类型与金额保留完整宽度；侧栏拉宽也使用同一规则。 */
 @container workspace (max-width: 700px) {
-  .records-table th:nth-child(1) { width: 10%; }
-  .records-table th:nth-child(2) { width: 9%; }
-  .records-table th:nth-child(3) { width: 9%; }
-  .records-table th:nth-child(4) { width: 8%; }
-  .records-table th:nth-child(5) { width: 12%; }
-  .records-table th:nth-child(6) { width: 10%; }
-  .records-table th:nth-child(7) { width: 14%; }
-  .records-table th:nth-child(8) { width: 13%; }
-  .records-table th:nth-child(9) { width: 15%; }
+  .records-table th:nth-child(1) { width: calc((100cqw - 94px) * .12); }
+  .records-table th:nth-child(2) { width: calc((100cqw - 94px) * .13); }
+  .records-table th:nth-child(3) { width: calc((100cqw - 94px) * .11); }
+  .records-table th:nth-child(4) { width: calc((100cqw - 94px) * .10); }
+  .records-table th:nth-child(5) { width: calc((100cqw - 94px) * .13); }
+  .records-table th:nth-child(6) { width: calc((100cqw - 94px) * .11); }
+  .records-table th:nth-child(7) { width: calc((100cqw - 94px) * .16); }
+  .records-table th:nth-child(8) { width: 94px; }
+  .records-table th:nth-child(9) { width: calc((100cqw - 94px) * .14); }
   .records-table td { padding-inline: 3px; }
   .record-column-heading { flex-wrap: wrap; row-gap: 2px; }
+  .records-token-usage > div { flex-wrap: wrap; }
 }
 .records-table th { height: 36px; padding-block: 3px; }
 .record-protocol { display: block; overflow-wrap: anywhere; line-height: 1.4; }
@@ -211,6 +216,8 @@
 .record-total-time, .record-cost { color: var(--primary); }
 .record-speed { color: var(--positive); }
 .record-cost { font-weight: 650; }
+/* 标准费用在上、倍率后费用在下，数值居中对齐且保持六位小数完整可读。 */
+.record-cost-pair { display: inline-flex; flex-direction: column; align-items: center; }
 .record-first-byte { color: var(--caution); }
 .record-separator { color: var(--muted-foreground); }
 .record-timing-pair { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; font-variant-numeric: tabular-nums; }

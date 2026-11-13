@@ -807,6 +807,8 @@ export interface RecordsRecord {
   usage: Usage | null;
   cost: number | null;
   unknownCosts: number;
+  /** StandardCost 仅在列表读取时按历史价格和倍率一派生；进行中或不能完整计价时为 nil。 */
+  standardCost: number | null;
   /** Pricing 固定开始时完整模型规则；Charges 包含实际各尝试费用。 */
   pricing: Pricing;
   charges: Charge[];

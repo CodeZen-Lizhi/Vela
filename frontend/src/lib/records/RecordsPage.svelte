@@ -45,7 +45,7 @@
     label,
     number,
     compact,
-    money,
+    recordMoney,
     seconds,
     cache,
     date,
@@ -384,7 +384,7 @@
                 disabled={!desktop}
               /></Table.Head
             ><Table.Head class="normal-case" ><div class="record-column-heading"><span>Token</span><span class="record-column-help">输入 / 输出<br />缓存 / 命中</span></div></Table.Head
-            ><Table.Head>估算费用</Table.Head><Table.Head
+            ><Table.Head>费用</Table.Head><Table.Head
               ><div class="record-column-heading"><span>端到端</span><span class="record-column-help">首字 / 总耗时<br />输出速度</span></div></Table.Head
             >
           </Table.Row></Table.Header
@@ -414,8 +414,14 @@
                 ></Table.Cell
               ><Table.Cell>{@render stateCell(row)}</Table.Cell><Table.Cell>{@render typeCell(row)}</Table.Cell
               ><Table.Cell>{@render usageCell(row)}</Table.Cell><Table.Cell
-                ><span class="record-value record-cost" class:record-missing={row.state === "active" || row.cost == null || row.cost === 0}>{row.state === "active" ? "—" : money(row.cost)}</span
-                ></Table.Cell
+                >{#if row.state === "active" || row.standardCost == null && row.cost == null}
+                  <span class="record-missing" aria-label={row.state === "active" ? "费用待请求结束后展示" : "费用未知"}>—</span>
+                {:else}
+                  <div class="record-cost-pair">
+                    <span class="record-value record-cost" class:record-missing={row.standardCost == null || row.standardCost === 0} aria-label={`标准费用 ${recordMoney(row.standardCost)}`}>{recordMoney(row.standardCost)}</span>
+                    <small class="record-value" aria-label={`倍率后费用 ${recordMoney(row.cost)}`}>{recordMoney(row.cost)}</small>
+                  </div>
+                {/if}</Table.Cell
               ><Table.Cell>{@render timingCell(row)}</Table.Cell></Table.Row
             >{/each}</Table.Body
         ></Table.Root

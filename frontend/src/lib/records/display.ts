@@ -95,6 +95,17 @@ export function compact(value: number | null | undefined): string {
   }).format(value);
 }
 export { formatUSD as money } from "../currency.js";
+/** 使用记录列表专用美元格式，固定六位小数，不影响其他页面及详情的金额格式。 */
+const recordCostFormat = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 6,
+  maximumFractionDigits: 6,
+});
+/** 列表金额按美元显示六位小数；缺失保持未知，已知零显示完整精度。 */
+export function recordMoney(value: number | null | undefined): string {
+  return value == null ? "—" : recordCostFormat.format(value);
+}
 /** 毫秒展示保持计时精度并缩短列表宽度。 */
 export function duration(value: number | null | undefined): string {
   return value == null
