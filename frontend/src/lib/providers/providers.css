@@ -95,12 +95,12 @@
  .provider-key-summary { gap:4px; }
  .provider-drawer-heading { padding-left:20px; }
  .provider-drawer-body { padding:20px; }
- .provider-tabs { padding-inline:20px; }
+ .provider-tabs { margin-inline:20px; }
 }
 @media(max-width:900px) {
  .provider-drawer-heading { padding:20px 64px 20px 20px; }
  .provider-drawer-body { padding:20px; }
- .provider-tabs { padding:0 20px; gap:20px; }
+ .provider-tabs { margin-inline:20px; }
  /* Key 表格在桌面最小窗口仍保留列结构，避免倍率与来源被卡片布局拆开。 */
  .provider-table:not(.provider-key-table) thead { display:none; }
  .provider-table:not(.provider-key-table),.provider-table:not(.provider-key-table) tbody { display:block; }

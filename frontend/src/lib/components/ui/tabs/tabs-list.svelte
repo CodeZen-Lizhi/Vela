@@ -1,12 +1,12 @@
 <script lang="ts" module>
 	import { tv, type VariantProps } from "tailwind-variants";
 
+	/** 所有页签共用灰底描边与紧凑间距，与ToggleGroup分段容器一致。 */
 	export const tabsListVariants = tv({
-		base: "rounded-lg p-1 group-data-[orientation=horizontal]/tabs:h-9 group/tabs-list inline-flex w-fit items-center justify-center text-muted-foreground group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col",
+		base: "rounded-lg border border-border p-0.5 gap-1 group/tabs-list inline-flex w-fit items-center justify-center text-muted-foreground group-data-[orientation=vertical]/tabs:flex-col",
 		variants: {
 			variant: {
 				default: "bg-muted",
-				line: "h-auto! gap-6 rounded-none border-b border-border bg-transparent p-0",
 			},
 		},
 		defaultVariants: {
@@ -21,6 +21,7 @@
 	import { Tabs as TabsPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils.js";
 
+	/** 页签容器统一分段外观，同时保留现有横纵向与属性转发。 */
 	let {
 		ref = $bindable(null),
 		variant = "default",

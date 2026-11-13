@@ -109,7 +109,7 @@
   </div>
   <Sheet.Description class="sr-only">管理供应商密钥、关联模型与模型映射。</Sheet.Description>
 </header>
-<Tabs.Root bind:value={tab} class="contents"><Tabs.List variant="line" class="provider-tabs w-auto justify-start" aria-label="供应商详情页签">{#each [{id:"keys",label:"密钥管理",count:keys.length},{id:"models",label:"模型列表",count:models.length},{id:"mappings",label:"模型映射",count:models.filter((model)=>model.mappings.length).length}] as item}<Tabs.Trigger value={item.id}>{item.label}<Badge variant="neutral">{item.count}</Badge></Tabs.Trigger>{/each}</Tabs.List>
+<Tabs.Root bind:value={tab} class="contents"><Tabs.List class="provider-tabs w-auto justify-start" aria-label="供应商详情页签">{#each [{id:"keys",label:"密钥管理",count:keys.length},{id:"models",label:"模型列表",count:models.length},{id:"mappings",label:"模型映射",count:models.filter((model)=>model.mappings.length).length}] as item}<Tabs.Trigger value={item.id}>{item.label}<Badge variant="neutral">{item.count}</Badge></Tabs.Trigger>{/each}</Tabs.List>
 <div class="provider-drawer-body"><Tabs.Content value={tab} class="m-0">
   {#if error&&!editorOpen&&!deleting}<Alert.Root variant="inline-error"><Alert.Description>{error}<Button size="sm" variant="ghost" onclick={load}>重试</Button></Alert.Description></Alert.Root>{/if}
   {#if loading}<p class="text-xs text-muted-foreground">正在读取供应商配置…</p>{:else if tab==="keys"}

@@ -303,7 +303,7 @@
         {#if record.circuitSourceId}<Alert.Root variant="info"><Alert.Description>本地熔断 · 触发请求 <Button variant="link" size="inline" onclick={() => openSource(record!.circuitSourceId)}>{record.circuitSourceId}</Button></Alert.Description></Alert.Root>{/if}
 
         <Tabs.Root bind:value={section} onValueChange={value => { if (value === "headers") panel = "headers"; else if (value === "payload") panel = "request"; }} class="record-detail-tabs">
-          <Tabs.List variant="line" aria-label="请求详情分区" class="w-full justify-start">
+          <Tabs.List aria-label="请求详情分区" class="w-full justify-start">
             <Tabs.Trigger value="execution">执行链路</Tabs.Trigger><Tabs.Trigger value="payload">请求与响应</Tabs.Trigger><Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="billing">计费与上下文</Tabs.Trigger>
           </Tabs.List>
           <Tabs.Content value="execution">{#key record.id}<ExecutionPath {record} bind:attempt onresponse={showResponse} />{/key}</Tabs.Content>
@@ -346,17 +346,17 @@
           <Tabs.Content value={section}>
             <div class="record-raw-section">
               <Tabs.Root bind:value={panel}>
-                <Tabs.List variant="line" aria-label="原始请求与响应" class="record-payload-tabs">
+                <Tabs.List aria-label="原始请求与响应" class="record-payload-tabs">
                   {#if section === "headers"}<Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="response-headers">响应头</Tabs.Trigger>{:else}<Tabs.Trigger value="request">请求正文</Tabs.Trigger><Tabs.Trigger value="response">响应正文</Tabs.Trigger>{/if}
                 </Tabs.List>
                 <div class="record-payload-toolbar">
                   {#if record.attempts.length}<Choice bind:value={attempt} label="实际尝试" options={record.attempts.map((item, index) => ({ value: String(index), label: `${item.number}. ${item.providerName} / ${item.keyName} · HTTP ${item.status || "—"}` }))} />{/if}
                   <div class="records-actions">
-                    <ToggleGroup.Root type="single" value={side} onValueChange={(next) => { if (next) side = next; }} aria-label="数据来源" size="sm" spacing={1}>
+                    <ToggleGroup.Root type="single" value={side} onValueChange={(next) => { if (next) side = next; }} aria-label="数据来源" variant="segmented" size="sm" spacing={1}>
                       <ToggleGroup.Item value="client" aria-label="客户端数据">客户端</ToggleGroup.Item><ToggleGroup.Item value="provider" aria-label="上游数据">上游</ToggleGroup.Item>
                     </ToggleGroup.Root>
                     <div class="record-payload-view">
-                      <div class:invisible={!bodyPanel} inert={!bodyPanel} aria-hidden={!bodyPanel}><ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root></div>
+                      <div class:invisible={!bodyPanel} inert={!bodyPanel} aria-hidden={!bodyPanel}><ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" variant="segmented" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root></div>
                       <Button class={bodyPanel ? "invisible" : undefined} variant={compare ? "secondary" : "ghost"} size="sm" aria-pressed={compare} aria-hidden={bodyPanel} disabled={bodyPanel} onclick={() => (compare = !compare)}>对比上下游</Button>
                     </div>
                     <Button class={panel === "response" || panel === "response-headers" ? "invisible" : undefined} onclick={() => copy(curl())} variant="ghost" size="icon-sm" aria-label="复制 cURL" aria-hidden={panel === "response" || panel === "response-headers"} disabled={panel === "response" || panel === "response-headers" || !curl()} ><Terminal /></Button>

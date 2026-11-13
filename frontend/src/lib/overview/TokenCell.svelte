@@ -3,7 +3,7 @@
   import { Button } from "$lib/components/ui/button";
   import * as Popover from "$lib/components/ui/popover";
   import type { OverviewMetrics } from "$lib/generated/mygo";
-  import { formatMetric } from "./data";
+  import { formatMetric, usagePartsKnown } from "./data";
 
   /** 总量单行展示，点击后查看精确构成；不完整分项保持未知。 */
   let { total }: {
@@ -14,8 +14,8 @@
   /** 沿用统一数量格式，仅把 K/M/B/T 单位拆出以弱化视觉权重。 */
   const formatted = $derived(formatMetric(total, "tokens"));
   const compactParts = $derived(formatted.match(/^(.+?)([KMBT])$/));
-  /** 分项完整时才展示精确拆分，空数据的已知零仍显示为零。 */
-  const partsKnown = $derived(total.detailsKnown === total.requests && !total.unknownUsage);
+  /** 精确分项显示已知部分合计，全部未知仍保留破折号。 */
+  const partsKnown = $derived(usagePartsKnown(total));
   /** 精确总量沿用已有未知判断，不把未知总量补零。 */
   const exactTotal = $derived(formatted === "—" ? "—" : total.tokens.toLocaleString("en-US"));
   /** 构成项保存显示名、精确 Token 数和主题色；缓存写入归入非缓存读取输入。 */

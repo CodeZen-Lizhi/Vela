@@ -62,9 +62,14 @@ export function successRate(total: OverviewMetrics): number | null {
   return completed > 0 && total.detailsKnown === total.requests ? total.success / completed * 100 : null;
 }
 
-/** 缓存命中使用完整输入上下文；用量或历史拆分不完整时保持未知。 */
+/** 分项显示已知合计；无请求是已知零，仅有历史总量或全部缺失时不补零。 */
+export function usagePartsKnown(total: OverviewMetrics): boolean {
+  return total.requests === 0 || total.context > 0 || total.output > 0 || total.cached > 0 || total.detailsKnown > total.unknownUsage;
+}
+
+/** 缓存命中按已知缓存读取与输入上下文计算，不因其他请求缺失而隐藏；无分母仍未知。 */
 export function cacheRate(total: OverviewMetrics): number | null {
-  return total.context && !total.unknownUsage && total.detailsKnown === total.requests ? total.cached / total.context * 100 : null;
+  return total.context > 0 ? total.cached / total.context * 100 : null;
 }
 
 /** 上游 Key 使用真实出站尝试；其他维度使用逻辑调用，避免重试重复计数。 */

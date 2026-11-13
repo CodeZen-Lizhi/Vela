@@ -6,12 +6,8 @@
 		variants: {
 			variant: {
 				default: "bg-transparent",
-                /** 总览时间和图形选项使用轻量底色，不绘制整组描边。 */
-                plain: "rounded-md text-muted-foreground data-[state=on]:bg-accent data-[state=on]:text-primary",
-                /** 图表指标用下划线强调选中项，切换时标题位置保持稳定。 */
-                underline: "rounded-none border-b border-transparent text-muted-foreground data-[state=on]:border-primary data-[state=on]:bg-transparent data-[state=on]:text-primary",
                 /** 分段切换用于紧凑列表，卡片用于带说明的单选项。 */
-                segmented: "rounded-md text-muted-foreground normal-case tracking-normal data-[state=on]:bg-background data-[state=on]:text-primary data-[state=on]:shadow-sm",
+                segmented: "rounded-md text-muted-foreground normal-case tracking-normal data-[state=on]:bg-background data-[state=on]:text-primary data-[state=on]:shadow-sm data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm",
                 card: "rounded-lg border border-border bg-background text-left normal-case tracking-normal hover:border-primary/35 data-[state=on]:border-primary/60 data-[state=on]:bg-accent data-[state=on]:text-foreground",
 				outline: "border-input hover:bg-muted border bg-transparent",
 			},

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { emptyMetrics, summarize, groupRows, timeBuckets, dateKey, heatDays, formatMetric, successRate } from "./data.ts";
+import { emptyMetrics, summarize, groupRows, timeBuckets, dateKey, heatDays, formatMetric, successRate, cacheRate, usagePartsKnown } from "./data.ts";
 
 /** 固定样例分别保留逻辑请求和两次实际尝试，验证UI不会重复累计。 */
 test("逻辑请求与Key尝试严格分开，零倍率费用可独立展示", () => {
@@ -34,4 +34,18 @@ test("固定统计日期、小时桶及历史缺失保持正确", () => {
   assert.equal(calendar.find(day => day.day === "2026-11-11").recorded, false);
   assert.equal(calendar.find(day => day.day === "2026-11-13").total.requests, 2);
   assert.equal(calendar.find(day => day.day === "2026-11-14").recorded, false);
+});
+
+/** 混有历史累计与未知请求时仍显示真实分项，不能把全部未知补成零。 */
+test("部分已知分项与缓存命中保持可见", () => {
+  const partial = { ...emptyMetrics(), requests: 100, detailsKnown: 2, unknownUsage: 90, tokens: 377310000, context: 100000000, cached: 20000000, output: 5000000 };
+  assert.equal(usagePartsKnown(partial), true);
+  assert.equal(cacheRate(partial), 20);
+  assert.equal(partial.context - partial.cached, 80000000);
+  const unknown = { ...emptyMetrics(), requests: 2, detailsKnown: 2, unknownUsage: 2 };
+  assert.equal(usagePartsKnown(unknown), false);
+  assert.equal(cacheRate(unknown), null);
+  assert.equal(usagePartsKnown({ ...emptyMetrics(), requests: 100, tokens: 377310000 }), false);
+  assert.equal(usagePartsKnown(emptyMetrics()), true);
+  assert.equal(usagePartsKnown({ ...emptyMetrics(), requests: 1, detailsKnown: 1 }), true);
 });

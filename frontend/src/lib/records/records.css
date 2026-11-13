@@ -47,6 +47,7 @@
 }
 .records-table {
   min-width: 0;
+  container-type: inline-size;
 }
 .records-table table {
   table-layout: fixed;
@@ -76,16 +77,16 @@
   text-transform: none;
   white-space: nowrap;
 }
-/* 九列保留现有单元格留白，宽度优先满足数字组与状态标签。 */
-.records-table th:nth-child(1) { width: 9%; }
-.records-table th:nth-child(2) { width: 12%; }
-.records-table th:nth-child(3) { width: 10%; }
-.records-table th:nth-child(4) { width: 10%; }
-.records-table th:nth-child(5) { width: 9%; }
-.records-table th:nth-child(6) { width: 7%; }
-.records-table th:nth-child(7) { width: 16%; }
-.records-table th:nth-child(8) { width: 10%; }
-.records-table th:nth-child(9) { width: 17%; }
+/* 短字段共占390px；按表格容器分配剩余宽度，避免固定表格将百分比混合计算视为自动列宽。 */
+.records-table th:nth-child(1) { width: 84px; }
+.records-table th:nth-child(2) { width: calc((100cqw - 390px) * .26); }
+.records-table th:nth-child(3) { width: calc((100cqw - 390px) * .24); }
+.records-table th:nth-child(4) { width: 96px; }
+.records-table th:nth-child(5) { width: 72px; }
+.records-table th:nth-child(6) { width: 60px; }
+.records-table th:nth-child(7) { width: calc((100cqw - 390px) * .27); }
+.records-table th:nth-child(8) { width: 78px; }
+.records-table th:nth-child(9) { width: calc((100cqw - 390px) * .23); }
 .record-column-heading { display: flex; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
 .record-column-heading > span:first-child { white-space: nowrap; }
 .record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
@@ -225,9 +226,25 @@
   overflow: hidden;
 }
 .record-row { cursor: pointer; height: 72px; }
-/* 进行中只强调边框，背景与普通记录一致；边框覆盖层不拦截行点击。 */
-.record-row[data-record-state="active"] { background: transparent; }
+/* 进行中柔光从四边向内晕开，呼吸只改变覆盖层透明度，不影响文字与行点击。 */
+.record-row[data-record-state="active"] { position: relative; background: transparent; }
 .record-row[data-record-state="active"]:hover { background: transparent; }
+.record-row[data-record-state="active"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 20px 3px color-mix(in srgb, var(--primary) 23%, transparent), inset 0 0 5px color-mix(in srgb, var(--primary) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  opacity: .5;
+}
+@keyframes record-row-diffuse {
+  0%, 100% { opacity: .14; }
+  48% { opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .record-row[data-record-state="active"]::after { animation: record-row-diffuse 4.2s cubic-bezier(.45, 0, .55, 1) infinite; }
+}
 .record-row[data-record-state="active"] .record-model { color: var(--primary); }
 .record-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .record-detail-header {
@@ -344,5 +361,5 @@
  .record-detail-metrics strong{font-size:18px}
  .record-detail-meta{font-size:11px}
  .record-context-grid{grid-template-columns:1fr}
- .record-detail-tabs>[data-slot="tabs-list"]{gap:16px}
+ .record-detail-tabs>[data-slot="tabs-list"]{gap:4px}
 }

@@ -139,7 +139,7 @@
       <Button variant="outline" onclick={onretry}>重新加载目录</Button>
     </Empty.Root>
   {:else}
-    {#if vendors.length}<ToggleGroup.Root type="single" value={query.trim() ? "" : current} onValueChange={(next) => { if(next) pick(next); }} size="sm" spacing={1} class="provider-nav" aria-label="按官方厂商筛选">
+    {#if vendors.length}<ToggleGroup.Root type="single" value={query.trim() ? "" : current} onValueChange={(next) => { if(next) pick(next); }} variant="segmented" size="sm" spacing={1} class="provider-nav" aria-label="按官方厂商筛选">
         {#each [{ id: "all", label: "全部", logo: "", count: vendors.reduce((sum, vendor) => sum + vendor.count, 0) }, ...vendors] as vendor (vendor.id)}
           <ToggleGroup.Item value={vendor.id}
             >{#if vendor.logo}<span

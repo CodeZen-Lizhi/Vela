@@ -14,6 +14,7 @@
     saved = $bindable(),
     desktop,
     notify,
+    compact = false,
   }: {
     /** 已保存的提醒偏好。 */
     saved: AttentionSettings;
@@ -21,6 +22,8 @@
     desktop: boolean;
     /** 保存成功反馈。 */
     notify: Notify;
+    /** 快捷弹窗已有标题和用途说明，省略重复介绍并收紧行距。 */
+    compact?: boolean;
   } = $props();
 
   /** 四个开关的键名，与提醒偏好字段一一对应。 */
@@ -84,17 +87,19 @@
   }
 </script>
 
-<section class="settings-card" aria-labelledby="attention-title">
+<section class="settings-card" class:attention-compact={compact} aria-label={compact ? "总览提醒选项" : undefined} aria-labelledby={compact ? undefined : "attention-title"}>
+  {#if !compact}
   <header class="px-6 py-5 text-[13px]">
     <span id="attention-title">总览提醒</span><span
       class="ml-3 text-[11px] text-muted-foreground"
       >{enabledCount ? `${enabledCount} 项开启` : "已关闭"}</span
     >
   </header>
+  {/if}
   <form class="px-6 pb-6" novalidate onsubmit={save}>
-    <p class="mb-5 text-xs leading-relaxed text-muted-foreground">
+    {#if !compact}<p class="mb-5 text-xs leading-relaxed text-muted-foreground">
       只关注已启用的供应商、上游 Key 和可调用模型；全部关闭后总览不再显示该模块。
-    </p>
+    </p>{/if}
     <div class="border-t">
       {#each options as option}
         {@const Icon = option.icon}
@@ -102,17 +107,19 @@
           <span class="attention-icon"
             ><Icon class="size-[17px]" strokeWidth={1.7} aria-hidden="true" /></span
           >
-          <div class="min-w-0">
+          <div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <div class="min-w-0 flex-1">
             <strong id={`attention-${option.id}`} class="text-[13px] font-medium"
               >{option.title}</strong
             >
             <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
               {option.description}
             </p>
+          </div>
             {#if option.id === "balance" && draft.balance}
-              <Label variant="content" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+              <Label variant="content" class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"
                 >低于
-                <InputGroup.Root class="w-32">
+                <InputGroup.Root class="w-24">
                   <InputGroup.Addon>$</InputGroup.Addon>
                   <InputGroup.Input
                     aria-label="余额提醒阈值"
@@ -158,3 +165,8 @@
     </div>
   </form>
 </section>
+
+<style>
+  /* 快捷弹窗减少重复说明所需留白，基础控件尺寸沿用共享组件。 */
+  :global(.attention-compact .attention-row){padding-block:12px}
+</style>

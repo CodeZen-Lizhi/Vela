@@ -3,7 +3,6 @@
   import * as Empty from "$lib/components/ui/empty";
   import { Hint } from "$lib/components/ui/tooltip";
   import PageHeader from "$lib/components/PageHeader.svelte";
-  import { cn } from "$lib/utils";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
@@ -391,7 +390,7 @@
           </Table.Row></Table.Header
         ><Table.Body
           >{#each result?.records ?? [] as row (row.id)}<Table.Row
-              class={cn("record-row", row.state === "active" && "vela-running-border")}
+              class="record-row"
               data-record-id={row.id}
               data-record-state={row.state}
               role="button"

@@ -65,10 +65,14 @@
 {/snippet}
 
 <Dialog.Root bind:open><Dialog.Content class="flex h-[min(640px,88dvh)] w-[min(1180px,92vw)] max-w-[92vw] flex-col overflow-hidden sm:max-w-[min(1180px,92vw)]">
-  <Dialog.Header class="shrink-0"><Dialog.Title>用量明细</Dialog.Title><Dialog.Description>{period} · {dimension === "key" ? "上游 Key 按实际尝试统计" : "全部调用"}</Dialog.Description></Dialog.Header>
+  <Dialog.Header class="shrink-0 gap-3 pr-6"><Dialog.Title>用量明细</Dialog.Title>
+  <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+  <Dialog.Description>{period.split(" · ")[0]}</Dialog.Description>
   <ToggleGroup.Root spacing={1} type="single" variant="segmented" size="xs" value={dimension} onValueChange={value => { if (value) dimension = value as Dimension; }} class="w-fit shrink-0" aria-label="明细分析维度">
     <ToggleGroup.Item value="model">模型</ToggleGroup.Item><ToggleGroup.Item value="provider">供应商</ToggleGroup.Item><ToggleGroup.Item value="key">上游 Key</ToggleGroup.Item>
   </ToggleGroup.Root>
+  </div>
+  </Dialog.Header>
   <!-- 复用列表页的内容滚动与吸顶表头；独立滚动区保留焦点，支持键盘翻页。 -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="list-scroll" role="region" aria-label="用量明细列表内容" tabindex="0">
@@ -76,7 +80,8 @@
     <div class="overview-details-desktop"><Table.Root class="overview-details-table">
       <colgroup><col style:width="16%" />{#each columns as column}<col style:width={column.width} />{/each}</colgroup>
       <Table.Header><Table.Row><Table.Head>{dimension === "model" ? "模型" : dimension === "provider" ? "供应商" : "上游 Key"}</Table.Head>
-        {#each columns as column}<Table.Head aria-sort={sort === column.key ? descending ? "descending" : "ascending" : "none"}><Button variant="text" size="table-inline" class="max-w-full" onclick={() => changeSort(column.key)}><Hint text={column.label}>{#snippet children(props)}<span {...props} class="truncate">{column.label}</span>{/snippet}</Hint>{#if sort === column.key}{#if descending}<ArrowDown />{:else}<ArrowUp />{/if}{/if}</Button></Table.Head>{/each}
+        <!-- 排序图标始终占位，未排序时隐藏；升降序与取消排序不改变表头文字位置。 -->
+        {#each columns as column}<Table.Head aria-sort={sort === column.key ? descending ? "descending" : "ascending" : "none"}><Button variant="text" size="table-inline" class="max-w-full" onclick={() => changeSort(column.key)}><Hint text={column.label}>{#snippet children(props)}<span {...props} class="truncate">{column.label}</span>{/snippet}</Hint><span class="inline-flex shrink-0" class:invisible={sort !== column.key} aria-hidden="true">{#if sort === column.key && !descending}<ArrowUp />{:else}<ArrowDown />{/if}</span></Button></Table.Head>{/each}
       </Table.Row></Table.Header>
       <Table.Body>{#each groups as group}<Table.Row><Table.Cell>{@render entity(group.name, group.detail)}</Table.Cell>
         {#each columns as column}<Table.Cell>{#if column.key === "tokens"}<TokenCell total={group.total} />{:else}<Hint text={display(group.total, column.key)}>{#snippet children(props)}<span {...props} class="block truncate">{display(group.total, column.key)}</span>{/snippet}</Hint>{/if}</Table.Cell>{/each}

@@ -250,3 +250,9 @@ Ego浏览器通过隔离服务合成样本挂载实际App，覆盖7个主页面�
 需求已同步 request-records.md RR-R05 与 ui-prototype.md“Vela 使用记录详情对齐”。前端构建通过，Svelte 0 错误/0 警告，现有记录筛选测试通过，保留既有大 chunk 提示。Ego 浏览器实际挂载 Detail/ExecutionPath 与隔离合成数据，对照原型核对五指标、四页签、503→429→200 的跨供应商重试链路、浅深色；点击尝试3后“查看本次响应”进入对应响应正文，计费和请求上下文可展开，头对比、JSON/对话、复制入口和失败刷新可用。未发上游、未知计量与无正文状态保持真实区分。820×600 抽屉宽 770.80px、390px 宽 366.59px，两者抽屉及头部均无横向溢出，窄屏指标重排有效；头部保持固定。样例仅用于视觉和交互核验，没有读取或修改用户请求数据。自检保留本次外观变化以外的既有逻辑与并行改动，`git diff --check` 通过。
 
 证据：`.cache/business-e2e-overview/usage-detail-reference.png`、`usage-detail-aligned-desktop.png`、`usage-detail-billing.png`、`usage-detail-820.png`、`usage-detail-390.png`、`usage-detail-dark-local.png`。已生成前端构建，未重新打包或替换桌面安装包。
+
+## 进行中行向内呼吸柔光（2026-11-13）
+
+用户确认动态预览后，将整行旋转渐变边框改为主题蓝色边框及向内约20px的柔光，约4.2秒平缓呼吸一次；胶囊保持现有效果。覆盖层不拦截点击，减少动态效果时保留静态柔光，终态移除。权威需求第4节与RR-A11已同步。
+
+Ego浏览器挂载实际RecordsPage/CSS，以隔离合成查询快照验证：完整周期12次采样透明度约0.14～0.99，列对齐且无横向溢出；点击行打开详情并可Esc关闭；820px深色/减少动态效果下动画为none、透明度0.5，收尾后active行数量为0且覆盖层content为none。截图与周期采样见`.cache/records-breathing/`。前端生产构建通过，Svelte检查0错误/0警告，保留既有chunk大小提示。局部自检无剩余必修项；未重新打包或验证原生MyGo WebView。
