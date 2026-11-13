@@ -58,8 +58,6 @@ type Usage struct {
 	ImageOutput int64 `json:"imageOutput"`
 	AudioInput  int64 `json:"audioInput"`
 	AudioOutput int64 `json:"audioOutput"`
-	// mediaCached 标识上游只提供混合媒体缓存，不能猜测各维度费用。
-	mediaCached bool
 	// Quantity、Unit、Specification 为真实媒体数量、单位及规格，不伪造 Token。
 	Quantity      float64 `json:"quantity"`
 	Unit          string  `json:"unit"`

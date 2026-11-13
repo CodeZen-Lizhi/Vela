@@ -1,7 +1,6 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
-  import { Progress } from "$lib/components/ui/progress";
   import { Hint } from "$lib/components/ui/tooltip";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
@@ -39,6 +38,7 @@
     conclusions,
     effort,
     probability,
+    protocols,
     sameLine,
     time,
     unavailable,
@@ -274,33 +274,114 @@
       ).length,
     };
   }
-  /** 模型摘要仅显示两组，不在方卡中追加滚动区域。 */
-  function summaries(
+  /** 检测目标状态直接区分已有可用结果、等待检测和不可执行。 */
+  type PlanLineState = "covered" | "pending" | "blocked" | "running";
+  /** 单条线路摘要保留定位所需的模型、Key、协议和强度，不在卡内只展示抽象计数。 */
+  type PlanLineSummary = {
+    model: string;
+    key: string;
+    protocol: string;
+    effort: string;
+    state: PlanLineState;
+    reason: string;
+  };
+  const lineStates = {
+    covered: { label: "已有结果", variant: "positive" },
+    pending: { label: "待检测", variant: "warning" },
+    blocked: { label: "不可执行", variant: "negative" },
+    running: { label: "检测中", variant: "processing" },
+  } as const;
+  /** 判断单条线路当前是否有可用结果；兼容关系失效时保留真实原因。 */
+  function lineState(
     plan: VerificationPlan,
-  ): { model: string; keys: string; effort: string }[] {
-    return [...new Set(plan.lines.map((line) => line.modelId))]
-      .slice(0, 2)
-      .map((model) => ({
-        model:
-          snapshot?.targets.find(
-            (target) =>
-              target.providerId === plan.providerId && target.modelId === model,
-          )?.modelName || model,
-        keys: plan.lines
-          .filter((line) => line.modelId === model)
-          .map(
-            (line) =>
-              snapshot?.targets.find(
-                (target) =>
-                  target.providerId === plan.providerId &&
-                  target.keyId === line.keyId,
-              )?.keyName || line.keyId,
-          )
-          .join("、"),
-        effort: effort(
-          plan.lines.find((line) => line.modelId === model)?.effort ?? "auto",
-        ),
-      }));
+    line: VerificationPlan["lines"][number],
+  ): { state: PlanLineState; reason: string } {
+    const target = snapshot?.targets.find(
+      (item) =>
+        item.providerId === plan.providerId &&
+        item.modelId === line.modelId &&
+        item.keyId === line.keyId,
+    );
+    if (!target) return { state: "blocked", reason: "模型或 Key 已不可用" };
+    if (target.reason) return { state: "blocked", reason: target.reason };
+    if (
+      running &&
+      snapshot?.progress.target.providerId === plan.providerId &&
+      sameLine(line, snapshot.progress.target)
+    )
+      return { state: "running", reason: "" };
+    const report = snapshot?.reports.find(
+      (item) =>
+        item.target.providerId === plan.providerId &&
+        sameLine(line, item.target),
+    );
+    if (
+      report &&
+      !unavailable(report, snapshot?.targets ?? []) &&
+      report.state === "complete" &&
+      report.conclusion !== "insufficient"
+    )
+      return { state: "covered", reason: "" };
+    return { state: "pending", reason: "" };
+  }
+  /** 卡片最多直接展示两条线路，其余通过编辑范围查看，避免方卡内出现滚动区。 */
+  function summaries(plan: VerificationPlan): PlanLineSummary[] {
+    return plan.lines.slice(0, 2).map((line) => {
+      const target = snapshot?.targets.find(
+        (item) =>
+          item.providerId === plan.providerId &&
+          item.modelId === line.modelId &&
+          item.keyId === line.keyId,
+      );
+      return {
+        model: target?.modelName || line.modelId,
+        key: target?.keyName || line.keyId,
+        protocol:
+          protocols.find((item) => item.value === line.protocol)?.label ||
+          line.protocol,
+        effort: effort(line.effort),
+        ...lineState(plan, line),
+      };
+    });
+  }
+  /** 计划级状态用可读文案表达整体进度，不把抽象组合比例作为主要信息。 */
+  function planState(
+    covered: { total: number; done: number },
+    providerId: string,
+  ): {
+    label: string;
+    variant: "negative" | "warning" | "info" | "positive" | "processing";
+    detail: string;
+  } {
+    if (running && snapshot?.progress.target.providerId === providerId)
+      return {
+        label: "检测中",
+        variant: "processing",
+        detail: "正在采集本轮样本并等待检测结果",
+      };
+    if (!covered.total)
+      return {
+        label: "不可执行",
+        variant: "negative",
+        detail: "当前没有可执行的检测目标",
+      };
+    if (!covered.done)
+      return {
+        label: "尚未检测",
+        variant: "warning",
+        detail: "等待首次检测",
+      };
+    if (covered.done < covered.total)
+      return {
+        label: "部分完成",
+        variant: "info",
+        detail: "仍有检测目标需要补充结果",
+      };
+    return {
+      label: "检测完成",
+      variant: "positive",
+      detail: "全部目标已有可用结果",
+    };
   }
 </script>
 
@@ -458,9 +539,7 @@
             snapshot?.targets.find(
               (target) => target.providerId === plan.providerId,
             )?.providerName ||
-            plan.providerId}{@const modelCount = new Set(
-            plan.lines.map((line) => line.modelId),
-          ).size}
+            plan.providerId}{@const state = planState(covered, plan.providerId)}
           <article class="v-plan">
             <header>
               <div class="v-identity">
@@ -480,38 +559,47 @@
                 onCheckedChange={(enabled) => toggle(plan, enabled)}
               />
             </header>
-            <div class="v-plan-facts">
-              <div><small>固定组合</small><strong>{covered.total}</strong></div>
-              <div><small>模型线路</small><strong>{modelCount}</strong></div>
-              <div><small>最近执行</small><span>{time(plan.lastAt)}</span></div>
-            </div>
-            <div class="v-coverage">
-              <div>
-                <span>组合覆盖</span><strong>{covered.done} / {covered.total}</strong
-                >
+            <section class="v-plan-summary" aria-label={`${name} 检测状态`}>
+              <div class="v-plan-state">
+                <Badge variant={state.variant}>{state.label}</Badge>
+                <span>{state.detail}</span>
               </div>
-              <Progress
-                aria-label={`${name} 组合覆盖`}
-                value={covered.done}
-                max={Math.max(covered.total, 1)}
-               />
-            </div>
+              <div class="v-plan-last-run">
+                <span>最近执行</span><strong>{time(plan.lastAt)}</strong>
+              </div>
+            </section>
             <section class="v-bindings">
-              <div>
-                <strong>验证线路</strong><small
-                  >{modelCount > 2 ? `2 / ${modelCount}` : modelCount} 模型</small
-                >
+              <div class="v-bindings-heading">
+                <strong>检测内容</strong>
               </div>
-              {#each summaries(plan) as summary}<div>
-                  <strong>{summary.model}</strong><Hint overflowOnly text={summary.keys}>{#snippet children(hintProps5)}<small {...hintProps5}
-                    >{summary.keys}</small
-                  >{/snippet}</Hint><span>思考{summary.effort}</span>
+              {#each summaries(plan) as summary, index}<div class="v-target">
+                  <span class="v-target-index"
+                    >{String(index + 1).padStart(2, "0")}</span
+                  >
+                  <div class="v-target-copy">
+                    <div class="v-target-heading">
+                      <strong>{summary.model}</strong>
+                      <Badge variant={lineStates[summary.state].variant}
+                        >{lineStates[summary.state].label}</Badge
+                      >
+                    </div>
+                    <Hint overflowOnly text={summary.key}>{#snippet children(hintProps5)}<small {...hintProps5}
+                      >{summary.key}</small
+                    >{/snippet}</Hint>
+                    <div class="v-target-meta">
+                      <span>{summary.protocol}</span><span>思考{summary.effort}</span>
+                    </div>
+                    {#if summary.reason}<small class="v-target-reason"
+                        >{summary.reason}</small
+                      >{/if}
+                  </div>
                 </div>{/each}
+              {#if plan.lines.length > 2}<small class="v-target-more"
+                  >更多线路请通过“编辑范围”查看</small
+                >{/if}
             </section>
             <footer>
-              <small
-                >{plan.lines.length} Key · 每轮 {covered.total * 3} 样本</small
-              >
+              <small>检测会产生上游费用</small>
               <div class="v-actions">
                 <Button
                   variant="outline"

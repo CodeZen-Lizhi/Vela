@@ -299,6 +299,21 @@
           bind:openID
           disabled={!desktop}
         />
+        <div class="records-actions records-toolbar-actions">
+          <Button
+            variant={realtime ? "live" : "outline"}
+            size="sm"
+            disabled={!desktop}
+            aria-pressed={realtime}
+            onclick={() => (realtime = !realtime)}
+            ><Activity aria-hidden="true" />实时</Button
+          ><Button
+            variant="outline"
+            size="sm"
+            disabled={!desktop || loading}
+            onclick={refresh}><RefreshCw aria-hidden="true" />刷新</Button
+          >
+        </div>
     </div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -412,21 +427,6 @@
     <footer class="records-pagination list-footer">
       <div class="records-pagination-summary">
         <span>共 {number(summary?.total)} 条</span>
-        <div class="records-actions">
-          <Button
-            variant={realtime ? "live" : "outline"}
-            size="sm"
-            disabled={!desktop}
-            aria-pressed={realtime}
-            onclick={() => (realtime = !realtime)}
-            ><Activity aria-hidden="true" />实时</Button
-          ><Button
-            variant="outline"
-            size="sm"
-            disabled={!desktop || loading}
-            onclick={refresh}><RefreshCw aria-hidden="true" />刷新</Button
-          >
-        </div>
       </div>
       <div class="records-pagination-controls">
         <div class="records-page-size">

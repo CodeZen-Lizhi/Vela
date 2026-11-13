@@ -64,13 +64,27 @@ func TestLiteLLMPriceChain(t *testing.T) {
 	}
 }
 
-// TestLiteUnmeteredDimensions 通过真实解析和估价入口核验未完整计量的媒体、缓存维度不返回部分金额。
+// TestLiteUnmeteredDimensions 通过真实解析和估价入口核验实际命中的未完整计量维度不返回部分金额。
 func TestLiteUnmeteredDimensions(t *testing.T) {
 	one := 1.0
-	for _, field := range []string{"input_cost_per_video_token", "output_cost_per_video_token", "input_cost_per_image", "input_cost_per_second", "cache_creation_input_token_cost_above_12hr", "cache_creation_input_token_cost_above_30min", "cache_read_input_audio_token_cost", "cache_read_input_image_token_cost", "cache_creation_input_audio_token_cost"} {
-		t.Run(field, func(t *testing.T) {
+	cases := []struct {
+		field string
+		usage *Usage
+	}{
+		{"input_cost_per_video_token", &Usage{Input: 100, Output: 10, Context: 100}},
+		{"output_cost_per_video_token", &Usage{Input: 100, Output: 10, Context: 100}},
+		{"input_cost_per_image", &Usage{Quantity: 1, Unit: "image"}},
+		{"input_cost_per_second", &Usage{Quantity: 1, Unit: "second"}},
+		{"cache_creation_input_token_cost_above_12hr", &Usage{Input: 100, Output: 10, Context: 100, CacheWrite: 20}},
+		{"cache_creation_input_token_cost_above_30min", &Usage{Input: 100, Output: 10, Context: 100, CacheWrite: 20}},
+		{"cache_read_input_audio_token_cost", &Usage{Input: 10, Output: 1, Context: 30, CacheRead: 20, AudioInput: 10}},
+		{"cache_read_input_image_token_cost", &Usage{Input: 10, Output: 1, Context: 30, CacheRead: 20, ImageInput: 10}},
+		{"cache_creation_input_audio_token_cost", &Usage{Input: 10, Output: 1, Context: 30, CacheWrite: 20, AudioInput: 10}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.field, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprintf(w, `{"openai/test":{"litellm_provider":"openai","mode":"chat","input_cost_per_token":0.000002,"output_cost_per_token":0.000004,"cache_creation_input_token_cost":0.000001,"output_cost_per_image":0.04,%q:0.00001}}`, field)
+				fmt.Fprintf(w, `{"openai/test":{"litellm_provider":"openai","mode":"chat","input_cost_per_token":0.000002,"output_cost_per_token":0.000004,"cache_creation_input_token_cost":0.000001,"output_cost_per_image":0.04,%q:0.00001}}`, tc.field)
 			}))
 			defer server.Close()
 			s, err := models.Open(filepath.Join(t.TempDir(), "unmetered.sqlite"), server.Client(), server.URL)
@@ -83,11 +97,9 @@ func TestLiteUnmeteredDimensions(t *testing.T) {
 			if err != nil || len(entries) != 1 || len(entries[0].Warnings) == 0 {
 				t.Fatalf("missing imported usage warning: %+v, %v", entries, err)
 			}
-			for _, usage := range []*Usage{{Input: 100, Output: 10, Context: 100, CacheWrite: 20}, {Quantity: 1, Unit: "image"}} {
-				cost, charges := estimate(entries[0].Pricing, usage, &one, "", time.Now())
-				if cost != nil || len(charges) != 0 {
-					t.Fatalf("incomplete cost returned as complete: %v, %+v", cost, charges)
-				}
+			cost, charges := estimate(entries[0].Pricing, tc.usage, &one, "", time.Now())
+			if cost != nil || len(charges) != 0 {
+				t.Fatalf("incomplete cost returned as complete: %v, %+v", cost, charges)
 			}
 		})
 	}

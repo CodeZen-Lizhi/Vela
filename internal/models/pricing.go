@@ -13,7 +13,7 @@ import (
 // groups 定义独立修改保护的规则组，关联阶梯永远作为整体。
 var groups = []string{"base", "tiers", "modes", "schedules", "images", "videos"}
 
-// RequiresUnrecordedUsage 标记当前用量记录尚不能区分的计价维度；导入保留价格，估算不得将其遗漏后返回完整金额。
+// RequiresUnrecordedUsage 标记当前用量记录尚不能区分的计价维度；调用方须结合实际用量，不能仅因价格存在就判整笔未知。
 func RequiresUnrecordedUsage(key string) bool {
 	switch key {
 	case "cache_write_12h", "cache_write_30m", "cache_read_audio", "cache_read_image", "cache_write_audio", "video_input", "video_output", "per_image_input", "per_second_input":

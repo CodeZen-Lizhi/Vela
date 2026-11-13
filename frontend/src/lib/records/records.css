@@ -28,11 +28,16 @@
 }
 .records-filters {
   display: grid;
-  grid-template-columns: minmax(90px, 220px) minmax(74px, 100px) minmax(74px, 100px) minmax(74px, 90px) minmax(74px, 90px);
+  grid-template-columns: minmax(90px, 220px) minmax(74px, 100px) minmax(74px, 100px) minmax(74px, 90px) minmax(74px, 90px) auto;
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+}
+/* 实时与刷新入口固定在筛选栏右侧，不随分页内容移动。 */
+.records-toolbar-actions {
+  justify-self: end;
+  flex-wrap: nowrap;
 }
 /* 单排筛选按可用宽度收缩；搜索最多 220px，控件沿用共享尺寸。 */
 .records-filters > [data-slot="select-trigger"] {

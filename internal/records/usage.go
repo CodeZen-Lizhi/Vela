@@ -153,7 +153,6 @@ func parseUsage(data []byte, protocol string) *Usage {
 			}
 		}
 	}
-	u.mediaCached = u.CacheRead > 0 && u.ImageInput+u.AudioInput > 0
 	return u
 }
 
@@ -194,7 +193,6 @@ func mergeUsage(a, b *Usage) *Usage {
 	a.ImageOutput = max(a.ImageOutput, b.ImageOutput)
 	a.AudioInput = max(a.AudioInput, b.AudioInput)
 	a.AudioOutput = max(a.AudioOutput, b.AudioOutput)
-	a.mediaCached = a.mediaCached || b.mediaCached
 	return a
 }
 
@@ -210,7 +208,6 @@ func addUsage(a, b *Usage) {
 	a.ImageOutput += b.ImageOutput
 	a.AudioInput += b.AudioInput
 	a.AudioOutput += b.AudioOutput
-	a.mediaCached = a.mediaCached || b.mediaCached
 	a.Quantity += b.Quantity
 	if b.Unit != "" {
 		a.Unit = b.Unit
@@ -224,129 +221,204 @@ func decimal(value float64) *big.Rat {
 	return r
 }
 
-// estimate 使用请求开始时固定价格、真实完整上下文与倍率计算估算美元；缺少必需项则未知。
-func estimate(p models.Pricing, u *Usage, multiplier *float64, tier string, started time.Time) (*float64, []Charge) {
-	charges := []Charge{}
-	if u == nil || multiplier == nil || u.mediaCached || u.ImageInput+u.AudioInput > u.Input || u.ImageOutput+u.AudioOutput > u.Output {
-		return nil, charges
+// pricingPlan 是请求实际适用的价格规则、阶梯和倍率组合。
+type pricingPlan struct {
+	rates  []models.Rate
+	tiers  []models.Tier
+	factor float64
+}
+
+// selectPricingPlan 选择处理模式、上下文阶梯和分时倍率；未知模式或无效时段不能猜测默认价。
+func selectPricingPlan(p models.Pricing, multiplier *float64, tier string, contextTokens int64, started time.Time) (pricingPlan, bool) {
+	if multiplier == nil {
+		return pricingPlan{}, false
 	}
-	rates := p.Base
-	tiers := p.Tiers
-	factor := *multiplier
+	plan := pricingPlan{rates: p.Base, tiers: p.Tiers, factor: *multiplier}
 	if tier != "" && tier != "standard" && tier != "default" && tier != "auto" {
 		found := false
 		for _, mode := range p.Modes {
-			if mode.Name == tier {
-				found = true
-				if mode.Multiplier != nil {
-					factor *= *mode.Multiplier
-				} else {
-					rates = mode.Rates
-					tiers = mode.Tiers
-				}
-				break
+			if mode.Name != tier {
+				continue
 			}
+			found = true
+			if mode.Multiplier != nil {
+				plan.factor *= *mode.Multiplier
+			} else {
+				plan.rates = mode.Rates
+				plan.tiers = mode.Tiers
+			}
+			break
 		}
 		if !found {
-			return nil, charges
+			return pricingPlan{}, false
 		}
 	}
-	for _, t := range tiers {
-		if u.Context > int64(t.Above) {
-			rates = t.Rates
-		}
-	}
-	// 用量尚不能区分这些价格维度，不能把普通输入价或仅输出费用当作完整金额。
-	for _, rate := range rates {
-		if models.RequiresUnrecordedUsage(rate.Key) {
-			return nil, charges
+	for _, t := range plan.tiers {
+		if contextTokens > int64(t.Above) {
+			plan.rates = t.Rates
 		}
 	}
 	for _, window := range p.Schedules {
 		loc, err := time.LoadLocation(window.Timezone)
 		if err != nil {
-			return nil, charges
+			return pricingPlan{}, false
 		}
-		local := started.In(loc)
-		minute := local.Hour()*60 + local.Minute()
 		begin, err := time.Parse("15:04", window.Start)
 		if err != nil {
-			return nil, charges
+			return pricingPlan{}, false
 		}
-		end, err := time.Parse("15:04", window.End)
 		endMinute := 1440
 		if window.End != "24:00" {
-			if err != nil {
-				return nil, charges
+			end, parseErr := time.Parse("15:04", window.End)
+			if parseErr != nil {
+				return pricingPlan{}, false
 			}
 			endMinute = end.Hour()*60 + end.Minute()
 		}
-		if slices.Contains(window.Days, int(local.Weekday())) && !slices.Contains(window.ExcludedDates, local.Format("2006-01-02")) && minute >= begin.Hour()*60+begin.Minute() && minute < endMinute {
-			factor *= window.Multiplier
+		local := started.In(loc)
+		minute := local.Hour()*60 + local.Minute()
+		if slices.Contains(window.Days, int(local.Weekday())) &&
+			!slices.Contains(window.ExcludedDates, local.Format("2006-01-02")) &&
+			minute >= begin.Hour()*60+begin.Minute() && minute < endMinute {
+			plan.factor *= window.Multiplier
 			break
 		}
 	}
-	counts := map[string]float64{"input": float64(u.Input - u.ImageInput - u.AudioInput), "output": float64(u.Output - u.ImageOutput - u.AudioOutput), "image_input": float64(u.ImageInput), "image_output": float64(u.ImageOutput), "audio_input": float64(u.AudioInput), "audio_output": float64(u.AudioOutput), "cache_read": float64(u.CacheRead), "cache_write": float64(u.CacheWrite), "cache_write_1h": float64(u.CacheWrite1h)}
+	return plan, true
+}
+
+// usageCounts 将归一化用量映射为价格维度数量，媒体 Token 已从普通输入输出中拆出。
+func usageCounts(u *Usage) map[string]float64 {
+	counts := map[string]float64{
+		"input":          float64(u.Input - u.ImageInput - u.AudioInput),
+		"output":         float64(u.Output - u.ImageOutput - u.AudioOutput),
+		"image_input":    float64(u.ImageInput),
+		"image_output":   float64(u.ImageOutput),
+		"audio_input":    float64(u.AudioInput),
+		"audio_output":   float64(u.AudioOutput),
+		"cache_read":     float64(u.CacheRead),
+		"cache_write":    float64(u.CacheWrite),
+		"cache_write_1h": float64(u.CacheWrite1h),
+	}
 	if u.Unit != "" {
 		counts = map[string]float64{"per_" + u.Unit: u.Quantity}
 	}
-	// 按请求计价与 Token 计价是替代口径，不重复收取两份费用。
+	return counts
+}
+
+// unrecordedUsagePresent 判断不可区分的计价维度本次是否确实产生用量；未发生不能阻断整笔费用。
+func unrecordedUsagePresent(key string, u *Usage) bool {
+	switch key {
+	case "cache_write_12h", "cache_write_30m":
+		return u.CacheWrite > 0
+	case "cache_write_1h":
+		return u.CacheWrite1h > 0
+	case "cache_read_audio":
+		return u.CacheRead > 0 && u.AudioInput > 0
+	case "cache_read_image":
+		return u.CacheRead > 0 && u.ImageInput > 0
+	case "cache_write_audio":
+		return u.CacheWrite > 0 && u.AudioInput > 0
+	case "video_input":
+		return u.Input > 0
+	case "video_output":
+		return u.Output > 0
+	case "per_image_input":
+		return u.ImageInput > 0 || u.Unit == "image" && u.Quantity > 0
+	case "per_second_input":
+		return u.Input > 0 || u.Unit == "second" && u.Quantity > 0
+	default:
+		// 新价格维度未接入用量判定时保持未知，避免静默少算。
+		return true
+	}
+}
+
+// hasUnrecordedUsage 只在实际发生不可区分用量时要求整笔费用保持未知。
+func hasUnrecordedUsage(rates []models.Rate, u *Usage) bool {
 	for _, rate := range rates {
+		if models.RequiresUnrecordedUsage(rate.Key) && unrecordedUsagePresent(rate.Key, u) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMixedMediaCache 根据持久化用量判断缓存读取是否混有无法拆分的媒体 Token。
+func hasMixedMediaCache(u *Usage) bool {
+	return u != nil && u.CacheRead > 0 && u.ImageInput+u.AudioInput > 0
+}
+
+// ratePrice 返回某维度的显式价格；媒体档位按真实规格匹配，不能套用其他尺寸。
+func ratePrice(key string, rates []models.Rate, p models.Pricing, u *Usage) (float64, bool) {
+	for _, rate := range rates {
+		if rate.Key == key {
+			return rate.Price, true
+		}
+	}
+	if key == "per_image" {
+		for _, image := range p.Images {
+			if imageMatches(image, u) {
+				return image.Price, true
+			}
+		}
+	}
+	if key == "per_second" {
+		for _, video := range p.Videos {
+			if video.Resolution == u.Specification {
+				return video.Price, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// chargeUsage 按固定维度顺序汇总分项；任一非零用量缺价时整笔保持未知。
+func chargeUsage(p models.Pricing, u *Usage, plan pricingPlan) (*float64, []Charge) {
+	counts := usageCounts(u)
+	// 按请求计价与 Token 计价是替代口径，不重复收取两份费用。
+	for _, rate := range plan.rates {
 		if rate.Key == "per_request" {
 			counts = map[string]float64{"per_request": 1}
 			break
 		}
 	}
 	total := new(big.Rat)
+	charges := []Charge{}
 	for _, key := range []string{"input", "output", "image_input", "image_output", "audio_input", "audio_output", "cache_read", "cache_write", "cache_write_1h", "per_image", "per_second", "per_request"} {
 		count := counts[key]
 		if count == 0 {
 			continue
 		}
-		var price *float64
-		for _, rate := range rates {
-			if rate.Key == key {
-				value := rate.Price
-				price = &value
-				break
-			}
-		}
-		if key == "per_image" {
-			for _, image := range p.Images {
-				if imageMatches(image, u) {
-					value := image.Price
-					price = &value
-					break
-				}
-			}
-		}
-		if key == "per_second" {
-			for _, video := range p.Videos {
-				if video.Resolution == u.Specification {
-					value := video.Price
-					price = &value
-					break
-				}
-			}
-		}
-		if price == nil {
+		price, ok := ratePrice(key, plan.rates, p, u)
+		if !ok {
 			return nil, charges
 		}
-		amount := new(big.Rat).Mul(decimal(count), decimal(*price))
-		amount.Mul(amount, decimal(factor))
-		if strings.HasPrefix(key, "per_") == false {
+		amount := new(big.Rat).Mul(decimal(count), decimal(price))
+		amount.Mul(amount, decimal(plan.factor))
+		if !strings.HasPrefix(key, "per_") {
 			amount.Quo(amount, big.NewRat(1_000_000, 1))
 		}
 		total.Add(total, amount)
 		value, _ := amount.Float64()
-		charges = append(charges, Charge{Key: key, Quantity: count, Price: *price, Amount: value})
+		charges = append(charges, Charge{Key: key, Quantity: count, Price: price, Amount: value})
 	}
-	// 明确提供的零用量可以为零金额；不能由缺失 usage 推导零价。
 	value, _ := total.Float64()
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return nil, charges
 	}
 	return &value, charges
+}
+
+// estimate 使用请求开始时固定价格、真实完整上下文与倍率计算估算美元；缺少必需项则未知。
+func estimate(p models.Pricing, u *Usage, multiplier *float64, tier string, started time.Time) (*float64, []Charge) {
+	if u == nil || multiplier == nil || hasMixedMediaCache(u) || u.ImageInput+u.AudioInput > u.Input || u.ImageOutput+u.AudioOutput > u.Output {
+		return nil, []Charge{}
+	}
+	plan, ok := selectPricingPlan(p, multiplier, tier, u.Context, started)
+	if !ok || hasUnrecordedUsage(plan.rates, u) {
+		return nil, []Charge{}
+	}
+	return chargeUsage(p, u, plan)
 }
 
 // imageMatches 优先匹配明确尺寸或像素区间，质量不符时不能套用该档。

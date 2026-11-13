@@ -1075,7 +1075,7 @@ export interface VerificationCandidate {
 
 /** VerificationLine 是一条固定模型、Key、协议和思考强度的绑定。 */
 export interface VerificationLine {
-  /** ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 精确对应。 */
+  /** ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 对应，已确认的 GPT-6 别名视为同一模型。 */
   referenceModel: string;
   /** ModelID、KeyID 是本地稳定身份；Protocol 取 chat_completions、responses、messages、gemini；Effort 取 auto、low、medium、high。 */
   modelId: string;
@@ -1147,7 +1147,7 @@ export interface VerificationSnapshot {
 
 /** VerificationTarget 是不含凭据的线路快照，Reason 非空时不可执行。 */
 export interface VerificationTarget {
-  /** ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 精确对应。 */
+  /** ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 对应，已确认的 GPT-6 别名视为同一模型。 */
   referenceModel: string;
   /** ModelID、KeyID 是本地稳定身份；Protocol 取 chat_completions、responses、messages、gemini；Effort 取 auto、low、medium、high。 */
   modelId: string;

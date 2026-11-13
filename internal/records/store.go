@@ -112,6 +112,9 @@ func New(db *sql.DB) (*Store, error) {
 	if err = s.migrateMetrics(); err != nil {
 		return nil, err
 	}
+	if err = s.repairMissingCosts(context.Background()); err != nil {
+		return nil, err
+	}
 	if err = s.migrateOverview(); err != nil {
 		return nil, err
 	}

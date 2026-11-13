@@ -343,6 +343,27 @@ func TestMediaPricing(t *testing.T) {
 	}
 }
 
+// TestEstimateInactiveCacheDuration 验证零缓存写入不受未记录的缓存时长价格影响，真实写入仍保持未知。
+func TestEstimateInactiveCacheDuration(t *testing.T) {
+	one := 1.0
+	pricing := models.Pricing{Base: []models.Rate{
+		{Key: "input", Price: 2, Unit: "million_tokens"},
+		{Key: "output", Price: 10, Unit: "million_tokens"},
+		{Key: "cache_read", Price: 0.1, Unit: "million_tokens"},
+		{Key: "cache_write", Price: 2.5, Unit: "million_tokens"},
+		{Key: "cache_write_12h", Price: 5, Unit: "million_tokens"},
+	}}
+	usage := &Usage{Input: 1938, Output: 938, CacheRead: 2458, Context: 4396}
+	cost, _ := estimate(pricing, usage, &one, "", time.Now())
+	if cost == nil || math.Abs(*cost-0.0135018) > 1e-12 {
+		t.Fatalf("零缓存写入应正常计价: %v", cost)
+	}
+	usage.CacheWrite = 1
+	if cost, _ = estimate(pricing, usage, &one, "", time.Now()); cost != nil {
+		t.Fatal("缓存写入无法区分时长时应保持未知")
+	}
+}
+
 // TestRecoveryAndKeyOwnership 验证重启未知终态及清理后按真实尝试保留 Key 消耗、身份和幂等性。
 func TestRecoveryAndKeyOwnership(t *testing.T) {
 	s, catalog := fixture(t)

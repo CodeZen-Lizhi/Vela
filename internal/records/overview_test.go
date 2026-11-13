@@ -138,7 +138,7 @@ func TestOverviewLegacyBackfill(t *testing.T) {
 	record, _ := exchange(t, s, server.URL, "chat", false)
 	// 模拟升级前只存日累计：其中两次逻辑调用、三次 Key 尝试已丢失正文。
 	for _, query := range []string{
-		`DELETE FROM settings WHERE name='records-overview-v1'`,
+		`DELETE FROM settings WHERE name='records-overview-v2'`,
 		`DELETE FROM request_overview`,
 		`UPDATE request_totals SET requests=requests+2,tokens=tokens+50,cost=cost+0.25,unknown_usage=unknown_usage+1,unknown_cost=unknown_cost+1`,
 		`UPDATE request_key_totals SET attempts=attempts+3,tokens=tokens+60,cost=cost+0.5,unknown_usage=unknown_usage+2,unknown_cost=unknown_cost+2`,
@@ -199,7 +199,7 @@ func TestOverviewMigrationRollback(t *testing.T) {
 	if err := s.save(context.Background(), r, true); err != nil {
 		t.Fatal(err)
 	}
-	for _, query := range []string{`DELETE FROM settings WHERE name='records-overview-v1'`, `DELETE FROM request_overview`, `UPDATE request_records SET document='invalid'`} {
+	for _, query := range []string{`DELETE FROM settings WHERE name='records-overview-v2'`, `DELETE FROM request_overview`, `UPDATE request_records SET document='invalid'`} {
 		if _, err := catalog.DB().Exec(query); err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestOverviewMigrationRollback(t *testing.T) {
 		t.Fatal("损坏正文应阻止迁移")
 	}
 	var count int
-	if err := catalog.DB().QueryRow(`SELECT COUNT(*) FROM settings WHERE name='records-overview-v1'`).Scan(&count); err != nil || count != 0 {
+	if err := catalog.DB().QueryRow(`SELECT COUNT(*) FROM settings WHERE name='records-overview-v2'`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("错误提交迁移标记", count, err)
 	}
 	raw, _ := json.Marshal(r)

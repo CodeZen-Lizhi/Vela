@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,32 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"github.com/CodeZen-Lizhi/vela/internal/verification/fingerprint"
 )
+
+// canonicalReferenceModel 将同一模型在参考库、原始模型和展示名中的已知身份归一。
+// 当前仅确认 gpt-6-astra 与 gpt-6.1-sol 可互换；上游拆分模型或修改稳定身份时应移除对应别名。
+func canonicalReferenceModel(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "gpt-6-astra", "gpt-6.1-sol", "gpt-6-astra/6.1-sol":
+		return "gpt-6-astra"
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
+// compareReferenceModel 在候选集合中查找预期身份，并判断首位候选是否对应；未找到时不可比较。
+func compareReferenceModel(prediction string, candidates []VerificationCandidate, reference string) (string, bool) {
+	expected := canonicalReferenceModel(reference)
+	for _, candidate := range candidates {
+		if canonicalReferenceModel(candidate.Model) != expected {
+			continue
+		}
+		if canonicalReferenceModel(prediction) == expected {
+			return "match", true
+		}
+		return "difference", true
+	}
+	return "", false
+}
 
 // publish 合并更新可复制的任务进度，回调不在任务锁内执行。
 func (m *Manager) publish(change func(*VerificationProgress)) {
@@ -245,22 +272,12 @@ func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target Ve
 				report.Candidates = append(report.Candidates, VerificationCandidate{Model: c.Model, Name: c.DisplayName, Family: c.FamilyName, Score: c.Score, Probability: c.Probability})
 			}
 			if len(report.Candidates) > 0 && report.Candidates[0].Probability != nil && *report.Candidates[0].Probability >= 0.75 && analysis.Decision == "scored" && analysis.UsedOutputs == 3 {
-				expected := ""
 				reference := target.ReferenceModel
 				if reference == "" {
 					reference = target.OriginalModel
 				}
-				for _, c := range report.Candidates {
-					if c.Model == reference {
-						expected = c.Model
-						break
-					}
-				}
-				if expected != "" {
-					report.Conclusion = "difference"
-					if analysis.Prediction == expected {
-						report.Conclusion = "match"
-					}
+				if conclusion, comparable := compareReferenceModel(analysis.Prediction, report.Candidates, reference); comparable {
+					report.Conclusion = conclusion
 				} else {
 					report.Reason = "预期模型未对应参考库，请在检测计划中选择预期参考模型；本轮仅展示候选排名"
 				}

@@ -248,6 +248,7 @@
           <span>执行 Key</span>
           <span>请求协议</span>
           <span>思考强度</span>
+          <span>参考模型（可选）</span>
           <span></span>
         </div>
         <div class="v-lines">
@@ -303,12 +304,13 @@
                 /></Field.Field
               >
               {#if line.modelId}<Field.Field class="v-reference-field">
-                <Field.Label>预期参考模型（可选）</Field.Label>
+                <Field.Label class="v-reference-label"
+                  >预期参考模型（可选）</Field.Label
+                >
                 <Choice value={line.referenceModel}
                   options={[{ value: "", label: "自动对应原始模型 ID" }, ...referenceModels.map((model) => ({ value: model.id, label: model.name || model.id }))]}
                   label={`第 ${index + 1} 行预期参考模型`}
                   onValueChange={(value) => change(line, "referenceModel", value)} />
-                <small class="text-muted-foreground">未选择时按原始模型 ID：{scope.find((target) => target.modelId === line.modelId)?.originalModel || "未知"}。</small>
               </Field.Field>{/if}
               <Button onclick={() => remove(line.id)}
                 type="button"

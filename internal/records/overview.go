@@ -229,7 +229,7 @@ func putOverview(ctx context.Context, tx *sql.Tx, row OverviewRow) error {
 	return err
 }
 
-// migrateOverview 一次性、原子回填存续明细及已清理日累计；完成标记与回填一同提交，重启不会重复。
+// migrateOverview 原子重建存续明细及已清理日累计；完成标记与回填一同提交，重启不会重复。
 func (s *Store) migrateOverview() error {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -241,11 +241,15 @@ func (s *Store) migrateOverview() error {
 		return err
 	}
 	var done string
-	err = tx.QueryRowContext(ctx, `SELECT document FROM settings WHERE name='records-overview-v1'`).Scan(&done)
+	err = tx.QueryRowContext(ctx, `SELECT document FROM settings WHERE name='records-overview-v2'`).Scan(&done)
 	if err == nil {
 		return tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	// v2 使用修正后的实际费用和标准费用完整重建，清除旧规则产生的未知计数。
+	if _, err = tx.ExecContext(ctx, `DELETE FROM request_overview`); err != nil {
 		return err
 	}
 	// keyset 分批读取正文，每批关闭游标再写，避免单连接 SQLite 的游标生命周期冲突。
@@ -294,7 +298,7 @@ func (s *Store) migrateOverview() error {
 	if err = s.backfillOverviewTotals(ctx, tx, true); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO settings(name,document) VALUES('records-overview-v1','done')`); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO settings(name,document) VALUES('records-overview-v2','done')`); err != nil {
 		return err
 	}
 	return tx.Commit()

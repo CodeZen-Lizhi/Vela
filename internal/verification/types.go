@@ -3,7 +3,7 @@ package verification
 
 // VerificationLine 是一条固定模型、Key、协议和思考强度的绑定。
 type VerificationLine struct {
-	// ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 精确对应。
+	// ReferenceModel 是可选的预期参考库身份；空串时按模型模块原始模型 ID 对应，已确认的 GPT-6 别名视为同一模型。
 	ReferenceModel string `json:"referenceModel"`
 	// ModelID、KeyID 是本地稳定身份；Protocol 取 chat_completions、responses、messages、gemini；Effort 取 auto、low、medium、high。
 	ModelID  string `json:"modelId"`
