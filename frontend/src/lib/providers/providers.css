@@ -16,6 +16,8 @@
 .provider-name { flex:0 1 auto; min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 
 .provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
+.provider-row-actions { --row-action-size:2rem; }
+.provider-key-actions { --row-action-size:2rem; }
 .provider-balance { display:inline-flex; align-items:baseline; gap:0; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .provider-balance.is-empty { color:var(--muted-foreground); font-weight:400; }
 .provider-currency-symbol { color:var(--primary); font-size:12px; font-weight:650; }
@@ -109,6 +111,7 @@
  .provider-table:not(.provider-key-table) :is(th,td)[data-align="control"] { text-align:left; }
  .provider-table:not(.provider-key-table) td[data-align="control"] > div { justify-content:flex-start; }
  .provider-actions { justify-content:flex-start; }
+ .provider-row-actions { --row-action-size:2.25rem; }
  .provider-toolbar { padding:14px; }
 }
 @media(max-width:600px) {

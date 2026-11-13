@@ -25,25 +25,28 @@
 <!-- 居中弹窗按窗口预留空间，长内容内部滚动；业务抽屉可覆盖定位和高度。 -->
 <DialogPortal {...portalProps}>
 	<DialogOverlay />
-	<DialogPrimitive.Content
-		bind:ref
-		data-slot="dialog-content"
-		class={cn(
-			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-h-[88dvh] max-w-[88vw] overflow-y-auto gap-6 rounded-xl p-6 text-sm shadow-md ring-1 duration-100 sm:max-w-[min(28rem,88vw)] fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
-			className
-		)}
-		{...restProps}
-	>
-		{@render children?.()}
-		{#if showCloseButton}
-			<DialogPrimitive.Close data-slot="dialog-close">
-				{#snippet child({ props })}
-					<Button aria-label="关闭" variant="ghost" class="absolute top-5 right-5" size="icon-sm" {...props}>
-						<XIcon  />
-						<span class="sr-only">关闭</span>
-					</Button>
-				{/snippet}
-			</DialogPrimitive.Close>
-		{/if}
-	</DialogPrimitive.Content>
+	<!-- 用布局居中代替百分比平移，避免 Retina WebView 对弹窗整层做分数像素采样。 -->
+	<div class="pointer-events-none fixed inset-0 z-50 grid place-items-center p-6">
+		<DialogPrimitive.Content
+			bind:ref
+			data-slot="dialog-content"
+			class={cn(
+				"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 pointer-events-auto relative grid max-h-[calc(100dvh-3rem)] w-full max-w-[calc(100vw-3rem)] overflow-y-auto gap-6 rounded-xl p-6 text-sm shadow-md ring-1 duration-100 sm:max-w-[min(28rem,calc(100vw-3rem))] outline-none",
+				className
+			)}
+			{...restProps}
+		>
+			{@render children?.()}
+			{#if showCloseButton}
+				<DialogPrimitive.Close data-slot="dialog-close">
+					{#snippet child({ props })}
+						<Button aria-label="关闭" variant="ghost" class="absolute top-5 right-5" size="icon-sm" {...props}>
+							<XIcon  />
+							<span class="sr-only">关闭</span>
+						</Button>
+					{/snippet}
+				</DialogPrimitive.Close>
+			{/if}
+		</DialogPrimitive.Content>
+	</div>
 </DialogPortal>

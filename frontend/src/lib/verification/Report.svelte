@@ -97,7 +97,7 @@
     </div>
     <dl class="report-facts">
       {#each [{ name: "预期模型", value: report.target.modelName }, { name: "预期参考模型", value: report.target.referenceModel || report.target.originalModel }, { name: "实际请求模型", value: report.target.requestModel }, { name: "请求协议", value: protocols.find((item) => item.value === report.target.protocol)?.label ?? report.target.protocol }, { name: "检测时间", value: time(report.time) }, { name: "算法版本", value: report.algorithmVersion }, { name: "参考数据版本", value: report.dataVersion }, { name: "固定端点", value: report.target.url }] as item}
-        <div class:report-fact-wide={item.name === "固定端点"}>
+        <div class:report-fact-wide={item.name === "固定端点" || item.name === "参考数据版本"}>
           <dt>{item.name}</dt><dd>{item.value || "未知"}</dd>
         </div>
       {/each}
@@ -171,42 +171,43 @@
 </div>
 
 <style>
-  .report-body { display:flex; flex-direction:column; gap:24px; min-height:0; overflow-y:auto; padding:24px; }
+  /* 报告信息密度较高，正文使用系统字形抗锯齿以保持小字号边缘清楚。 */
+  .report-body { display:flex; flex-direction:column; gap:24px; min-height:0; overflow-y:auto; padding:24px; -webkit-font-smoothing:auto; -moz-osx-font-smoothing:auto; }
   .report-identity { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   .report-model { flex:1; min-width:160px; }
   .report-model h2 { font-size:20px; font-weight:600; letter-spacing:-.025em; overflow-wrap:anywhere; }
   .report-model p { margin-top:5px; color:var(--muted-foreground); font-size:12px; overflow-wrap:anywhere; }
   .report-overview { display:grid; grid-template-columns:180px minmax(0,1fr); border:1px solid var(--border); border-radius:10px; background:var(--muted); }
   .report-confidence { display:flex; flex-direction:column; justify-content:center; gap:8px; padding:20px; border-right:1px solid var(--border); }
-  .report-confidence > span, .report-verdict > span { font-size:12px; color:var(--muted-foreground); }
-  .report-confidence strong { font-size:32px; line-height:1.15; font-weight:600; letter-spacing:-.04em; font-variant-numeric:tabular-nums; color:var(--primary); }
-  .report-confidence small { font-size:11px; color:var(--muted-foreground); }
+  .report-confidence > span, .report-verdict > span { font-size:13px; color:var(--muted-foreground); }
+  .report-confidence strong { font-size:34px; line-height:1.15; font-weight:650; letter-spacing:-.04em; font-variant-numeric:tabular-nums; color:var(--primary); }
+  .report-confidence small { font-size:12px; color:var(--muted-foreground); }
   .report-verdict { min-width:0; padding:20px; }
-  .report-verdict h3 { margin-top:6px; font-size:16px; font-weight:600; overflow-wrap:anywhere; }
-  .report-verdict p { margin-top:10px; font-size:12px; line-height:1.7; color:var(--muted-foreground); overflow-wrap:anywhere; }
+  .report-verdict h3 { margin-top:6px; font-size:17px; font-weight:600; overflow-wrap:anywhere; }
+  .report-verdict p { margin-top:10px; font-size:13px; line-height:1.7; color:var(--muted-foreground); overflow-wrap:anywhere; }
   .report-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .report-section-heading h3 { font-size:14px; font-weight:600; }
-  .report-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 32px; margin-top:18px; }
-  .report-facts > div { min-width:0; }
+  .report-section-heading h3 { font-size:15px; font-weight:600; }
+  .report-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; margin-top:16px; overflow:hidden; border:1px solid var(--border); border-radius:10px; background:var(--border); }
+  .report-facts > div { min-width:0; padding:14px 16px; background:var(--card); }
   .report-fact-wide { grid-column:1/-1; }
   .report-facts dt { font-size:12px; color:var(--muted-foreground); }
-  .report-facts dd { margin-top:5px; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
-  .report-caption { margin-top:6px; color:var(--muted-foreground); font-size:12px; line-height:1.7; }
+  .report-facts dd { margin-top:5px; font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
+  .report-caption { margin-top:6px; color:var(--muted-foreground); font-size:13px; line-height:1.7; }
   .report-ranking { margin-top:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-  .report-candidate-name { display:block; font-weight:500; font-size:13px; overflow-wrap:anywhere; }
-  .report-candidate-id { display:block; margin-top:4px; font-size:11px; color:var(--muted-foreground); overflow-wrap:anywhere; }
-  .report-rank { color:var(--muted-foreground); font-size:12px; font-variant-numeric:tabular-nums; }
+  .report-candidate-name { display:block; font-weight:550; font-size:14px; overflow-wrap:anywhere; }
+  .report-candidate-id { display:block; margin-top:4px; font-size:12px; color:var(--muted-foreground); overflow-wrap:anywhere; }
+  .report-rank { color:var(--muted-foreground); font-size:13px; font-variant-numeric:tabular-nums; }
   .report-expand { display:flex; justify-content:center; margin-top:8px; }
 
   .report-sample-title { display:flex; flex:1; align-items:center; flex-wrap:wrap; gap:12px; min-width:0; }
-  .report-sample-count { margin-left:auto; color:var(--muted-foreground); font-size:12px; font-weight:400; }
-  .report-raw { max-height:240px; margin-top:8px; padding:14px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:8px; background:var(--muted); font-size:12px; line-height:1.8; }
+  .report-sample-count { margin-left:auto; color:var(--muted-foreground); font-size:13px; font-weight:400; }
+  .report-raw { max-height:240px; margin-top:8px; padding:14px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:8px; background:var(--muted); font-size:13px; line-height:1.8; }
 
   @media (max-width:600px) {
     .report-body { padding:20px; gap:20px; }
     .report-overview { grid-template-columns:1fr; }
     .report-confidence { border-right:0; border-bottom:1px solid var(--border); }
-    .report-facts { grid-template-columns:1fr; gap:14px; }
+    .report-facts { grid-template-columns:1fr; }
     .report-sample-count { margin-left:0; }
   }
 </style>

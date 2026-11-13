@@ -21,6 +21,12 @@
   const healthLabels: Record<ProviderHealthState, string> = {
     normal: "正常", degraded: "降级", abnormal: "异常", unavailable: "不可用",
   };
+  /** 换位缓出曲线：快速离开原位，末尾仅轻微回弹约 2%，避免机械感。 */
+  function springSettle(t: number): number {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    return 1 - Math.exp(-9 * t) * Math.cos(5.5 * t);
+  }
   /** 当前显示顺序；拖动期间为草稿，保存失败恢复。 */
   let ordered = $state<ProviderOverview[]>([]);
   /** 顺序保存期间禁止再次改序，但保留行焦点与 Tab 导航。 */
@@ -31,19 +37,65 @@
   let announcement = $state("");
   /** 列表作为稳定的指针捕获目标，行重排不会中断拖动。 */
   let list: HTMLDivElement;
-  /** 拖动会话，记录原顺序与浮动行的窗口坐标，取消时恢复。 */
-  let drag = $state<{
+  /** 拖动会话，记录原顺序、浮动预览起点与当前指针位置，取消时恢复。 */
+  type DragSession = {
     /** 拖动供应商的稳定身份。 */
     id: string;
     /** 发起本次拖动的指针。 */
     pointerId: number;
     /** 拖动开始前的完整顺序。 */
     before: ProviderOverview[];
-    /** 浮动行初始坐标与宽度，height 是含底边框的外层占位高度，单位为像素。 */
-    left: number; top: number; width: number; height: number;
-    /** 起始及当前指针纵坐标，单位为窗口像素。 */
-    startY: number; y: number;
-  } | null>(null);
+    /** 原行在窗口中的初始坐标与宽度，单位为像素。 */
+    left: number; top: number; width: number;
+    /** 起始及当前指针坐标，单位为窗口像素。 */
+    startX: number; startY: number; x: number; y: number;
+  };
+  let drag = $state<DragSession | null>(null);
+  /** 松手吸附阶段：保持预览到目标槽位，再与真实行交叉淡变。 */
+  type SettleSession = {
+    /** 正在落位的供应商身份。 */
+    id: string;
+    /** 原浮动行的窗口坐标、宽度与松手时的指针位置。 */
+    left: number; top: number; width: number; x: number; y: number; startX: number; startY: number;
+    /** 目标槽位的窗口坐标，单位为像素。 */
+    targetLeft: number; targetTop: number;
+    /** 是否已从松手位置切换到目标位置，用于触发 CSS 过渡。 */
+    arrived: boolean;
+    /** 是否开始淡出，供真实行同步淡入。 */
+    leaving: boolean;
+  };
+  let settling = $state<SettleSession | null>(null);
+  /** 指针更新合并到下一绘制帧，避免高频 pointermove 造成重复布局与抖动。 */
+  let pointerFrame = 0;
+  let pendingPointer: { x: number; y: number } | null = null;
+  /** 落位过渡的淡出与清理定时器，取消或卸载时统一释放。 */
+  let settleFrame = 0;
+  let settleFadeTimer = 0;
+  let settleDoneTimer = 0;
+  /** 浮动预览对应的供应商与当前落位编号。 */
+  const previewID = $derived(drag?.id ?? settling?.id ?? "");
+  const dragItem = $derived(ordered.find((item) => item.provider.id === previewID));
+  const dragIndex = $derived(ordered.findIndex((item) => item.provider.id === previewID));
+  /** 松手淡出期间先把真实行内容放出来，与预览同步交叉过渡。 */
+  const activeRowID = $derived(drag?.id ?? (settling && !settling.leaving ? settling.id : ""));
+  /** 浮动预览跟随指针双向位移；正常动效下加入轻微倾斜和放大。 */
+  const dragPreviewStyle = $derived.by(() => {
+    const current = drag ?? settling;
+    if (!current) return "";
+    const dx = current.x - current.startX;
+    const dy = current.y - current.startY;
+    let transform: string;
+    if (settling?.arrived) {
+      const targetX = settling.targetLeft - settling.left;
+      const targetY = settling.targetTop - settling.top;
+      transform = `perspective(900px) translate3d(${targetX}px, ${targetY}px, 0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1)`;
+    } else if (!prefersReducedMotion.current) {
+      transform = `perspective(900px) translate3d(${dx}px, ${dy}px, 0) rotateX(1.5deg) rotateY(${Math.max(-3, Math.min(3, dx * 0.02))}deg) rotateZ(${Math.max(-1.8, Math.min(1.8, dx * 0.012))}deg) scale(1.025)`;
+    } else {
+      transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    }
+    return `left:${current.left}px;top:${current.top}px;width:${current.width}px;transform:${transform}`;
+  });
 
   $effect(() => { ordered = [...providers]; });
 
@@ -67,6 +119,7 @@
       announcement = "供应商顺序已保存";
       notify(announcement);
     } catch (cause) {
+      clearSettle();
       ordered = before;
       saveError = errorMessage(cause);
       announcement = "保存失败，已恢复原顺序";
@@ -94,30 +147,42 @@
     if (event.key === "Escape" && drag) { event.preventDefault(); cancel(); return; }
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
     event.preventDefault();
-    if (saving || drag) return;
+    if (saving || drag || settling) return;
     const before = [...ordered];
     const source = ordered.findIndex((item) => item.provider.id === id);
     move(id, source + (event.key === "ArrowUp" ? -1 : 1));
     void persist(before, id);
   }
 
-  /** 按住整行捕获指针并浮起实际行；占位包含外层底边框，避免按下时列表缩短。 */
+  /** 按住整行捕获指针；真实行留在原位，拖动预览另行浮起。 */
   function start(event: PointerEvent, id: string): void {
-    if (event.button !== 0 || !event.isPrimary || saving || drag) return;
+    if (event.button !== 0 || !event.isPrimary || saving || drag || settling) return;
     event.preventDefault();
     const row = event.currentTarget as HTMLButtonElement;
     row.focus({ preventScroll: true });
     const rect = row.getBoundingClientRect();
     drag = { id, pointerId: event.pointerId, before: [...ordered],
-      left: rect.left, top: rect.top, width: rect.width, height: row.parentElement!.getBoundingClientRect().height,
-      startY: event.clientY, y: event.clientY };
+      left: rect.left, top: rect.top, width: rect.width,
+      startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
     list.setPointerCapture(event.pointerId);
   }
 
   /** 指针越过相邻行的布局中线才让位；使用布局坐标避免 FLIP 动画导致反复换位。 */
   function pointermove(event: PointerEvent): void {
     if (!drag || event.pointerId !== drag.pointerId) return;
-    drag.y = event.clientY;
+    event.preventDefault();
+    pendingPointer = { x: event.clientX, y: event.clientY };
+    if (!pointerFrame) pointerFrame = requestAnimationFrame(applyPointerFrame);
+  }
+
+  /** 每帧只读取一次布局并更新落点，指针位置和列表让位共享同一绘制节奏。 */
+  function applyPointerFrame(): void {
+    pointerFrame = 0;
+    const point = pendingPointer;
+    pendingPointer = null;
+    if (!drag || !point) return;
+    drag.x = point.x;
+    drag.y = point.y;
     const rows = Array.from(list.children) as HTMLElement[];
     const listTop = list.getBoundingClientRect().top;
     const source = ordered.findIndex((item) => item.provider.id === drag?.id);
@@ -125,24 +190,83 @@
     for (const [index, row] of rows.entries()) {
       if (index === source) continue;
       const midpoint = listTop + row.offsetTop + row.offsetHeight / 2;
-      if (index < source && event.clientY < midpoint) { target = index; break; }
-      if (index > source && event.clientY > midpoint) target = index;
+      if (index < source && point.y < midpoint) { target = index; break; }
+      if (index > source && point.y > midpoint) target = index;
     }
     move(drag.id, target);
+  }
+
+  /** 在松手前补结算最后一帧，避免快速抬手时漏掉最后一个落点。 */
+  function flushPointerFrame(): void {
+    if (pointerFrame) cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+    applyPointerFrame();
+  }
+
+  /** 清理尚未执行的指针帧，取消拖动或卸载时不再更新旧会话。 */
+  function clearPointerFrame(): void {
+    if (pointerFrame) cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+    pendingPointer = null;
+  }
+
+  /** 清理松手吸附定时器，保存失败或组件卸载时立即结束合成过渡。 */
+  function clearSettle(): void {
+    if (settleFrame) cancelAnimationFrame(settleFrame);
+    if (settleFadeTimer) clearTimeout(settleFadeTimer);
+    if (settleDoneTimer) clearTimeout(settleDoneTimer);
+    settleFrame = 0;
+    settleFadeTimer = 0;
+    settleDoneTimer = 0;
+    settling = null;
+  }
+
+  /** 松手后让浮动行落到目标槽位，再与真实行内容交叉淡变。 */
+  function startSettle(origin: DragSession, id: string): void {
+    if (prefersReducedMotion.current) return;
+    const target = Array.from(list.querySelectorAll<HTMLButtonElement>("[data-order-id]"))
+      .find((row) => row.dataset.orderId === id)?.getBoundingClientRect();
+    if (!target) return;
+    settling = {
+      id,
+      left: origin.left, top: origin.top, width: origin.width,
+      x: origin.x, y: origin.y, startX: origin.startX, startY: origin.startY,
+      targetLeft: target.left, targetTop: target.top,
+      arrived: false, leaving: false,
+    };
+    settleFrame = requestAnimationFrame(() => {
+      settleFrame = 0;
+      if (settling) settling.arrived = true;
+    });
+    settleFadeTimer = window.setTimeout(() => {
+      settleFadeTimer = 0;
+      if (settling) settling.leaving = true;
+    }, 170);
+    settleDoneTimer = window.setTimeout(() => {
+      settleDoneTimer = 0;
+      settling = null;
+    }, 270);
   }
 
   /** 结束指针捕获；先清空会话，避免释放捕获事件误触发取消。 */
   function release(): void {
     const pointerId = drag?.pointerId;
+    clearPointerFrame();
     drag = null;
     if (pointerId !== undefined && list.hasPointerCapture(pointerId)) list.releasePointerCapture(pointerId);
   }
 
-  /** 松手才保存；回到起始位置或单击不会产生写入。 */
-  function pointerup(event: PointerEvent): void {
+  /** 松手才保存；先等最后落点进入 DOM，再让浮动行吸附到目标槽位。 */
+  async function pointerup(event: PointerEvent): Promise<void> {
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const { before, id } = drag;
+    flushPointerFrame();
+    const origin = { ...drag };
+    const { before, id } = origin;
     release();
+    await tick();
+    if (Math.hypot(origin.x - origin.startX, origin.y - origin.startY) >= 4) {
+      startSettle(origin, id);
+    }
     void retainFocus(id);
     void persist(before, id);
   }
@@ -151,16 +275,35 @@
   function cancel(event?: PointerEvent): void {
     if (!drag || (event && event.pointerId !== drag.pointerId)) return;
     const { before, id } = drag;
+    clearSettle();
     ordered = before;
     release();
     announcement = "已取消移动，恢复原顺序";
     void retainFocus(id);
   }
 
-  onDestroy(() => { if (drag) release(); });
+  onDestroy(() => {
+    clearPointerFrame();
+    clearSettle();
+    if (drag) release();
+  });
 </script>
 
 <svelte:window onpointermove={pointermove} onpointerup={pointerup} onpointercancel={cancel} onblur={() => cancel()} />
+
+{#snippet providerRowContents(item: ProviderOverview, index: number)}
+  <span class="order-index">{String(index + 1).padStart(2, "0")}</span>
+  <span class="provider-mark" aria-hidden="true">{item.provider.name.slice(0, 1)}</span>
+  <span class="order-copy">
+    <strong>{item.provider.name}</strong>
+    <span class="health" data-state={item.health.state}>
+      <Badge variant={item.health.state === "abnormal" ? "destructive" : "secondary"}>
+        {healthLabels[item.health.state]}{item.health.percent === null ? "" : ` ${item.health.percent}%`}
+      </Badge>
+    </span>
+    <Badge variant={item.provider.enabled ? "outline" : "secondary"}>{item.provider.enabled ? "启用" : "停用"}</Badge>
+  </span>
+{/snippet}
 
 <section class="overflow-hidden rounded-xl border bg-card" aria-labelledby="provider-order-title" aria-busy={saving}>
   <header class="border-b px-5 py-4">
@@ -172,30 +315,19 @@
   {#if saveError}<Alert.Root variant="destructive"><Alert.Description>供应商顺序保存失败，已恢复原顺序：{saveError}</Alert.Description></Alert.Root>{/if}
   <div class="order-list" bind:this={list} role="list" aria-label="供应商优先顺序" onlostpointercapture={cancel}>
     {#each ordered as item, index (item.provider.id)}
-      <div role="listitem" class="order-slot" style:height={drag?.id === item.provider.id ? `${drag.height}px` : undefined}
-        animate:flip={{ duration: prefersReducedMotion.current || drag?.id === item.provider.id ? 0 : 160 }}>
+      <div role="listitem" class="order-slot"
+        animate:flip={{ duration: prefersReducedMotion.current || activeRowID === item.provider.id ? 0 : 240, easing: springSettle }}>
         <Button variant="row" size="row"
           class="order-row"
           data-order-id={item.provider.id}
           data-inactive={!item.provider.enabled}
-          data-dragging={drag?.id === item.provider.id}
+          data-dragging={activeRowID === item.provider.id}
           aria-disabled={saving}
           aria-describedby="provider-order-help"
           aria-label={`${item.provider.name}，健康${healthLabels[item.health.state]}${item.health.percent === null ? '' : ` ${item.health.percent}%`}${item.health.reason ? `，${item.health.reason}` : ''}，${item.provider.enabled ? '启用' : '停用'}，第 ${index + 1} 位，共 ${ordered.length} 位`}
-          style={drag?.id === item.provider.id ? `position:fixed;left:${drag.left}px;top:${drag.top + drag.y - drag.startY}px;width:${drag.width}px;z-index:50` : undefined}
           onpointerdown={(event) => start(event, item.provider.id)}
           onkeydown={(event) => keydown(event, item.provider.id)}>
-          <span class="order-index">{String(index + 1).padStart(2, "0")}</span>
-          <span class="provider-mark" aria-hidden="true">{item.provider.name.slice(0, 1)}</span>
-          <span class="order-copy">
-            <strong>{item.provider.name}</strong>
-            <span  class="health" data-state={item.health.state} >
-              <Badge variant={item.health.state === "abnormal" ? "destructive" : "secondary"}>
-                {healthLabels[item.health.state]}{item.health.percent === null ? "" : ` ${item.health.percent}%`}
-              </Badge>
-            </span>
-            <Badge variant={item.provider.enabled ? "outline" : "secondary"}>{item.provider.enabled ? "启用" : "停用"}</Badge>
-          </span>
+          {@render providerRowContents(item, index)}
         </Button>
       </div>
     {/each}
@@ -208,6 +340,19 @@
     </div>
   {/if}
 </section>
+{#if dragItem && dragIndex >= 0}
+  <div
+    class="drag-preview"
+    data-inactive={!dragItem.provider.enabled}
+    data-settling={settling !== null}
+    data-leaving={settling?.leaving}
+    style={dragPreviewStyle}
+    aria-hidden="true">
+    <div class="drag-preview-surface">
+      {@render providerRowContents(dragItem, dragIndex)}
+    </div>
+  </div>
+{/if}
 <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
 
 <style>
@@ -215,11 +360,70 @@
   .order-slot { border-bottom: 1px solid var(--border); }
   .order-slot:last-child { border-bottom: 0; }
   .order-list :global(.order-row) { cursor:grab; touch-action:none; }
-  .order-list :global(.order-row[data-dragging="true"]) { cursor:grabbing; }
+  .order-list :global(.order-row[data-dragging="true"]) {
+    cursor: grabbing;
+    border-radius: 0;
+    background: var(--accent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, var(--border));
+  }
+  .order-list :global(.order-row > *) { transition: opacity 130ms ease; }
+  .order-list :global(.order-row[data-dragging="true"] > *) { opacity: 0; }
+  .drag-preview {
+    position: fixed;
+    z-index: 80;
+    pointer-events: none;
+    transform-origin: center;
+    will-change: transform;
+    transition: opacity 90ms ease;
+  }
+  .drag-preview[data-settling="true"] {
+    transition:
+      transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 90ms ease;
+  }
+  .drag-preview[data-leaving="true"] {
+    opacity: 0;
+  }
+  .drag-preview-surface {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 58px;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border: 1px solid color-mix(in srgb, var(--primary) 68%, var(--border));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--card) 90%, var(--accent));
+    box-shadow:
+      0 22px 42px -18px color-mix(in srgb, var(--primary) 48%, transparent),
+      0 12px 20px -14px var(--foreground);
+    color: var(--foreground);
+    animation: drag-preview-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: box-shadow 180ms ease;
+  }
+  .drag-preview[data-settling="true"] .drag-preview-surface {
+    box-shadow:
+      0 12px 26px -18px color-mix(in srgb, var(--primary) 34%, transparent),
+      0 6px 14px -12px var(--foreground);
+  }
+  .drag-preview[data-inactive="true"] .drag-preview-surface { opacity: 0.72; }
+  @keyframes drag-preview-in {
+    from {
+      opacity: 0.55;
+      box-shadow: 0 8px 18px -14px color-mix(in srgb, var(--primary) 30%, transparent);
+      transform: scale(0.985);
+    }
+  }
   .order-index { flex-shrink: 0; width: 22px; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
   .provider-mark { display: grid; place-content: center; flex-shrink: 0; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: var(--primary); font-family: Georgia, serif; }
   .order-copy { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; }
   .order-copy strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
   .health { display: inline-flex; }
-  @media (prefers-reduced-motion: reduce) { .order-list :global(.order-row) { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .order-list :global(.order-row),
+    .order-list :global(.order-row > *),
+    .drag-preview,
+    .drag-preview-surface { transition: none; }
+    .drag-preview-surface { animation: none; }
+  }
 </style>

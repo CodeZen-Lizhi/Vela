@@ -370,6 +370,13 @@ input:not([data-slot]):focus-visible {
   padding: 18px 16px;
   white-space: normal;
 }
+.model-row-actions {
+  --row-action-size: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
 .model-identity {
   display: flex;
   align-items: center;
@@ -488,6 +495,9 @@ input:not([data-slot]):focus-visible {
   .model-table th {
     padding: 12px 8px;
   }
+  .model-row-actions {
+    --row-action-size: 2rem;
+  }
   .model-table .model-capabilities {
     display: grid;
     grid-template-columns: repeat(2, max-content);
@@ -528,6 +538,9 @@ input:not([data-slot]):focus-visible {
   .model-table td,
   .model-table th {
     padding: 12px 8px;
+  }
+  .model-row-actions {
+    flex-direction: column;
   }
 }
 

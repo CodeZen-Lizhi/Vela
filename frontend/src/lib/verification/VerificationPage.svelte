@@ -305,19 +305,7 @@
 </script>
 
 <section class="v-page list-page">
-  <PageHeader title="模型验证" description="按供应商、模型、Key 与思考强度追踪固定线路的覆盖和差异。">
-    {#snippet actions()}
-      <Button
-          size="sm"
-          disabled={!desktop || !snapshot || !providers.length}
-          onclick={() => openPlan()}
-          ><Plus data-icon="inline-start" />{providerId &&
-          snapshot?.plans.some((plan) => plan.providerId === providerId)
-            ? "编辑当前计划"
-            : "创建检测计划"}</Button
-        >
-    {/snippet}
-  </PageHeader>
+  <PageHeader title="模型验证" description="按供应商、模型、Key 与思考强度追踪固定线路的覆盖和差异。" />
   {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 计划、检测及报告请在 Vela
       桌面窗口中使用；此处不生成演示结果。
@@ -331,15 +319,19 @@
           <Tabs.Trigger value="results">验证结果 <span>{scopedReports.length}</span></Tabs.Trigger>
           <Tabs.Trigger value="plans">检测计划 <span>{scopedPlans.length}</span></Tabs.Trigger>
         </Tabs.List>
+        <Button
+          class="v-create-plan"
+          size="sm"
+          disabled={!desktop || !snapshot || !providers.length}
+          onclick={() => openPlan()}
+          ><Plus data-icon="inline-start" />{providerId &&
+          snapshot?.plans.some((plan) => plan.providerId === providerId)
+            ? "编辑当前计划"
+            : "创建检测计划"}</Button
+        >
       <div class="v-filters">
-        <Choice
-          bind:value={providerId}
-          label="验证供应商"
-          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
-        />
-      </div>
-      <!-- 保留结果筛选行的占位；计划页签不展示也不能聚焦这些控件。 -->
-      <div class="v-result-filters" class:invisible={tab !== "results"} inert={tab !== "results"} aria-hidden={tab !== "results"}>
+        <!-- 结果筛选只属于验证结果页签；计划页签不展示也不能聚焦这些控件。 -->
+        <div class="v-result-filters" inert={tab !== "results"} aria-hidden={tab !== "results"}>
           <InputGroup.Root class="v-search"
             ><InputGroup.Input
               bind:value={query}
@@ -358,6 +350,12 @@
             ]}
           />
         </div>
+        <Choice
+          bind:value={providerId}
+          label="验证供应商"
+          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
+        />
+      </div>
     </div>
     {#if running && snapshot}
       <VerificationActivity progress={snapshot.progress} {busy} onstop={stop} />
@@ -416,7 +414,7 @@
                 ><div class="v-actions">
                   <Button onclick={() => start(report.target.providerId, report.id)}
                     variant="ghost"
-                    size="icon-xs"
+                    size="row-action"
                     aria-label={`复测 ${report.target.modelName}`}
 
                     disabled={!desktop || running || busy || !!reason}
@@ -424,7 +422,7 @@
                     ><Play /></Button
                   ><Button onclick={() => (reportID = report.id)}
                     variant="ghost"
-                    size="icon-xs"
+                    size="row-action"
                     aria-label={`查看 ${report.target.modelName} 验证详情`}
 
                     ><Eye /></Button

@@ -5,8 +5,6 @@
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
-    Circle,
-    CircleCheck,
     CircleDollarSign,
     ListOrdered,
     Route,
@@ -135,7 +133,7 @@
               <span class="strategy-description">{item.description}</span>
               <small>{item.scenario}</small>
             </span>
-            <span class="strategy-check" aria-hidden="true">{#if selected === item.value}<CircleCheck class="size-4 text-primary" />{:else}<Circle class="size-4 text-muted-foreground" />{/if}</span>
+            <span class="strategy-check" data-selected={selected === item.value} aria-hidden="true"></span>
           </ToggleGroup.Item>
         {/each}
       </ToggleGroup.Root>
@@ -171,6 +169,38 @@
     border-radius: 8px;
     background: var(--secondary);
     color: var(--muted-foreground);
+  }
+  .strategy-check {
+    display: grid;
+    place-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+    border-radius: 999px;
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+  .strategy-check::after {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--primary);
+    content: "";
+    opacity: 0;
+    transform: scale(0.35);
+    transition:
+      opacity 140ms ease,
+      transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .strategy-check[data-selected="true"] {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+  .strategy-check[data-selected="true"]::after {
+    opacity: 1;
+    transform: scale(1);
   }
 
   :global(.strategy-option) strong {

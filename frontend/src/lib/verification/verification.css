@@ -18,6 +18,9 @@
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
+.v-create-plan {
+  margin-left: auto;
+}
 .v-filters,
 .v-result-filters,
 .v-actions,
@@ -27,13 +30,19 @@
   gap: 8px;
 }
 .v-filters {
-  margin-left: auto;
-  min-width: 0;
-  justify-content: flex-end;
-}
-.v-result-filters {
   flex-basis: 100%;
   min-width: 0;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  flex-shrink: 1;
+}
+.v-result-filters {
+  min-width: 0;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+.v-result-filters[aria-hidden="true"] {
+  display: none;
 }
 .v-filters > [data-slot="select-trigger"],
 .v-result-filters > [data-slot="select-trigger"] {
@@ -41,7 +50,8 @@
   flex-shrink: 0;
 }
 .v-search {
-  width: min(100%, 360px);
+  width: 360px;
+  max-width: 100%;
   min-width: 180px;
 }
 
@@ -73,7 +83,10 @@
 .v-table .v-identity strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .v-table .v-key-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .v-table .v-identity > svg { flex-shrink:0; }
-.v-table .v-actions { gap:2px; }
+.v-table .v-actions {
+  --row-action-size: 2.25rem;
+  gap: 4px;
+}
 .v-table [data-slot="badge"] { max-width:100%; white-space:normal; }
 .v-table small {
   display: block;
@@ -384,10 +397,18 @@
 /* 两个桌面窄窗口使用相同列数与工具栏分行，所有结果列和操作直接可见。 */
 @media (max-width: 1100px) {
   .v-toolbar { gap:12px; padding:14px 16px; }
-  .v-filters { width:auto; justify-content:flex-end; }
+  .v-filters { flex-shrink:1; justify-content:flex-start; flex-wrap:nowrap; }
+  .v-result-filters { flex:1; flex-wrap:nowrap; }
+  .v-search { width:auto; flex:1; }
   .v-table th,.v-table td { padding:12px 6px; }
   .v-table .v-identity { gap:6px; }
   .v-plans { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 760px) {
+  .v-filters { flex-wrap:wrap; }
+  .v-result-filters { flex-basis:100%; }
+  .v-filters > [data-slot="select-trigger"] { margin-left:auto; }
+  .v-table .v-actions { flex-direction:column; gap:2px; }
 }
 /* 低于桌面最小宽度后才降级，正常桌面窗口始终保持三列设置与单行线路。 */
 @media (max-width: 600px) {

@@ -59,6 +59,8 @@
 				"icon-xs": "size-7 [&_svg:not([class*='size-'])]:size-3",
 				"icon-sm": "size-9",
 				"icon-lg": "size-11",
+				/** 表格行操作按列宽设置 30～36px 点击区，避免统一尺寸挤压不同列。 */
+				"row-action": "size-[var(--row-action-size,2rem)] [&_svg:not([class*='size-'])]:size-3.5",
 				/** 随正文排布，不引入按钮内边距或固定高度。 */
 				inline: "h-auto gap-1 rounded-sm p-0 font-normal",
 			},
