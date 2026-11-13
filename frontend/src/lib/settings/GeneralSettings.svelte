@@ -187,7 +187,7 @@
     </Select.Root>
   </div>
   <div class="setting-row">
-    <span id="model-update-label"><strong>模型目录与价格自动更新</strong><small class="block text-xs text-muted-foreground">定期检查 LiteLLM 来源，保留本地修改；关闭后仍可手动同步价格。</small></span>
+    <span id="model-update-label"><strong>模型目录与价格自动更新</strong><small class="block text-xs text-muted-foreground">定期检查 basellm 来源，保留本地修改；关闭后仍可手动同步价格。</small></span>
     <Switch
       aria-labelledby="model-update-label"
       checked={saved.modelAutoUpdate}

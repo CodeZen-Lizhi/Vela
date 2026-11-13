@@ -67,7 +67,7 @@ func Open(path string, client *http.Client, catalogURL string) (*Store, error) {
 	}
 	catalogContext, cancel := context.WithCancel(context.Background())
 	s := &Store{db: db, client: client, catalogURL: catalogURL, catalogContext: catalogContext, catalogCancel: cancel, catalogAuto: true, catalogMinutes: 10, catalogWake: make(chan struct{}, 1)}
-	s.catalogState.Status = CatalogStatus{Source: "LiteLLM", Failures: []string{}}
+	s.catalogState.Status = CatalogStatus{Source: catalogSource, Failures: []string{}}
 	s.loadCatalogCache(context.Background())
 	return s, nil
 }
@@ -163,7 +163,7 @@ func (s *Store) add(ctx context.Context, providerID, sourceModelID string, draft
 	if err != nil {
 		return Model{}, err
 	}
-	m := Model{Source: "LiteLLM", SourceKey: entry.SourceKey, Warnings: entry.Warnings, ID: id, ModelID: entry.ModelID, Name: entry.Name, Family: entry.Family, Kind: entry.Kind, Context: entry.Context, Capabilities: entry.Capabilities, ProviderID: entry.ProviderID, ProviderName: entry.ProviderName, SourceModelID: entry.ModelID, CanonicalID: entry.CanonicalID, Official: entry.Official, SourceAvailable: true, SyncedAt: time.Now().UTC().Format(time.RFC3339), Pricing: entry.Pricing, SourcePricing: entry.Pricing, Overrides: []string{}}
+	m := Model{Source: catalogSource, SourceKey: entry.SourceKey, Warnings: entry.Warnings, ID: id, ModelID: entry.ModelID, Name: entry.Name, Family: entry.Family, Kind: entry.Kind, Context: entry.Context, Capabilities: entry.Capabilities, ProviderID: entry.ProviderID, ProviderName: entry.ProviderName, SourceModelID: entry.ModelID, CanonicalID: entry.CanonicalID, Official: entry.Official, SourceAvailable: true, SyncedAt: time.Now().UTC().Format(time.RFC3339), Pricing: entry.Pricing, SourcePricing: entry.Pricing, Overrides: []string{}}
 	// 同一来源模型的跨供应商候选共用统一模型名，保留实际来源名称用于后续同步。
 	if entry.CanonicalID != "" {
 		parts := strings.SplitN(entry.CanonicalID, "/", 2)

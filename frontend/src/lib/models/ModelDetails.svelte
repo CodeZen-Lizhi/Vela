@@ -103,7 +103,7 @@
     <div>
       <dt>价格来源</dt>
       <dd>
-        {model.providerId ? `LiteLLM · ${model.providerName}` : '手动创建'}{model.providerId && !model.sourceAvailable
+        {model.providerId ? `${model.source || "历史目录"} · ${model.providerName}` : '手动创建'}{model.providerId && !model.sourceAvailable
           ? "（来源已下架，保留本地配置）"
           : ""}
       </dd>

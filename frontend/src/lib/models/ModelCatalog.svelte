@@ -46,7 +46,7 @@
     onselect: (entry: CatalogEntry) => void;
   } = $props();
   /**
-   * 厂商条只列热门官方厂商，顺序即展示顺序：id 为 LiteLLM 供应商标识，label 为界面名称，logo 为本地品牌图标。
+   * 厂商条只列热门官方厂商，顺序即展示顺序：id 为 basellm 供应商标识，label 为界面名称，logo 为本地品牌图标。
    * 未列出的来源不在厂商条出现，仍可通过搜索选到。
    */
   const officialVendors = [
@@ -285,14 +285,14 @@
   }
   .catalog-option-head strong {
     display: block;
-    font-size: 12px;
+    font-size: 14px;
     overflow-wrap: anywhere;
   }
   .catalog-option-head span:not(.model-brand),
   .catalog-option-head code {
     display: block;
     margin-top: 2px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--muted-foreground);
   }
   .catalog-option-head code {
@@ -313,7 +313,7 @@
     font-size: 13px;
   }
   .catalog-grid :global(.price-basis) {
-    font-size: 10px;
+    font-size: 12px;
   }
   .catalog-grid :global(.price-traits) {
     gap: 4px;

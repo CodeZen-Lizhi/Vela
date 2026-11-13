@@ -57,7 +57,7 @@
       >{/if}
   </div>
   {#if rates.length}<p class="price-basis">
-      标准价 · {rates.map((r) => rateNames[r.key]).join(" / ")} · {unitLabel(
+      {pricing.schedules.length ? pricing.baseline || "基础价" : "标准价"} · {rates.map((r) => rateNames[r.key]).join(" / ")} · {unitLabel(
         rates[0]?.unit ?? "",
       ).replace("美元 / ", "")}
     </p>{/if}

@@ -9,14 +9,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
+	"strings"
 	"time"
 )
 
 // catalogCacheVersion 随目录解析契约变化递增，避免新版沿用旧解析结果。
-const catalogCacheVersion = 2
+const catalogCacheVersion = 3
 
-// LiteCatalogURL 是唯一默认在线价格源；测试可通过 Open 指定隔离 HTTP 服务。
-const LiteCatalogURL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+// BasellmCatalogURL 与 New API 使用同一 basellm 数据库，完整目录同时提供资料和结构化价格。
+const BasellmCatalogURL = "https://basellm.github.io/llm-metadata/api/all.json"
+
+// catalogSource 是新增模型与成功同步记录的目录来源名称。
+const catalogSource = "basellm"
 
 // CatalogStatus 区分检查时间、内容变更时间、后台状态和失败，供页面轻量轮询。
 type CatalogStatus struct {
@@ -46,6 +51,8 @@ type catalogCache struct {
 	Modified string         `json:"modified"`
 	Hash     string         `json:"hash"`
 	Entries  []CatalogEntry `json:"entries"`
+	// ExchangeRates 是 basellm manifest 提供的每美元兑换单位，和目录共同决定价格版本。
+	ExchangeRates map[string]float64 `json:"exchangeRates,omitempty"`
 	// Status 在重启后保留更新时间与失败原因，运行态另行重置。
 	Status CatalogStatus `json:"status"`
 }
@@ -243,11 +250,15 @@ func (s *Store) refreshCatalog(ctx context.Context) (SyncResult, error) {
 	if client.Timeout == 0 {
 		client.Timeout = 45 * time.Second
 	}
+	exchangeRates, err := fetchCatalogExchangeRates(ctx, &client, s.catalogURL)
+	if err != nil {
+		return result, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.catalogURL, nil)
 	if err != nil {
 		return result, err
 	}
-	if len(cached.Entries) > 0 {
+	if len(cached.Entries) > 0 && reflect.DeepEqual(cached.ExchangeRates, exchangeRates) {
 		req.Header.Set("If-None-Match", cached.ETag)
 		req.Header.Set("If-Modified-Since", cached.Modified)
 	}
@@ -273,10 +284,14 @@ func (s *Store) refreshCatalog(ctx context.Context) (SyncResult, error) {
 		if len(data) > limit {
 			return result, errors.New("模型目录超过32MB，保留原数据")
 		}
-		hash := sha256.Sum256(data)
+		rateData, err := json.Marshal(exchangeRates)
+		if err != nil {
+			return result, err
+		}
+		hash := sha256.Sum256(append(data, rateData...))
 		sum := hex.EncodeToString(hash[:])
 		if sum != cached.Hash || len(cached.Entries) == 0 {
-			entries, decodeErr := decodeCatalogData(data)
+			entries, decodeErr := decodeCatalogData(data, exchangeRates)
 			if decodeErr != nil {
 				return result, decodeErr
 			}
@@ -287,11 +302,12 @@ func (s *Store) refreshCatalog(ctx context.Context) (SyncResult, error) {
 			next.Hash = sum
 			next.Status.UpdatedAt = now
 		}
+		next.ExchangeRates = exchangeRates
 		next.URL = s.catalogURL
 		next.ETag = response.Header.Get("ETag")
 		next.Modified = response.Header.Get("Last-Modified")
 	}
-	next.Status.Source = "LiteLLM"
+	next.Status.Source = catalogSource
 	next.Status.CheckedAt = now
 	next.Status.Error = ""
 	next.Status.Failures = []string{}
@@ -317,8 +333,8 @@ func (s *Store) refreshCatalog(ctx context.Context) (SyncResult, error) {
 	return result, nil
 }
 
-// decodeCatalogData 读取 LiteLLM 在线数据；旧格式仅用于旧快照和兼容测试，运行时没有第二个来源。
-func decodeCatalogData(data []byte) ([]CatalogEntry, error) {
+// decodeCatalogData 读取 basellm 完整目录；LiteLLM 格式仅兼容旧快照和隔离测试，不提供联网回退。
+func decodeCatalogData(data []byte, exchangeRates map[string]float64) ([]CatalogEntry, error) {
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("模型目录格式错误: %w", err)
@@ -326,7 +342,7 @@ func decodeCatalogData(data []byte) ([]CatalogEntry, error) {
 	for _, raw := range root {
 		var obj map[string]json.RawMessage
 		if json.Unmarshal(raw, &obj) == nil && obj["models"] != nil {
-			return decodeLegacyCatalog(data, true)
+			return decodeProviderCatalog(data, exchangeRates)
 		}
 	}
 	return decodeLiteCatalog(data)
@@ -341,4 +357,38 @@ func (s *Store) persistCatalogStatusLocked() error {
 	}
 	_, err = s.db.ExecContext(s.catalogContext, "INSERT INTO settings(name,document) VALUES('model-catalog-status',?) ON CONFLICT(name) DO UPDATE SET document=excluded.document", string(data))
 	return err
+}
+
+// fetchCatalogExchangeRates 读取同一 basellm 发布物的汇率；自定义隔离来源不以 all.json 结尾时无需额外请求。
+func fetchCatalogExchangeRates(ctx context.Context, client *http.Client, catalogURL string) (map[string]float64, error) {
+	if !strings.HasSuffix(catalogURL, "/all.json") {
+		return nil, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(catalogURL, "all.json")+"manifest.json", nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("无法读取 basellm 汇率: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("basellm 汇率返回 HTTP %d", response.StatusCode)
+	}
+	var manifest struct {
+		// NewAPI 使用与 New API 官方预设一致的汇率，避免把人民币单价当作美元。
+		NewAPI struct {
+			ExchangeRates map[string]float64 `json:"exchangeRates"`
+		} `json:"newapi"`
+	}
+	if err = json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("basellm 汇率格式错误: %w", err)
+	}
+	for currency, rate := range manifest.NewAPI.ExchangeRates {
+		if !validPrice(rate, true) {
+			return nil, fmt.Errorf("basellm %s 汇率无效", currency)
+		}
+	}
+	return manifest.NewAPI.ExchangeRates, nil
 }

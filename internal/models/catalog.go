@@ -24,10 +24,11 @@ type rawModel struct {
 	// ReleaseDate 是来源声明的发布日期，支持 YYYY-MM-DD 或仅有年月的 YYYY-MM。
 	ReleaseDate string `json:"release_date"`
 	// Status 为来源生命周期标记；deprecated 只从在线添加候选中排除，不影响已有模型同步。
-	Status    string `json:"status"`
-	ToolCall  bool   `json:"tool_call"`
-	Reasoning bool   `json:"reasoning"`
-	Limit     struct {
+	Status           string `json:"status"`
+	StructuredOutput bool   `json:"structured_output"`
+	ToolCall         bool   `json:"tool_call"`
+	Reasoning        bool   `json:"reasoning"`
+	Limit            struct {
 		Context int `json:"context"`
 	} `json:"limit"`
 	Modalities struct {
@@ -42,9 +43,20 @@ type rawModel struct {
 	} `json:"experimental"`
 }
 
-// rawProvider 是 models.dev api.json 的供应商条目，不使用其推理地址。
+// rawProvider 接收 basellm 的供应商与计费元数据，不使用其推理地址。
 type rawProvider struct {
-	// Name 为来源名称，Models 按来源模型 ID 保存原始条目。
+	// ID 为原生厂商身份，Doc 是公开价格文档地址。
+	ID  string `json:"id"`
+	Doc string `json:"doc"`
+	// Subscription 标记预付套餐，来源的零 Token 价不能解释为免费。
+	Subscription bool `json:"subscription"`
+	// Billing 仅使用来源明确提供的长期缓存倍率。
+	Billing struct {
+		// CacheWrite1h、CacheWrite12h 分别表示一小时与十二小时缓存相对输入价的倍率。
+		CacheWrite1h  float64 `json:"cacheWrite1h"`
+		CacheWrite12h float64 `json:"cacheWrite12h"`
+	} `json:"billing"`
+	// Name 是显示名称，Models 按来源模型 ID 保存完整原始条目。
 	Name   string                     `json:"name"`
 	Models map[string]json.RawMessage `json:"models"`
 }
@@ -61,8 +73,8 @@ func proxyTransport(p Proxy) (*http.Transport, error) {
 	return outbound.Transport(u), nil
 }
 
-// decodeLegacyCatalog 保留旧目录快照的读取能力，不作为联网回退来源。
-func decodeLegacyCatalog(data []byte, includeDeprecated bool) ([]CatalogEntry, error) {
+// decodeProviderCatalog 将 basellm 原生厂商目录映射为本地候选，弃用条目仍保留供已有模型同步。
+func decodeProviderCatalog(data []byte, exchangeRates map[string]float64) ([]CatalogEntry, error) {
 	var err error
 	var providers map[string]rawProvider
 	if err = json.Unmarshal(data, &providers); err != nil {
@@ -78,7 +90,7 @@ func decodeLegacyCatalog(data []byte, includeDeprecated bool) ([]CatalogEntry, e
 	releaseDates := make(map[[2]string]time.Time)
 	for pid, p := range providers {
 		for mid, raw := range p.Models {
-			entry := CatalogEntry{ProviderID: pid, ProviderName: p.Name, ModelID: mid}
+			entry := CatalogEntry{ProviderID: pid, ProviderName: p.Name, ModelID: mid, SourceKey: pid + "/" + mid, SourceURL: p.Doc, Metadata: append(json.RawMessage(nil), raw...), Capabilities: []string{}, Warnings: []string{}}
 			var m rawModel
 			if err = json.Unmarshal(raw, &m); err != nil {
 				entry.Name = mid
@@ -86,11 +98,14 @@ func decodeLegacyCatalog(data []byte, includeDeprecated bool) ([]CatalogEntry, e
 				entries = append(entries, entry)
 				continue
 			}
-			if !includeDeprecated && m.Status == "deprecated" {
+
+			entry.Deprecated = m.Status == "deprecated"
+			if entry.Deprecated {
 				deprecatedCount++
+			}
+			if m.Type != "" && !contains([]string{"chat", "image", "video", "embedding", "rerank", "reranking"}, m.Type) {
 				continue
 			}
-			entry.Deprecated = m.Status == "deprecated"
 			entry.Name = m.Name
 			releaseDates[[2]string{pid, mid}] = catalogReleaseDate(m.ReleaseDate)
 			if entry.Name == "" {
@@ -112,14 +127,22 @@ func decodeLegacyCatalog(data []byte, includeDeprecated bool) ([]CatalogEntry, e
 			if m.Reasoning {
 				entry.Capabilities = append(entry.Capabilities, "reasoning")
 			}
+			if m.StructuredOutput {
+				entry.Capabilities = append(entry.Capabilities, "structured")
+			}
 			if m.ToolCall {
 				entry.Capabilities = append(entry.Capabilities, "tools")
 			}
-			entry.Official = m.CanonicalID != "" && strings.SplitN(m.CanonicalID, "/", 2)[0] == pid
-			// 无 canonical 字段时只能确认来源身份，不能凭名称把中转站判断为官方。
-			entry.Pricing, err = decodePricing(m.Cost, m.Experimental.Modes, entry.Kind)
+			entry.Official = m.CanonicalID != "" && strings.SplitN(m.CanonicalID, "/", 2)[0] == pid || m.CanonicalID == "" && p.ID == pid
+			// 规范身份归属优先；原生厂商托管的外部模型不能误标为该模型的官方来源。
+			entry.Pricing, err = decodeBasellmPricing(m.Cost, m.Experimental.Modes, entry.Kind, exchangeRates, p.Billing.CacheWrite1h, p.Billing.CacheWrite12h)
 			if err != nil {
 				entry.Problem = err.Error()
+			}
+			if p.Subscription {
+				entry.Pricing = Pricing{Base: []Rate{}, Tiers: []Tier{}, Modes: []Mode{}, Schedules: []Schedule{}, Images: []ImagePrice{}, Videos: []VideoPrice{}}
+				entry.Problem = ""
+				entry.Warnings = append(entry.Warnings, "来源为预付套餐，未提供按量单价；价格保持未知")
 			}
 			entries = append(entries, entry)
 		}
@@ -175,7 +198,7 @@ func decodeRates(raw json.RawMessage, kind string) ([]Rate, error) {
 			return nil, errors.New("来源 reasoning 单价无法独立表达，已保留本地配置")
 		}
 	}
-	for _, key := range []string{"input", "output", "cache_read", "cache_write", "cache_write_1h", "input_audio", "output_audio"} {
+	for _, key := range []string{"input", "output", "cache_read", "cache_write", "cache_write_1h", "cache_write_12h", "input_audio", "output_audio", "input_image", "output_image", "per_image", "per_second", "per_request"} {
 		value, ok := costs[key]
 		if !ok || string(value) == "null" {
 			continue
@@ -194,7 +217,14 @@ func decodeRates(raw json.RawMessage, kind string) ([]Rate, error) {
 		if key == "output_audio" {
 			normalized = "audio_output"
 		}
-		result = append(result, Rate{Key: normalized, Price: price, Unit: "million_tokens"})
+		if key == "input_image" {
+			normalized = "image_input"
+		}
+		if key == "output_image" {
+			normalized = "image_output"
+		}
+		unit, _ := liteRateUnit(normalized)
+		result = append(result, Rate{Key: normalized, Price: price, Unit: unit})
 	}
 	return result, nil
 }
@@ -236,6 +266,11 @@ func decodePricing(raw json.RawMessage, modes map[string]struct {
 				p.Tiers = append(p.Tiers, Tier{Above: t.Tier.Size, Rates: rates})
 			}
 			sort.Slice(p.Tiers, func(i, j int) bool { return p.Tiers[i].Above < p.Tiers[j].Above })
+			previous := p.Base
+			for i := range p.Tiers {
+				p.Tiers[i].Rates = inheritRates(previous, p.Tiers[i].Rates)
+				previous = p.Tiers[i].Rates
+			}
 		}
 	}
 	for _, name := range []string{"fast", "priority"} {
@@ -296,7 +331,7 @@ func (s *Store) syncEntries(ctx context.Context, entries []CatalogEntry, syncedA
 		m.SourceAvailable = true
 		m.SyncedAt = syncedAt
 		if e.SourceKey != "" {
-			m.Source = "LiteLLM"
+			m.Source = catalogSource
 			m.SourceKey = e.SourceKey
 		}
 		m.Warnings = e.Warnings

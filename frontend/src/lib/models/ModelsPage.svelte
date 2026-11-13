@@ -131,7 +131,7 @@
     createSourceUpdated = false;
     dialogError = "";
     const pricing: Pricing = {base: [], tiers: [], modes: [], schedules: [], baseline: "", images: [], videos: []};
-    createDraft = {id: "", revision: 0, editRevision: 0, modelId: entry?.canonicalId.split("/")[1] || entry?.modelId || "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, source: entry ? "LiteLLM" : "", sourceKey: entry?.sourceKey ?? "", warnings: [...(entry?.warnings ?? [])], syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
+    createDraft = {id: "", revision: 0, editRevision: 0, modelId: entry?.canonicalId.split("/")[1] || entry?.modelId || "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, source: entry ? "basellm" : "", sourceKey: entry?.sourceKey ?? "", warnings: [...(entry?.warnings ?? [])], syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
     createOriginalPricing = entry ? structuredClone($state.snapshot(entry.pricing)) : structuredClone(pricing);
   }
   /** 返回目录丢弃未提交草稿，保留目录筛选和滚动位置；焦点回到搜索框。 */
@@ -512,7 +512,7 @@
       >{/if}
     </div>
     <div class="list-footer border-t px-4 py-3 text-xs text-muted-foreground">
-      来源 LiteLLM · 最近同步 {dateLabel(catalogStatus?.updatedAt || lastSync)}
+      来源 {catalogStatus?.source || "basellm"} · 最近同步 {dateLabel(catalogStatus?.updatedAt || lastSync)}
       {#if pollError}<p role="status" class="mt-1">读取更新状态失败：{pollError}</p>{/if}
       {#if catalogStatus?.refreshing}<span role="status"> · 正在检查更新…</span>{/if}
       {#if catalogStatus?.checkedAt}<span> · 最近检查 {dateLabel(catalogStatus.checkedAt)}</span>{/if}
@@ -539,7 +539,7 @@
       ><Dialog.Description class="sr-only"
         >{createDraft && !createEntry
           ? "填写目录外模型的名称、模型 ID、类型和价格"
-          : "从 LiteLLM 在线目录选择模型，确认后创建"}</Dialog.Description
+          : "从 basellm 在线目录选择模型，确认后创建"}</Dialog.Description
       ></Dialog.Header
     >
     {#if createDraft && !createEntry}

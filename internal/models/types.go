@@ -202,7 +202,7 @@ type Model struct {
 type CatalogEntry struct {
 	// Deprecated 标记来源明确弃用的条目，解析阶段保留供同步使用。
 	Deprecated bool `json:"deprecated"`
-	// SourceKey 保留 LiteLLM 原始目录键，用于追溯别名和来源。
+	// SourceKey 保留目录的厂商与原始模型键，用于追溯别名和来源。
 	SourceKey string `json:"sourceKey"`
 	// SourceURL 来源声明的价格文档地址，缺失时为空。
 	SourceURL string `json:"sourceUrl"`

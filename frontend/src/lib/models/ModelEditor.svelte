@@ -128,7 +128,7 @@
       onrestore={mode === "edit" ? onrestore : undefined}
       bind:openGroups
     />
-    <p class="text-xs text-muted-foreground">{model.providerId ? `价格来源 LiteLLM · ${model.providerName}` : "手动创建 · 未填写价格保持未知"}</p>
+    <p class="text-xs text-muted-foreground">{model.providerId ? `价格来源 ${model.source || "历史目录"} · ${model.providerName}` : "手动创建 · 未填写价格保持未知"}</p>
   </div>
   {#if validationError || error}<Alert.Root variant="destructive" class="mx-6 mb-3 shrink-0"><Alert.Description>
       {validationError || error}

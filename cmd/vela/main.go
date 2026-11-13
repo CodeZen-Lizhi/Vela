@@ -113,7 +113,7 @@ func startApplication(dataDir string, isolated bool) error {
 	if err != nil {
 		return fmt.Errorf("读取本机凭据: %w", err)
 	}
-	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, models.LiteCatalogURL)
+	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, models.BasellmCatalogURL)
 	if err != nil {
 		return fmt.Errorf("打开模型数据库: %w", err)
 	}
