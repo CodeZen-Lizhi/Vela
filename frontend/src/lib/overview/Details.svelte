@@ -39,7 +39,7 @@
     if (key === "standardCost" && total.unknownStandard >= total.requests && total.standardCost === 0 || key === "cost" && total.unknownCost >= total.requests && total.cost === 0 || key === "tokens" && total.unknownUsage >= total.requests && total.tokens === 0) return null;
     return total[key];
   }
-  /** 显示与排序使用相同的未知规则，金额固定四位，Token复用总览格式。 */
+  /** 显示与排序使用相同的未知规则，美元金额统一两位，Token复用总览格式。 */
   function display(total: OverviewMetrics, key: Sort): string {
     const amount = value(total, key);
     if (amount === null) return "—";
