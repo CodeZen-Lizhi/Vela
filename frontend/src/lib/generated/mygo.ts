@@ -1193,7 +1193,7 @@ export const VelaService = {
   modelCatalog(): Promise<CatalogEntry[]> {
     return call("VelaService.ModelCatalog");
   },
-  /** Overview 返回调用的长期小时汇总，逻辑请求与 Key 实际尝试通过 keyId 区分。 */
+  /** Overview 返回长期小时汇总，通过供应商模块解密解析当前 Key 名称，不在统计 SQL 中读取配置密文。 */
   overview(): Promise<OverviewSnapshot> {
     return call("VelaService.Overview");
   },

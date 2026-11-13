@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { Hint } from "$lib/components/ui/tooltip";
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { onMount, onDestroy } from "svelte";
   import {
     Activity,
@@ -237,7 +237,7 @@
             <div class="min-w-0">
               <div class="model-test-panel-eyebrow"><SlidersHorizontal />测试范围</div>
               <h3 id="model-test-config-title" class="model-test-panel-title">测试配置</h3>
-              <Hint text={configExpanded ? configSummary : panelDescription}>{#snippet children(hintProps0)}<p {...hintProps0} class="model-test-panel-description" >
+              <Hint text={configExpanded ? configSummary : panelDescription}>{#snippet children(props)}<p {...props} class="model-test-panel-description">
                 {configExpanded ? configSummary : panelDescription}
               </p>{/snippet}</Hint>
             </div>
@@ -303,7 +303,7 @@
             {:else}
               <div class="config-summary">
                 <div class="config-summary-row"><Server /><span>协议</span><strong>{selectedProtocolLabel}</strong></div>
-                <div class="config-summary-row"><KeyRound /><span>Key</span><strong>{selectedKeyLabel}</strong></div>
+                <div class="config-summary-row"><KeyRound /><span>Key</span><Hint text={selectedKeyLabel}>{#snippet children(props)}<strong {...props}>{selectedKeyLabel}</strong>{/snippet}</Hint></div>
                 <div class="config-summary-row"><Layers3 /><span>映射</span><strong>{selectedMappingLabel}</strong></div>
                 <p>{running ? "测试期间范围已锁定。" : "展开配置可调整本次测试范围。"}</p>
               </div>
@@ -387,8 +387,8 @@
                             class={selectedAttempt === index ? "is-selected" : undefined}
                           >
                             <Table.Cell class="attempt-index"><code>{String(index + 1).padStart(2, "0")}</code></Table.Cell>
-                            <Table.Cell class="attempt-key"><strong>{attempt.keyName || "—"}</strong></Table.Cell>
-                            <Table.Cell class="attempt-model"><Hint text={attempt.requestModel}>{#snippet children(hintProps1)}<code {...hintProps1} >{attempt.requestModel || "—"}</code>{/snippet}</Hint></Table.Cell>
+                            <Hint text={attempt.keyName || "—"}>{#snippet children(props)}<Table.Cell {...props} class="attempt-key"><strong>{attempt.keyName || "—"}</strong></Table.Cell>{/snippet}</Hint>
+                            <Table.Cell class="attempt-model"><Hint text={attempt.requestModel || "—"}>{#snippet children(props)}<code {...props}>{attempt.requestModel || "—"}</code>{/snippet}</Hint></Table.Cell>
                             <Table.Cell class="attempt-status">
                               <Badge variant={attempt.state === "success" ? "positive" : attempt.state === "failed" ? "negative" : "neutral"}>{stateLabel(attempt.state)}</Badge>
                             </Table.Cell>

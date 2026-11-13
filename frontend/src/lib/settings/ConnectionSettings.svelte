@@ -2,8 +2,6 @@
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
   import * as Alert from "$lib/components/ui/alert";
-  import { mergeProps } from "bits-ui";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { untrack } from "svelte";
   import {
     ArrowDownToLine,
@@ -216,7 +214,7 @@
         <div class="min-w-0">
           <InputGroup.Root>
             <InputGroup.Input id="gateway-endpoint" value={endpoint} readonly aria-label="本机接入地址" />
-            <InputGroup.Addon align="inline-end"><Hint text={copied === "address" ? "已复制" : "复制网关地址"}>{#snippet children(hintProps0)}<InputGroup.Button {...mergeProps(hintProps0, { onclick: () => void copy("address") })} size="icon-xs" aria-label="复制网关地址"  disabled={!desktop} >{#if copied === "address"}<Check />{:else}<Copy />{/if}</InputGroup.Button>{/snippet}</Hint></InputGroup.Addon>
+            <InputGroup.Addon align="inline-end"><InputGroup.Button onclick={() => void copy("address")} size="icon-xs" aria-label="复制网关地址"  disabled={!desktop} >{#if copied === "address"}<Check />{:else}<Copy />{/if}</InputGroup.Button></InputGroup.Addon>
           </InputGroup.Root>
         </div>
       </Field.Field>
@@ -229,7 +227,7 @@
               {#if keySet}
                 <InputGroup.Addon align="inline-end">
                   <InputGroup.Button size="icon-xs" aria-label={revealed ? "隐藏访问密钥" : "显示访问密钥"} aria-pressed={!!revealed} onclick={() => void toggleReveal()}>{#if revealed}<EyeOff />{:else}<Eye />{/if}</InputGroup.Button>
-                  <Hint text={copied === "key" ? "已复制" : "复制访问密钥"}>{#snippet children(hintProps1)}<InputGroup.Button {...mergeProps(hintProps1, { onclick: () => void copy("key") })} size="icon-xs" aria-label="复制访问密钥"  >{#if copied === "key"}<Check />{:else}<Copy />{/if}</InputGroup.Button>{/snippet}</Hint>
+                  <InputGroup.Button onclick={() => void copy("key")} size="icon-xs" aria-label="复制访问密钥"  >{#if copied === "key"}<Check />{:else}<Copy />{/if}</InputGroup.Button>
                 </InputGroup.Addon>
               {/if}
             </InputGroup.Root>

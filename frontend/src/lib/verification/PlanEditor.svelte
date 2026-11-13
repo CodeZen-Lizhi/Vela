@@ -1,7 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { mergeProps } from "bits-ui";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
@@ -312,7 +310,7 @@
                   onValueChange={(value) => change(line, "referenceModel", value)} />
                 <small class="text-muted-foreground">未选择时按原始模型 ID：{scope.find((target) => target.modelId === line.modelId)?.originalModel || "未知"}。</small>
               </Field.Field>{/if}
-              <Hint text={`移除第 ${index + 1} 行`}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => remove(line.id) })}
+              <Button onclick={() => remove(line.id)}
                 type="button"
                 variant="ghost"
                 size="icon-sm"
@@ -320,7 +318,7 @@
                 aria-label={`移除第 ${index + 1} 行`}
 
                 ><Trash2 /></Button
-              >{/snippet}</Hint>
+              >
             </div>
           {/each}
         </div>

@@ -4,12 +4,12 @@
   import TooltipPortal from "./tooltip-portal.svelte";
   import type { ComponentProps } from "svelte";
 
-  /** 全局纯文字提示：无底色、边框、阴影或箭头，颜色跟随主题。 */
+  /** 紧凑文字提示沿用主题反色，无边框、阴影或箭头，不截住鼠标操作。 */
   let {
     ref = $bindable(null),
     class: className,
-    sideOffset = 6,
-    side = "bottom",
+    sideOffset = 4,
+    side = "top",
     children,
     portalProps,
     ...restProps
@@ -25,7 +25,7 @@
     data-slot="tooltip-content"
     {sideOffset}
     {side}
-    class={cn("z-50 w-fit max-w-xs break-words whitespace-normal bg-transparent p-0 text-xs leading-relaxed text-foreground border-0 shadow-none outline-none", className)}
+    class={cn("z-50 w-fit max-w-[min(26rem,calc(100vw-1rem))] rounded-xs border-0 bg-foreground px-1.5 py-0.5 text-[11px] leading-4 text-background shadow-none outline-none break-words whitespace-normal pointer-events-none", className)}
     {...restProps}
   >
     {@render children?.()}

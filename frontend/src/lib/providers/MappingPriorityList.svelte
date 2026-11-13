@@ -1,6 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { mergeProps } from "bits-ui";
   import { Hint } from "$lib/components/ui/tooltip";
   import { onDestroy, tick, untrack } from "svelte";
   import { GripVertical, Trash2 } from "@lucide/svelte";
@@ -187,23 +186,23 @@
   {#each rows as row, index (row.id)}
     <div class="mapping-priority-row" data-mapping-row data-dragging={drag?.id === row.id} role="listitem">
       <span class="priority">P{index + 1}</span>
-      <Hint text="上下拖动调整优先级">{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onpointerdown: (event: PointerEvent) => start(event, row.id), onkeydown: (event: KeyboardEvent) => keydown(event, row.id) })} variant="ghost" size="icon-xs" class="touch-none cursor-grab"
+      <Button {...{ onpointerdown: (event: PointerEvent) => start(event, row.id), onkeydown: (event: KeyboardEvent) => keydown(event, row.id) }} variant="ghost" size="icon-xs" class="touch-none cursor-grab"
         disabled={locked} data-mapping-handle={row.id} aria-label={`拖动 ${row.mapping.requestName || '映射'} 调整优先级，或按上下方向键`}
           >
         <GripVertical aria-hidden="true" />
-      </Button>{/snippet}</Hint>
+      </Button>
       <div class="request-name">
         {#if editable}
           <Input value={row.mapping.requestName} disabled={locked || !!drag} aria-label={`优先级 P${index + 1} 的请求名`}
             onchange={(event) => rename(row.id, event.currentTarget.value)} />
         {:else}
-          <Hint text={row.mapping.requestName}>{#snippet children(hintProps1)}<code {...hintProps1} >{row.mapping.requestName}</code>{/snippet}</Hint>
+          <Hint overflowOnly text={row.mapping.requestName}>{#snippet children(hintProps1)}<code {...hintProps1} >{row.mapping.requestName}</code>{/snippet}</Hint>
         {/if}
       </div>
-      <Hint text="删除映射">{#snippet children(hintProps2)}<Button {...mergeProps(hintProps2, { onclick: () => remove(row.id) })} variant="ghost" size="icon-xs" disabled={locked || !!drag}
+      <Button onclick={() => remove(row.id)} variant="ghost" size="icon-xs" disabled={locked || !!drag}
         aria-label={`删除映射 ${row.mapping.requestName}`}  >
         <Trash2 aria-hidden="true" />
-      </Button>{/snippet}</Hint>
+      </Button>
     </div>
   {/each}
 </div>

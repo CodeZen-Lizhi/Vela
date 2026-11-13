@@ -12,7 +12,7 @@
   const selectedLabel = $derived(options.find((option) => option.value === value)?.label ?? "请选择");
 </script>
 <Select.Root type="single" bind:value {disabled}>
-  <Select.Trigger aria-label={label} class="w-full"><Hint text={selectedLabel}>{#snippet children(hintProps0)}<span {...hintProps0} class="min-w-0 truncate" >{selectedLabel}</span>{/snippet}</Hint></Select.Trigger>
+  <Select.Trigger aria-label={label} class="w-full"><Hint overflowOnly text={selectedLabel}>{#snippet children(hintProps0)}<span {...hintProps0} class="min-w-0 truncate" >{selectedLabel}</span>{/snippet}</Hint></Select.Trigger>
   <Select.Content><Select.Group>
     {#each options as option}<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>{/each}
   </Select.Group></Select.Content>

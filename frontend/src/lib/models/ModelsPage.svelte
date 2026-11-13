@@ -1,6 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { mergeProps } from "bits-ui";
   import { Hint } from "$lib/components/ui/tooltip";
   import { onMount, tick } from "svelte";
   import { isMyGo } from "mygo-runtime";
@@ -389,10 +388,8 @@
                   <div class="model-identity-copy">
                     <strong>{model.name}</strong>
                     <div class="model-id-row">
-                      <Hint text={model.modelId}>{#snippet children(hintProps0)}<code {...hintProps0} >{model.modelId}</code>{/snippet}</Hint>
-                      <Hint text={copiedModelId === model.id
-                          ? "已复制"
-                          : "复制模型 ID"}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => void copyModelId(model) })}
+                      <Hint overflowOnly text={model.modelId}>{#snippet children(hintProps0)}<code {...hintProps0} >{model.modelId}</code>{/snippet}</Hint>
+                      <Button onclick={() => void copyModelId(model)}
                         variant="ghost"
                         size="icon-xs"
                         aria-label={`复制模型 ID ${model.modelId}`}
@@ -400,7 +397,7 @@
                       >
                         {#if copiedModelId === model.id}<Check />{:else}<Copy
                           />{/if}
-                      </Button>{/snippet}</Hint>
+                      </Button>
                     </div>
                   </div>
                 </div>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Hint } from "$lib/components/ui/tooltip";
   import * as Select from "$lib/components/ui/select";
   /** 列头与顶部使用同一个 shadcn-svelte 菜单；共享 openID 保证一次只打开一个。 */
   let {
@@ -23,7 +22,7 @@
     /** 所有筛选共用打开身份；读取前禁用避免空数据假象。 */ openID?: string;
     disabled?: boolean;
   } = $props();
-  /** 列头保留字段名，以高亮与悬停说明展示已选条件。 */
+  /** 列头保留字段名与选中高亮，已选条件在筛选菜单内查看。 */
   const selected = $derived(multiple ? values.length > 0 : value !== "");
   const selectionLabel = $derived(multiple
     ? values.map((item) => options.find((option) => option.value === item)?.label ?? item).join("、")
@@ -38,15 +37,14 @@
     onOpenChange={(open) => (openID = open ? id : "")}
     {disabled}
   >
-    <Hint text={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}>{#snippet children(hintProps0)}<Select.Trigger {...hintProps0}
+    <Select.Trigger
       variant={column ? "column" : "default"}
       data-filter-active={selected}
 
-      aria-label={`${title}筛选`}
-      ><span class="min-w-0 truncate"
-        >{title}{!column && values.length ? ` · ${values.length}` : ""}</span
+      aria-label={selected ? `${title}筛选：${selectionLabel}` : `${title}筛选`}
+      ><span class="min-w-0 truncate">{title}{!column && values.length ? ` · ${values.length}` : ""}</span
       ></Select.Trigger
-    >{/snippet}</Hint>
+    >
     <Select.Content align="start"
       ><Select.Group
         >{#each options as item}<Select.Item
@@ -64,15 +62,14 @@
     onOpenChange={(open) => (openID = open ? id : "")}
     {disabled}
   >
-    <Hint text={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}>{#snippet children(hintProps1)}<Select.Trigger {...hintProps1}
+    <Select.Trigger
       variant={column ? "column" : "default"}
       data-filter-active={selected}
 
-      aria-label={`${title}筛选`}
-      ><span class="min-w-0 truncate"
-        >{column || !value ? title : selectionLabel}</span
+      aria-label={selected ? `${title}筛选：${selectionLabel}` : `${title}筛选`}
+      ><span class="min-w-0 truncate">{column || !value ? title : selectionLabel}</span
       ></Select.Trigger
-    >{/snippet}</Hint>
+    >
     <Select.Content align="start"
       ><Select.Group
         ><Select.Item value="" label={`全部${title}`}>全部{title}</Select.Item

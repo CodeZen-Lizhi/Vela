@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Hint } from "$lib/components/ui/tooltip";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
 
   /** 倍率来源分段选择；当前值由父级草稿或已保存配置持有，保存完成后才更新列表选中态。 */
@@ -17,6 +16,6 @@
 
 <ToggleGroup.Root type="single" {value} {disabled} variant="segmented" size="xs" spacing={1} aria-label={label}
   onValueChange={(next) => { if (next === "manual" || next === "upstream") onchange(next); }}>
-  <Hint text="手动维护倍率">{#snippet children(props)}<ToggleGroup.Item {...props} value="manual">手动</ToggleGroup.Item>{/snippet}</Hint>
-  <Hint text="跟随上游自动更新倍率">{#snippet children(props)}<ToggleGroup.Item {...props} value="upstream">自动</ToggleGroup.Item>{/snippet}</Hint>
+  <ToggleGroup.Item value="manual">手动</ToggleGroup.Item>
+  <ToggleGroup.Item value="upstream">自动</ToggleGroup.Item>
 </ToggleGroup.Root>

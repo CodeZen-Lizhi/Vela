@@ -1,6 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { mergeProps } from "bits-ui";
   import { Hint } from "$lib/components/ui/tooltip";
   import { VelaService, type RecordsRecord } from "$lib/generated/mygo";
   import { tick } from "svelte";
@@ -270,7 +269,7 @@
         <div class="record-detail-title-main">
           <Sheet.Title>请求详情</Sheet.Title>
           {#if record}
-            <Hint text={record.model}>{#snippet children(hintProps0)}{#if record}<Badge {...hintProps0} variant="neutral" class="max-w-full truncate">{record.model || "未知模型"}</Badge>{/if}{/snippet}</Hint>
+            <Hint overflowOnly text={record.model}>{#snippet children(hintProps0)}{#if record}<Badge {...hintProps0} variant="neutral" class="max-w-full truncate">{record.model || "未知模型"}</Badge>{/if}{/snippet}</Hint>
             {#if record.effort}<Badge variant="secondary">{record.effort}</Badge>{/if}
             {#if record.tier && record.tier !== "standard"}<Badge variant="secondary">{record.tier}</Badge>{/if}
             <Badge variant={record.state === "failed" ? "destructive" : "default"}>{label(states, record.state)}{lastStatus ? ` · ${lastStatus}` : ""}</Badge>
@@ -278,12 +277,12 @@
           {/if}
         </div>
         <div class="records-actions">
-          <Hint text="刷新请求详情">{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => load(viewedID) })} variant="ghost" size="icon-sm" aria-label="刷新请求详情"  disabled={loading} ><RefreshCw /></Button>{/snippet}</Hint>
-          <Hint text="关闭请求详情">{#snippet children(hintProps2)}<Button {...mergeProps(hintProps2, { onclick: onclose })} variant="ghost" size="icon-sm" aria-label="关闭请求详情"  ><X /></Button>{/snippet}</Hint>
+          <Button onclick={() => load(viewedID)} variant="ghost" size="icon-sm" aria-label="刷新请求详情"  disabled={loading} ><RefreshCw /></Button>
+          <Button onclick={onclose} variant="ghost" size="icon-sm" aria-label="关闭请求详情"  ><X /></Button>
         </div>
       </div>
       <Sheet.Description class="record-detail-meta">
-        <Hint text={record?.id ?? viewedID}>{#snippet children(hintProps3)}<span {...hintProps3} >ID: {record?.id ?? viewedID}</span>{/snippet}</Hint>
+        <Hint text={`ID: ${record?.id ?? viewedID}`}>{#snippet children(props)}<span {...props}>ID: {record?.id ?? viewedID}</span>{/snippet}</Hint>
         {#if record}<span>{date(record.startedAt, "day")} {date(record.startedAt)}</span><span>{protocol(record.protocol)}</span>{/if}
       </Sheet.Description>
     </header>
@@ -294,8 +293,8 @@
         <section class="record-detail-metrics" aria-label="费用与性能概览">
           <div><strong>{money(record.cost)}</strong><span>总费用 · 本地估算</span></div>
           <div><strong>{duration(elapsed)}</strong><span>总耗时</span></div>
-          <div><Hint text={number(record.usage?.unit ? record.usage.quantity : record.usage?.output)}>{#snippet children(hintProps4)}{#if record}<strong {...hintProps4} >{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong>{/if}{/snippet}</Hint><span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span></div>
-          <div><Hint text={number(record.outputRate)}>{#snippet children(hintProps5)}{#if record}<strong {...hintProps5} >{record.outputRate == null ? "—" : `${compact(record.outputRate)} tps`}</strong>{/if}{/snippet}</Hint><span>输出速度</span></div>
+          <div>{#if record}<strong>{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong>{/if}<span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span></div>
+          <div>{#if record}<strong>{record.outputRate == null ? "—" : `${compact(record.outputRate)} tps`}</strong>{/if}<span>输出速度</span></div>
           <div><strong>{duration(record.firstByteMillis)}</strong><span>首字耗时</span></div>
         </section>
         {#if record.error}<Alert.Root variant="destructive"><Alert.Description>{record.error}</Alert.Description></Alert.Root>{/if}
@@ -305,11 +304,11 @@
         <DetailSection title="计费明细" description="价格、Token 与媒体费用">
           <p class="record-detail-note">按请求开始时价格快照和实际用量估算，非上游已对账扣款。</p>
           <dl class="record-context-grid">
-            <div><dt>输入</dt><Hint text={number(record.usage?.input)}>{#snippet children(hintProps6)}{#if record}<dd {...hintProps6} >{compact(record.usage?.input)} Token</dd>{/if}{/snippet}</Hint></div>
-            <div><dt>输出</dt><Hint text={number(record.usage?.output)}>{#snippet children(hintProps7)}{#if record}<dd {...hintProps7} >{compact(record.usage?.output)} Token</dd>{/if}{/snippet}</Hint></div>
-            <div><dt>缓存读取</dt><Hint text={number(record.usage?.cacheRead)}>{#snippet children(hintProps8)}{#if record}<dd {...hintProps8} >{compact(record.usage?.cacheRead)} Token</dd>{/if}{/snippet}</Hint></div>
-            <div><dt>缓存创建 · 5 分钟 / 1 小时</dt><Hint text={`${number(record.usage?.cacheWrite)} / ${number(record.usage?.cacheWrite1h)} Token`}>{#snippet children(hintProps9)}{#if record}<dd {...hintProps9} >{compact(record.usage?.cacheWrite)} / {compact(record.usage?.cacheWrite1h)} Token</dd>{/if}{/snippet}</Hint></div>
-            <div><dt>完整输入上下文</dt><Hint text={number(record.usage?.context)}>{#snippet children(hintProps10)}{#if record}<dd {...hintProps10} >{compact(record.usage?.context)} Token</dd>{/if}{/snippet}</Hint></div>
+            <div><dt>输入</dt>{#if record}<dd>{number(record.usage?.input)} Token</dd>{/if}</div>
+            <div><dt>输出</dt>{#if record}<dd>{number(record.usage?.output)} Token</dd>{/if}</div>
+            <div><dt>缓存读取</dt>{#if record}<dd>{number(record.usage?.cacheRead)} Token</dd>{/if}</div>
+            <div><dt>缓存创建 · 5 分钟 / 1 小时</dt>{#if record}<dd>{number(record.usage?.cacheWrite)} / {number(record.usage?.cacheWrite1h)} Token</dd>{/if}</div>
+            <div><dt>完整输入上下文</dt>{#if record}<dd>{number(record.usage?.context)} Token</dd>{/if}</div>
             <div><dt>执行倍率</dt><dd>{record.multiplier == null ? "未知" : `${record.multiplier}×`}</dd></div>
             {#if record.usage?.unit}<div><dt>媒体数量 / 规格</dt><dd>{number(record.usage.quantity)} {record.usage.unit === "image" ? "张" : "秒"} · {record.usage.specification || "规格未记录"}</dd></div>{/if}
           </dl>
@@ -352,8 +351,8 @@
                       <ToggleGroup.Item value="client" aria-label="客户端数据">客户端</ToggleGroup.Item><ToggleGroup.Item value="provider" aria-label="上游数据">上游</ToggleGroup.Item>
                     </ToggleGroup.Root>
                     {#if bodyPanel}<ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root>{:else}<Button variant={compare ? "secondary" : "ghost"} size="sm" aria-pressed={compare} onclick={() => (compare = !compare)}>对比上下游</Button>{/if}
-                    {#if panel === "request" || panel === "headers"}<Hint text="复制 cURL">{#snippet children(hintProps11)}<Button {...mergeProps(hintProps11, { onclick: () => copy(curl()) })} variant="ghost" size="icon-sm" aria-label="复制 cURL"  disabled={!curl()} ><Terminal /></Button>{/snippet}</Hint>{/if}
-                    <Hint text="复制当前内容">{#snippet children(hintProps12)}<Button {...mergeProps(hintProps12, { onclick: () => copy(content) })} variant="ghost" size="icon-sm" aria-label="复制当前内容"  disabled={!content || (!bodyPanel && compare)} ><Copy /></Button>{/snippet}</Hint>
+                    {#if panel === "request" || panel === "headers"}<Button onclick={() => copy(curl())} variant="ghost" size="icon-sm" aria-label="复制 cURL"  disabled={!curl()} ><Terminal /></Button>{/if}
+                    <Button onclick={() => copy(content)} variant="ghost" size="icon-sm" aria-label="复制当前内容"  disabled={!content || (!bodyPanel && compare)} ><Copy /></Button>
                   </div>
                 </div>
                 {#each ["headers", "request", "response-headers", "response"] as tab}

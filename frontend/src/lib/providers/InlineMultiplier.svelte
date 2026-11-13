@@ -1,7 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { mergeProps } from "bits-ui";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { tick } from "svelte";
   import { Pencil } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
@@ -45,7 +43,7 @@
   {#if editing}
     <Input density="compact" class="w-16" bind:ref={input} type="number" min={0} max={100} step="any" bind:value={draft} aria-label={`${label} 手动倍率`} aria-invalid={!!error} disabled={saving} onblur={save} onkeydown={keydown}/>
   {:else if editable}
-    <Hint text="点击修改倍率">{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: start })} variant="ghost" size="table-inline" class="w-full justify-start" {disabled}  aria-label={`修改 ${label} 倍率`} >{value===null?"倍率未知":`${value}×`}<Pencil class="size-3" aria-hidden="true"/></Button>{/snippet}</Hint>
+    <Button onclick={start} variant="ghost" size="table-inline" class="w-full justify-start" {disabled}  aria-label={`修改 ${label} 倍率`} >{value===null?"倍率未知":`${value}×`}<Pencil class="size-3" aria-hidden="true"/></Button>
   {:else}<span class="provider-multiplier-value">{value===null?"倍率未知":`${value}×`}</span>{/if}
   {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
 </div>

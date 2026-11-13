@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Hint } from "$lib/components/ui/tooltip";
   import type { Model, Rate, Tier } from "$lib/generated/mygo";
   import { Badge } from "$lib/components/ui/badge";
   import { Separator } from "$lib/components/ui/separator";
@@ -95,13 +94,9 @@
     </div>
     <div>
       <dt>上下文</dt>
-      <Hint text={model.context
-          ? `${model.context.toLocaleString()} Token`
-          : undefined}>{#snippet children(hintProps0)}<dd {...hintProps0}
-
-      >
+      <dd>
         {model.context ? tokens(model.context) : "未知"}
-      </dd>{/snippet}</Hint>
+      </dd>
     </div>
     <div>
       <dt>最大输出</dt>

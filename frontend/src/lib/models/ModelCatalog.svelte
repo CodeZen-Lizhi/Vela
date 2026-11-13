@@ -180,7 +180,7 @@
                 >{entry.providerName} · {kinds[entry.kind]} · 上下文 {entry.context
                   ? `${entry.context.toLocaleString()} Token`
                   : "未知"}</span
-              ><Hint text={entry.modelId}>{#snippet children(hintProps0)}<code {...hintProps0} >{entry.modelId}</code>{/snippet}</Hint>
+              ><Hint overflowOnly text={entry.modelId}>{#snippet children(hintProps0)}<code {...hintProps0} >{entry.modelId}</code>{/snippet}</Hint>
             </div>
             {#if entry.official}<Badge variant="secondary">官方</Badge>{/if}
           </div>

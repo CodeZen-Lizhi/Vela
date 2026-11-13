@@ -1,19 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
-  import { Activity, ArrowRight, BarChart3, CalendarDays, Check, DollarSign, LineChart, Maximize2, RefreshCw, Settings2, ShieldAlert, TrendingDown, TrendingUp, Wallet, X, Zap } from "@lucide/svelte";
+  import { Activity, ArrowRight, BarChart3, Check, DollarSign, LineChart, Maximize2, RefreshCw, Settings2, ShieldAlert, TrendingDown, TrendingUp, Wallet, X, Zap } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import { Input } from "$lib/components/ui/input";
-  import { Label } from "$lib/components/ui/label";
   import { Skeleton } from "$lib/components/ui/skeleton";
-  import { Hint } from "$lib/components/ui/tooltip";
   import * as Card from "$lib/components/ui/card";
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
-  import * as Field from "$lib/components/ui/field";
   import Choice from "$lib/providers/Choice.svelte";
   import AttentionSettings from "$lib/settings/AttentionSettings.svelte";
   import { errorMessage } from "$lib/settings/sections";
@@ -22,6 +18,7 @@
   import { cacheRate, compact, dateKey, formatMetric, groupRows, heatDays, shiftDay, successRate, summarize, timeBuckets, type Dimension, type Metric } from "./data";
   import Trend from "./Trend.svelte";
   import Details from "./Details.svelte";
+  import OverviewDateRange, { type OverviewRange } from "./OverviewDateRange.svelte";
   import "./overview.css";
 
   /** 总览通过现有主导航进入配置，关注事项自身不提供跳转。 */
@@ -33,10 +30,10 @@
   const desktop = isMyGo();
   /** 最后成功快照；后续读取失败保留它并展示错误。 */
   let snapshot = $state<OverviewSnapshot | null>(null), error = $state(""), loading = $state(desktop);
-  /** 统计时钟与日期草稿仅属于当前总览，不修改调用记录。 */
-  let now = $state(Date.now()), range = $state("today"), customStart = $state(""), customEnd = $state("");
-  /** 日期、明细与关注设置均按需打开。 */
-  let dateOpen = $state(false), detailsOpen = $state(false), settingsOpen = $state(false), guideDismissed = $state(false);
+  /** 统计时钟与自定义日期仅属于当前总览，不修改调用记录。 */
+  let now = $state(Date.now()), range = $state<OverviewRange>("today"), customStart = $state(""), customEnd = $state("");
+  /** 明细与关注设置均按需打开。 */
+  let detailsOpen = $state(false), settingsOpen = $state(false), guideDismissed = $state(false);
   /** 分布与明细共用维度；趋势与分布共用指标和费用口径。 */
   let dimension = $state<Dimension>("model"), metricTab = $state("cost"), basis = $state("standard"), chartStyle = $state("bar");
   /** 年度热力图独立保留全年范围，点击日期才改变顶部范围。 */
@@ -47,16 +44,15 @@
   const firstDay = $derived(snapshot?.firstDay || today);
   const start = $derived(range === "all" ? firstDay : range === "custom" ? customStart : shiftDay(today, range === "week" ? -6 : range === "month" ? -29 : 0));
   const end = $derived(range === "custom" ? customEnd : today);
-  const dateError = $derived(range === "custom" && (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end || start < firstDay || end > today));
   const period = $derived(range === "today" ? new Intl.DateTimeFormat("zh-CN", { timeZone: timezone, month: "long", day: "numeric", weekday: "long" }).format(now) : `${start} — ${end}${range === "all" ? " · 全部累计" : ""}`);
   const rows = $derived(snapshot?.rows ?? []);
   const logical = $derived(rows.filter(row => !row.keyId));
-  const filtered = $derived(dateError ? [] : rows.filter(row => row.day >= start && row.day <= end));
+  const filtered = $derived(rows.filter(row => row.day >= start && row.day <= end));
   const total = $derived(summarize(filtered.filter(row => !row.keyId)));
   const success = $derived(successRate(total)), cache = $derived(cacheRate(total));
   const metric = $derived<Metric>(metricTab === "tokens" ? "tokens" : metricTab === "requests" ? "requests" : basis === "actual" ? "cost" : "standardCost");
   const metricTitle = $derived(metric === "standardCost" ? "标准费用" : metric === "cost" ? "实际支出" : metric === "tokens" ? "Token" : "请求");
-  const buckets = $derived(dateError ? [] : timeBuckets(filtered.filter(row => !row.keyId), start, end, timezone));
+  const buckets = $derived(timeBuckets(filtered.filter(row => !row.keyId), start, end, timezone));
   const distribution = $derived(groupRows(filtered, dimension).sort((a, b) => b.total[metric] - a.total[metric] || a.id.localeCompare(b.id)));
   const distributionTotal = $derived(distribution.reduce((sum, group) => sum + group.total[metric], 0));
   const days = $derived(heatDays(Number(heatYear), firstDay, today, logical));
@@ -72,15 +68,12 @@
     catch (cause) { error = errorMessage(cause); }
     finally { loading = false; }
   }
-  /** 切换普通范围关闭日期草稿面板，已有自定义日期保留。 */
-  function changeRange(value: string): void { if (value) { range = value; dateOpen = false; } }
-  /** 自定义日期默认最近七天且不早于统计起点。 */
-  function toggleDates(): void {
-    if (!customStart) { customStart = [firstDay, shiftDay(today, -6)].sort().at(-1) ?? today; customEnd = today; }
-    dateOpen = range === "custom" ? !dateOpen : true; range = "custom";
-  }
+  /** 快捷范围直接切换，已有自定义日期保留供再次打开日历。 */
+  function changeRange(value: Exclude<OverviewRange, "custom">): void { range = value; }
+  /** 日历完整选择两端后应用日期并切到自定义范围。 */
+  function changeDates(startDay: string, endDay: string): void { customStart = startDay; customEnd = endDay; range = "custom"; }
   /** 热力图选日联动全部卡片、趋势、分布和明细，年度视图继续保持全年。 */
-  function selectDay(day: string): void { customStart = day; customEnd = day; range = "custom"; dateOpen = false; }
+  function selectDay(day: string): void { changeDates(day, day); }
   /** 关闭首次接入提示只影响当前本机会话。 */
   function dismissGuide(): void {
     guideDismissed = true;
@@ -118,18 +111,11 @@
 <div class="overview-page">
   <header class="overview-header"><div class="overview-title"><h1>总览</h1><p>{period}</p></div>
     <div class="overview-actions">
-      <ToggleGroup.Root spacing={1} type="single" value={range === "custom" ? "" : range} onValueChange={changeRange} variant="plain" size="xs" aria-label="统计时间范围" disabled={!snapshot}>
-        <ToggleGroup.Item value="today">今日</ToggleGroup.Item><ToggleGroup.Item value="week">7 天</ToggleGroup.Item><ToggleGroup.Item value="month">30 天</ToggleGroup.Item><ToggleGroup.Item value="all">全部</ToggleGroup.Item>
-      </ToggleGroup.Root>
-      <Hint text="自定义日期">{#snippet children(props)}<Button {...props} variant="ghost" size="icon-sm" aria-label="自定义日期" aria-expanded={dateOpen} aria-pressed={range === "custom"} onclick={toggleDates} disabled={!snapshot}><CalendarDays /></Button>{/snippet}</Hint>
+      <OverviewDateRange {range} {start} {end} min={firstDay} max={today} {timezone} disabled={!snapshot} onPresetChange={changeRange} onDateChange={changeDates} />
     </div>
   </header>
   {#if !desktop}<Alert.Root><Alert.Title>请在 Vela 桌面应用中查看用量</Alert.Title><Alert.Description>总览读取本机真实请求统计，浏览器预览未连接本机数据库。</Alert.Description></Alert.Root>{/if}
   {#if error}<Alert.Root variant="destructive"><Alert.Title>统计更新失败</Alert.Title><Alert.Description>{error}{snapshot ? "，已保留上次数据。" : ""}<Button variant="text" size="xs" onclick={retry}><RefreshCw />重试</Button></Alert.Description></Alert.Root>{/if}
-  {#if dateOpen}
-    <section class="overview-date-panel" aria-label="自定义日期范围"><Field.Group class="overview-date-fields"><Field.Field><Label for="overview-date-start">开始日期</Label><Input id="overview-date-start" type="date" min={firstDay} max={today} bind:value={customStart} aria-invalid={dateError} /></Field.Field><span aria-hidden="true">—</span><Field.Field><Label for="overview-date-end">结束日期</Label><Input id="overview-date-end" type="date" min={firstDay} max={today} bind:value={customEnd} aria-invalid={dateError} /></Field.Field></Field.Group><div class="overview-date-actions"><span>按统计时区 {timezone} 统计全部调用</span><Button size="xs" variant="secondary" onclick={() => dateOpen = false} disabled={dateError}>完成</Button></div></section>
-  {/if}
-  {#if dateError}<p class="overview-error" role="alert">请选择统计起始至今日之间的有效日期，开始日期不能晚于结束日期。</p>{/if}
   {#if loading}<div class="overview-metrics" aria-label="正在读取统计" aria-busy="true">{#each [1,2,3] as item}<Skeleton class="h-[166px]" />{/each}</div>{/if}
   {#if snapshot}
     {#if attention.loaded && !attention.providerCount}
@@ -139,7 +125,7 @@
     {/if}
     <section class="overview-metrics" aria-label="当前范围用量汇总">
       <Card.Root class="overview-stat"><Card.Header><Card.Title><span class="overview-metric-head"><span class="overview-metric-icon overview-request"><Activity size={15} /></span><span class="text-caution">请求</span></span></Card.Title></Card.Header><Card.Content><strong class="overview-stat-number">{total.requests.toLocaleString("en-US")}</strong><div class="overview-facts"><span>成功 <b class="text-positive">{total.detailsKnown === total.requests ? total.success.toLocaleString("en-US") : "—"}</b></span><span>失败 <b class:text-destructive={total.failed > 0}>{total.detailsKnown === total.requests ? total.failed.toLocaleString("en-US") : "—"}</b></span></div><Badge variant="neutral">成功率 {success === null ? "—" : `${success.toFixed(1)}%`}</Badge></Card.Content></Card.Root>
-      <Card.Root class="overview-stat"><Card.Header><Card.Title><span class="overview-metric-head"><span class="overview-metric-icon overview-tokens"><Zap size={15} /></span><span class="text-muted-foreground">Token</span></span></Card.Title></Card.Header><Card.Content><Hint text={`已知 Token ${total.tokens.toLocaleString("en-US")}，未知用量 ${total.unknownUsage} 次`}>{#snippet children(props)}<strong {...props} class="overview-stat-number">{formatMetric(total,"tokens")}</strong>{/snippet}</Hint><div class="overview-facts"><span>输入 <b>{total.detailsKnown === total.requests && !total.unknownUsage ? compact(total.context - total.cached) : "—"}</b></span><span>输出 <b>{total.detailsKnown === total.requests && !total.unknownUsage ? compact(total.output) : "—"}</b></span><span>缓存读取 <b>{total.detailsKnown === total.requests && !total.unknownUsage ? compact(total.cached) : "—"}</b></span></div><Badge variant="neutral">缓存命中 {cache === null ? "—" : `${cache.toFixed(1)}%`}</Badge></Card.Content></Card.Root>
+      <Card.Root class="overview-stat"><Card.Header><Card.Title><span class="overview-metric-head"><span class="overview-metric-icon overview-tokens"><Zap size={15} /></span><span class="text-muted-foreground">Token</span></span></Card.Title></Card.Header><Card.Content><strong  class="overview-stat-number">{formatMetric(total,"tokens")}</strong><div class="overview-facts"><span>输入 <b>{total.detailsKnown === total.requests && !total.unknownUsage ? compact(total.context - total.cached) : "—"}</b></span><span>输出 <b>{total.detailsKnown === total.requests && !total.unknownUsage ? compact(total.output) : "—"}</b></span><span>缓存读取 <b>{total.detailsKnown === total.requests && !total.unknownUsage ? compact(total.cached) : "—"}</b></span></div><Badge variant="neutral">缓存命中 {cache === null ? "—" : `${cache.toFixed(1)}%`}</Badge></Card.Content></Card.Root>
       <Card.Root class="overview-stat overview-cost-stat"><Card.Header><Card.Title><span class="overview-metric-head"><span class="overview-metric-icon overview-cost"><DollarSign size={15} /></span><span class="text-muted-foreground">费用</span></span></Card.Title></Card.Header><Card.Content><strong class="overview-stat-number text-primary">{formatMetric(total,"standardCost")}</strong><div class="overview-facts"><span>实际支出 <b>{formatMetric(total,"cost")}</b></span></div><Badge variant="neutral">标准费用 · USD</Badge></Card.Content></Card.Root>
     </section>
     {#if total.unknownUsage || total.unknownCost || total.unknownStandard || total.detailsKnown < total.requests}<p class="overview-data-note">部分历史字段或上游用量未知；“≥”表示已知部分合计，缺失项显示“—”。</p>{/if}
@@ -147,7 +133,7 @@
       <div class="overview-grid">
         <Card.Root class="overview-trend-card"><Card.Header class="overview-card-header"><Card.Title>用量趋势</Card.Title><div class="overview-chart-actions"><ToggleGroup.Root spacing={1} type="single" value={metricTab} onValueChange={value => {if(value) metricTab=value;}} variant="underline" size="xs" aria-label="趋势指标"><ToggleGroup.Item value="cost">费用</ToggleGroup.Item><ToggleGroup.Item value="tokens">Token</ToggleGroup.Item><ToggleGroup.Item value="requests">请求</ToggleGroup.Item></ToggleGroup.Root><ToggleGroup.Root spacing={1} type="single" value={chartStyle} onValueChange={value => {if(value)chartStyle=value;}} size="xs" variant="plain" aria-label="图表样式"><ToggleGroup.Item value="bar" aria-label="柱状图"><BarChart3 /></ToggleGroup.Item><ToggleGroup.Item value="line" aria-label="折线图"><LineChart /></ToggleGroup.Item></ToggleGroup.Root></div></Card.Header>
           <Card.Content class="overview-trend-caption"><span>{metricTitle}合计</span><div>{#if metricTab === "cost"}{@render costBasis()}{/if}<span>{buckets.length === 24 && start === end ? "每小时" : buckets.length && start !== end && buckets.length < (Date.parse(end)-Date.parse(start))/86400000 ? "每周" : "每天"}</span></div></Card.Content>
-          {#if total.requests && !dateError}<Trend {buckets} {metric} style={chartStyle} />{:else}<Empty.Root><Empty.Header><Empty.Media variant="icon"><Activity /></Empty.Media><Empty.Title>{dateError ? "请调整日期范围" : "当前时间范围内暂无用量"}</Empty.Title><Empty.Description>换一个时间范围看看。</Empty.Description></Empty.Header></Empty.Root>{/if}
+          {#if total.requests}<Trend {buckets} {metric} style={chartStyle} />{:else}<Empty.Root><Empty.Header><Empty.Media variant="icon"><Activity /></Empty.Media><Empty.Title>当前时间范围内暂无用量</Empty.Title><Empty.Description>换一个时间范围看看。</Empty.Description></Empty.Header></Empty.Root>{/if}
         </Card.Root>
         <Card.Root><Card.Header class="overview-card-header"><Card.Title>用量分布</Card.Title>{#if metricTab === "cost"}{@render costBasis()}{:else}<span class="overview-caption">{metricTitle}占比</span>{/if}<Button variant="text" size="inline" aria-label="查看用量明细" aria-haspopup="dialog" onclick={() => detailsOpen = true}>明细 <Maximize2 /></Button></Card.Header><Card.Content>
           <ToggleGroup.Root spacing={1} type="single" value={dimension} onValueChange={value => {if(value)dimension=value as Dimension;}} variant="segmented" size="xs" aria-label="分布分析维度"><ToggleGroup.Item value="model">模型</ToggleGroup.Item><ToggleGroup.Item value="provider">供应商</ToggleGroup.Item><ToggleGroup.Item value="key">上游 Key</ToggleGroup.Item></ToggleGroup.Root>
@@ -165,7 +151,7 @@
     {/if}
     {#if logical.length}
       <Card.Root class="overview-heatmap" aria-label="用量热力图"><Card.Header class="overview-card-header"><div><Card.Title>用量热力图</Card.Title><Card.Description>{heatYear} 年每日用量 · 统计始于 {firstDay}</Card.Description></div><div class="overview-heat-controls"><ToggleGroup.Root spacing={1} type="single" value={heatMetric} onValueChange={value => {if(value)heatMetric=value as Metric;}} variant="underline" size="xs" aria-label="热力图指标"><ToggleGroup.Item value="tokens">Token</ToggleGroup.Item><ToggleGroup.Item value="requests">请求</ToggleGroup.Item><ToggleGroup.Item value="standardCost">标准费用</ToggleGroup.Item></ToggleGroup.Root><div class="overview-year"><Choice bind:value={heatYear} options={heatYears} label="热力图年份" /></div></div></Card.Header><Card.Content>
-        <div class="overview-heat-layout"><div class="overview-weekdays"><span>一</span><span>三</span><span>五</span><span>日</span></div><div class="overview-heat-scroll"><div class="overview-months" style:grid-template-columns={`repeat(${Math.ceil(days.length/7)},minmax(12px,1fr))`}>{#each days.filter((_,index)=>index%7===0) as day,index}{@const monthDay=days.slice(index*7,index*7+7).find(item=>item.day.endsWith("-01"))}<span>{monthDay?`${Number(monthDay.day.slice(5,7))}月`:""}</span>{/each}</div><div class="overview-heat-days" style:grid-template-columns={`repeat(${Math.ceil(days.length/7)},minmax(12px,1fr))`}>{#each days as day}{@const label=`${day.day} · ${day.recorded?`${formatMetric(day.total,heatMetric)} · ${day.total.requests} 次请求`:"未记录"}`}<Hint text={day.within?label:undefined}>{#snippet children(props)}<Button {...props} variant="heatmap" size="heatmap" class={day.within?"":"invisible"} style={`--heat-strength:${day.total[heatMetric]?25+day.total[heatMetric]/heatMaximum*75:0}%`} disabled={!day.recorded} aria-label={label} onclick={() => selectDay(day.day)} />{/snippet}</Hint>{/each}</div></div></div>
+        <div class="overview-heat-layout"><div class="overview-weekdays"><span>一</span><span>三</span><span>五</span><span>日</span></div><div class="overview-heat-scroll"><div class="overview-months" style:grid-template-columns={`repeat(${Math.ceil(days.length/7)},minmax(12px,1fr))`}>{#each days.filter((_,index)=>index%7===0) as day,index}{@const monthDay=days.slice(index*7,index*7+7).find(item=>item.day.endsWith("-01"))}<span>{monthDay?`${Number(monthDay.day.slice(5,7))}月`:""}</span>{/each}</div><div class="overview-heat-days" style:grid-template-columns={`repeat(${Math.ceil(days.length/7)},minmax(12px,1fr))`}>{#each days as day}{@const label=`${day.day} · ${day.recorded?`${formatMetric(day.total,heatMetric)} · ${day.total.requests} 次请求`:"未记录"}`}<Button  variant="heatmap" size="heatmap" class={day.within?"":"invisible"} style={`--heat-strength:${day.total[heatMetric]?25+day.total[heatMetric]/heatMaximum*75:0}%`} disabled={!day.recorded} aria-label={label} onclick={() => selectDay(day.day)} />{/each}</div></div></div>
         <div class="overview-heat-legend"><span>点击日期查看当天趋势<span class="overview-heat-hint">热力图可左右滑动查看全年</span></span><span>少 {#each [0,25,50,75,100] as strength}<i style:background={`color-mix(in srgb,var(--primary) ${strength}%,var(--muted))`}></i>{/each} 多</span></div>
       </Card.Content></Card.Root>
     {/if}
@@ -174,6 +160,6 @@
 </div>
 
 {#snippet costBasis()}<ToggleGroup.Root spacing={1} type="single" value={basis} onValueChange={value=>{if(value)basis=value;}} variant="segmented" size="xs" aria-label="费用口径"><ToggleGroup.Item value="standard">标准</ToggleGroup.Item><ToggleGroup.Item value="actual">实际</ToggleGroup.Item></ToggleGroup.Root>{/snippet}
-{#snippet attentionButton()}<Hint text="关注设置">{#snippet children(props)}<Button {...props} variant="ghost" size="icon-xs" aria-label="关注设置" aria-haspopup="dialog" onclick={()=>settingsOpen=true}><Settings2 /></Button>{/snippet}</Hint>{/snippet}
+{#snippet attentionButton()}<Button  variant="ghost" size="icon-xs" aria-label="关注设置" aria-haspopup="dialog" onclick={()=>settingsOpen=true}><Settings2 /></Button>{/snippet}
 <Details bind:open={detailsOpen} rows={filtered} {period} bind:dimension />
 {#if attention.preferences}<Dialog.Root bind:open={settingsOpen}><Dialog.Content class="w-[min(640px,92vw)] max-w-[92vw] sm:max-w-[min(640px,92vw)]"><Dialog.Header><Dialog.Title>关注设置</Dialog.Title><Dialog.Description>与设置页共用提醒偏好，仅控制展示。</Dialog.Description></Dialog.Header><AttentionSettings bind:saved={attention.preferences} {desktop} notify={settingsSaved} /></Dialog.Content></Dialog.Root>{/if}

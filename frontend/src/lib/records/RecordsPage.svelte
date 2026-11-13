@@ -12,7 +12,6 @@
     Radio,
     ChevronLeft,
     ChevronRight,
-    Info,
     Waves,
     ArrowRightLeft,
     Cable,
@@ -24,7 +23,6 @@
   import * as InputGroup from "$lib/components/ui/input-group";
   import * as Table from "$lib/components/ui/table";
   import * as Select from "$lib/components/ui/select";
-  import * as Tooltip from "$lib/components/ui/tooltip";
   import { Separator } from "$lib/components/ui/separator";
   import {
     VelaService,
@@ -274,13 +272,13 @@
   <section class="records-surface list-surface" aria-label="请求记录">
     <div class="records-filters">
         <InputGroup.Root class="records-search"
-          ><InputGroup.Addon><Search /></InputGroup.Addon><Hint text="搜索请求 ID、模型、供应商、Key 或错误">{#snippet children(hintProps0)}<InputGroup.Input {...hintProps0}
+          ><InputGroup.Addon><Search /></InputGroup.Addon><InputGroup.Input
             aria-label="搜索请求记录"
             placeholder="搜索记录"
 
             bind:value={q.search}
             disabled={!desktop}
-          />{/snippet}</Hint></InputGroup.Root
+          /></InputGroup.Root
         >
         <div class="records-time-choice">
           <Choice
@@ -386,8 +384,8 @@
                 bind:openID
                 disabled={!desktop}
               /></Table.Head
-            ><Hint text="第一行：输入 / 输出 Token；第二行：缓存读取 / 命中率">{#snippet children(hintProps1)}<Table.Head {...hintProps1} class="normal-case" ><div class="record-column-heading"><span>Token</span><span class="record-column-help">输入 / 输出<br />缓存 / 命中</span></div></Table.Head
-            >{/snippet}</Hint><Table.Head>估算费用</Table.Head><Table.Head
+            ><Table.Head class="normal-case" ><div class="record-column-heading"><span>Token</span><span class="record-column-help">输入 / 输出<br />缓存 / 命中</span></div></Table.Head
+            ><Table.Head>估算费用</Table.Head><Table.Head
               ><div class="record-column-heading"><span>端到端</span><span class="record-column-help">首字 / 总耗时<br />输出速度</span></div></Table.Head
             >
           </Table.Row></Table.Header
@@ -413,13 +411,12 @@
               ><Table.Cell>{@render modelCell(row)}</Table.Cell><Table.Cell
                 >{@render providerCell(row)}</Table.Cell
               ><Table.Cell
-                ><Hint text={protocol(row.protocol)}>{#snippet children(hintProps2)}<span {...hintProps2} class="record-protocol" ><span>{protocol(row.protocol).split(" ")[0]}</span><span>{protocol(row.protocol).split(" ").slice(1).join(" ")}</span></span
-                >{/snippet}</Hint></Table.Cell
+                ><span class="record-protocol"><span>{protocol(row.protocol).split(" ")[0]}</span><span>{protocol(row.protocol).split(" ").slice(1).join(" ")}</span></span
+                ></Table.Cell
               ><Table.Cell>{@render stateCell(row)}</Table.Cell><Table.Cell>{@render typeCell(row)}</Table.Cell
               ><Table.Cell>{@render usageCell(row)}</Table.Cell><Table.Cell
-                ><Hint text={row.state === "active" ? "请求进行中，结束后展示用量与估算费用" : `${money(row.cost)} · 本地估算`}>{#snippet children(hintProps3)}<span {...hintProps3} class="record-value record-cost" class:record-missing={row.state === "active" || row.cost == null || row.cost === 0}
-                  >{row.state === "active" ? "—" : money(row.cost)}</span
-                >{/snippet}</Hint></Table.Cell
+                ><span class="record-value record-cost" class:record-missing={row.state === "active" || row.cost == null || row.cost === 0}>{row.state === "active" ? "—" : money(row.cost)}</span
+                ></Table.Cell
               ><Table.Cell>{@render timingCell(row)}</Table.Cell></Table.Row
             >{/each}</Table.Body
         ></Table.Root
@@ -429,15 +426,6 @@
     <footer class="records-pagination list-footer">
       <div class="records-pagination-summary">
         <span>共 {number(summary?.total)} 条</span>
-
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              {#snippet child({ props })}
-                <Button {...props} variant="ghost" size="icon-xs" aria-label="记录保留期限"><Info /></Button>
-              {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Content side="top">明细保留 30 天 · 正文保留 7 天</Tooltip.Content>
-          </Tooltip.Root>
 
       </div>
       <div class="records-pagination-controls">
@@ -479,20 +467,20 @@
 <!-- 参数按原型自然换行；上游映射始终保留独立信息行，缺失时不猜测。 -->
 {#snippet modelCell(row: RecordsRecord)}
   <div class="record-model-line">
-    <Hint text={row.model || "未知模型"}>{#snippet children(hintProps4)}<strong {...hintProps4} class="record-model" >{row.model || "未知模型"}</strong>{/snippet}</Hint>
+    <Hint overflowOnly text={row.model || "未知模型"}>{#snippet children(hintProps4)}<strong {...hintProps4} class="record-model">{row.model || "未知模型"}</strong>{/snippet}</Hint>
     {#if row.effort}<Badge variant="parameter">{row.effort}</Badge>{/if}
     {#if row.tier && row.tier.toLowerCase() !== "standard"}<Badge variant="parameter">{row.tier}</Badge>{/if}
   </div>
-  <Hint text={`上游模型：${row.upstreamModel || "未记录"}`}>{#snippet children(hintProps5)}<small {...hintProps5} class="record-truncate" >→ {row.upstreamModel || "—"}</small>{/snippet}</Hint>
+  <Hint overflowOnly text={`→ ${row.upstreamModel || "—"}`}>{#snippet children(hintProps5)}<small {...hintProps5} class="record-truncate" >→ {row.upstreamModel || "—"}</small>{/snippet}</Hint>
 {/snippet}
 <!-- 供应商名称与真实重试/转移次数同组，Key 名称固定在下方。 -->
 {#snippet providerCell(row: RecordsRecord)}
   {@const activity = executionCounts(row)}
-  <div class="record-provider-line"><Hint text={row.providerName || "未发上游"}>{#snippet children(hintProps6)}<strong {...hintProps6} class="record-truncate" >{row.providerName || (row.state === "local" ? "本地响应" : "未知供应商")}</strong>{/snippet}</Hint>
-    {#if activity.transfers}<Hint text={`转移 ${activity.transfers} 次`}>{#snippet children(hintProps7)}<Badge {...hintProps7} variant="warning"  aria-label={`转移 ${activity.transfers} 次`}><Shuffle aria-hidden="true" />{activity.transfers}</Badge>{/snippet}</Hint>{/if}
-    {#if activity.retries}<Hint text={`重试 ${activity.retries} 次`}>{#snippet children(hintProps8)}<Badge {...hintProps8} variant="info"  aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/snippet}</Hint>{/if}
+  <div class="record-provider-line"><Hint overflowOnly text={row.providerName || (row.state === "local" ? "本地响应" : "未知供应商")}>{#snippet children(hintProps6)}<strong {...hintProps6} class="record-truncate">{row.providerName || (row.state === "local" ? "本地响应" : "未知供应商")}</strong>{/snippet}</Hint>
+    {#if activity.transfers}<Badge  variant="warning"  aria-label={`转移 ${activity.transfers} 次`}><Shuffle aria-hidden="true" />{activity.transfers}</Badge>{/if}
+    {#if activity.retries}<Badge  variant="info"  aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/if}
   </div>
-  <Hint text={row.keyName || "—"}>{#snippet children(hintProps9)}<small {...hintProps9} class="record-truncate" >{row.keyName || "—"}</small>{/snippet}</Hint>
+  <Hint overflowOnly text={row.keyName || "—"}>{#snippet children(hintProps9)}<small {...hintProps9} class="record-truncate" >{row.keyName || "—"}</small>{/snippet}</Hint>
 {/snippet}
 <!-- 状态单独显示和筛选，进行中保留既定动画。 -->
 {#snippet stateCell(row: RecordsRecord)}
@@ -507,25 +495,23 @@
   </Badge>
 </div>{/snippet}
 <!-- 进行中及整项未知只显示一个短横线，结束后区分真实零值、媒体和 Token 用量。 -->
-{#snippet usageCell(row: RecordsRecord)}{#if row.state === "active"}<Hint text="请求进行中，结束后展示用量与估算费用">{#snippet children(hintProps10)}<span {...hintProps10}
+{#snippet usageCell(row: RecordsRecord)}{#if row.state === "active"}<span
       class="text-muted-foreground"  aria-label="用量待请求结束后展示">—</span
-    >{/snippet}</Hint>{:else if row.state === "local"}<span
+    >{:else if row.state === "local"}<span
       class="text-muted-foreground">— 无用量</span
-    >{:else if !row.usage}<Hint text="未获得用量数据">{#snippet children(hintProps11)}<span {...hintProps11} class="text-muted-foreground"  aria-label="用量未知">—</span
-    >{/snippet}</Hint>{:else if row.usage.unit}<strong
-      >{number(row.usage.quantity)}
+    >{:else if !row.usage}<span class="text-muted-foreground"  aria-label="用量未知">—</span
+    >{:else if row.usage.unit}<strong>{number(row.usage.quantity)}
       {row.usage.unit === "image" ? "张" : "秒"}</strong
     ><small
       >{row.usage.specification} · {row.usage.unit === "image"
         ? "按次"
         : "按时长"}</small
-    >{:else}<Hint text={`输入 ${row.usage?.input ?? "未知"} Token；输出 ${row.usage?.output ?? "未知"} Token；缓存读取 ${row.usage?.cacheRead ?? "未知"} Token；缓存写入 ${row.usage ? row.usage.cacheWrite + row.usage.cacheWrite1h : "未知"} Token；命中 ${cache(row.usage)}`}>{#snippet children(hintProps12)}<div {...hintProps12} class="records-token-usage" aria-label="Token 用量" >
+    >{:else}<div class="records-token-usage" aria-label="Token 用量" >
       <div><span class="record-input" class:record-missing={!row.usage} aria-label={`输入 ${row.usage?.input ?? "未知"} Token`}>{compact(row.usage?.input)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-output" class:record-missing={!row.usage} aria-label={`输出 ${row.usage?.output ?? "未知"} Token`}>{compact(row.usage?.output)}</span></div>
       <div><span class="record-cache" aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
-    </div>{/snippet}</Hint>{/if}{/snippet}
-{#snippet timingCell(row: RecordsRecord)}{#if row.state === "local"}<span
-      >本地响应</span
-    ><small>{seconds(row.durationMillis)}</small>{:else}<Hint text="端到端首字 / 总耗时">{#snippet children(hintProps13)}<div {...hintProps13} class="record-timing-pair" >
+    </div>{/if}{/snippet}
+{#snippet timingCell(row: RecordsRecord)}{#if row.state === "local"}<span>本地响应</span
+    ><small>{seconds(row.durationMillis)}</small>{:else}<div class="record-timing-pair" >
       <span class="record-first-byte">{seconds(row.firstByteMillis)}</span><span class="record-separator">/</span><span class="record-total-time">{seconds(row.state === "active" ? Math.max(0, clock.now - row.startedAt) : row.durationMillis)}</span>
-    </div>{/snippet}</Hint>{#if row.state !== "active"}<Hint text={`输出速度 ${number(row.outputRate)} tps`}>{#snippet children(hintProps14)}<span {...hintProps14} class="record-speed" class:record-missing={row.outputRate == null} >{row.outputRate == null ? "—" : `${compact(row.outputRate)} tps`}</span>{/snippet}</Hint>{/if}{/if}{/snippet}
+    </div>{#if row.state !== "active"}<span class="record-speed" class:record-missing={row.outputRate == null}>{row.outputRate == null ? "—" : `${compact(row.outputRate)} tps`}</span>{/if}{/if}{/snippet}
 <Detail id={selected} onclose={() => (selected = "")} {notify} />

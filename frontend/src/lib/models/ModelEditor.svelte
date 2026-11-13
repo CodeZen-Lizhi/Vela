@@ -1,6 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -79,7 +78,7 @@
       >
       <div>
         <strong>{model.providerName}</strong>
-        {#if model.providerId}<Hint text="来源模型 ID">{#snippet children(hintProps0)}<code {...hintProps0} >{model.sourceModelId}</code>{/snippet}</Hint>{/if}
+        {#if model.providerId}<code>{model.sourceModelId}</code>{/if}
       </div>
     </div>
     <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">

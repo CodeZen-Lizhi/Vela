@@ -1,6 +1,5 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { onDestroy, tick } from "svelte";
   import { flip } from "svelte/animate";
   import { prefersReducedMotion } from "svelte/motion";
@@ -190,11 +189,11 @@
           <span class="provider-mark" aria-hidden="true">{item.provider.name.slice(0, 1)}</span>
           <span class="order-copy">
             <strong>{item.provider.name}</strong>
-            <Hint text={item.health.reason || undefined}>{#snippet children(hintProps0)}<span {...hintProps0} class="health" data-state={item.health.state} >
+            <span  class="health" data-state={item.health.state} >
               <Badge variant={item.health.state === "abnormal" ? "destructive" : "secondary"}>
                 {healthLabels[item.health.state]}{item.health.percent === null ? "" : ` ${item.health.percent}%`}
               </Badge>
-            </span>{/snippet}</Hint>
+            </span>
             <Badge variant={item.provider.enabled ? "outline" : "secondary"}>{item.provider.enabled ? "启用" : "停用"}</Badge>
           </span>
         </Button>

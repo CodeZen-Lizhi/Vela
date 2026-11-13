@@ -1,7 +1,6 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
-  import { Hint } from "$lib/components/ui/tooltip";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import * as Accordion from "$lib/components/ui/accordion";
@@ -129,7 +128,7 @@
                   <small class="report-candidate-id">{candidate.model} · {candidate.family || "家族未知"}</small>
                 </Table.Cell>
                 <Table.Cell class="text-right tabular-nums">{probability(candidate.probability)}</Table.Cell>
-                <Hint text={`完整排名分：${candidate.score}`}>{#snippet children(hintProps0)}<Table.Cell {...hintProps0} class="text-right tabular-nums" >{rankScore(candidate.score)}</Table.Cell>{/snippet}</Hint>
+                <Table.Cell  class="text-right tabular-nums" >{rankScore(candidate.score)}</Table.Cell>
               </Table.Row>
             {/each}
           </Table.Body>

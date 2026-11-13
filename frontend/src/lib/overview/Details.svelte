@@ -3,7 +3,6 @@
   import * as Table from "$lib/components/ui/table";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import { Button } from "$lib/components/ui/button";
-  import { Hint } from "$lib/components/ui/tooltip";
   import { ArrowDown, ArrowUp } from "@lucide/svelte";
   import type { OverviewMetrics, OverviewRow } from "$lib/generated/mygo";
   import { cacheRate, compact, formatMetric, groupRows, successRate, type Dimension } from "./data";
@@ -50,7 +49,7 @@
     if (bv === null) return -1;
     return (descending ? bv - av : av - bv) || a.id.localeCompare(b.id);
   }));
-  /** Token提示以百万为单位呈现构成，缓存写入归入非读取输入。 */
+  /** Token构成的可访问说明以百万为单位，缓存写入归入非读取输入。 */
   function tokenDescription(total: OverviewMetrics): string {
     if (total.detailsKnown !== total.requests || total.unknownUsage) return "历史用量拆分不完整";
     return `总量 ${(total.tokens / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 })}M · 输入 ${((total.context - total.cached) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 })}M · 输出 ${(total.output / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 })}M · 缓存读取 ${(total.cached / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 })}M`;
@@ -59,13 +58,13 @@
 
 {#snippet token(total: OverviewMetrics)}
   <div class="overview-token"><span>{formatMetric(total, "tokens")}</span>
-    <Hint text={tokenDescription(total)}>{#snippet children(props)}
-      <Button {...props} variant="token" size="token" class="overview-token-bar" aria-label={tokenDescription(total)}>
+
+      <Button  variant="token" size="token" class="overview-token-bar" aria-label={tokenDescription(total)}>
         {#if total.tokens && total.detailsKnown === total.requests && !total.unknownUsage}
           <i class="overview-token-input" style:width={`${(total.context - total.cached) / total.tokens * 100}%`}></i><i class="overview-token-output" style:width={`${total.output / total.tokens * 100}%`}></i><i class="overview-token-cache" style:width={`${total.cached / total.tokens * 100}%`}></i>
         {/if}
       </Button>
-    {/snippet}</Hint>
+
   </div>
 {/snippet}
 

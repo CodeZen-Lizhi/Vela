@@ -11,7 +11,7 @@
   "dependencies": {
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
-    "@lucide/svelte": "^1.71.0",
+    "@lucide/svelte": "^1.72.0",
     "clsx": "^2.1.1",
     "mygo-runtime": "^0.8.3",
     "tailwind-merge": "^3.7.0"

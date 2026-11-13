@@ -26,3 +26,23 @@
 ## 边界
 
 本轮验证内容层与真实本地服务，未安装或替换日常桌面 APP，未操作用户数据库或访问外部供应商。一次快照超过十万统计维度时明确报错，不静默截断。已清理历史无法恢复的字段继续保持未知。倍率观察只记录应用运行期间读到的相邻已知值，不声称捕获应用退出期间的每次变化。
+
+## 2026-11-13 加密 Key 配置读取修复
+
+桌面供应商模块会将 Key 配置文档加密保存，原总览 SQL 对 `provider_keys.document` 直接执行 `json_extract`，在真实配置下触发 `malformed JSON`。统计查询改为只判断 Key 是否存在，应用层复用 `providers.KeyNames` 解密解析当前名称，每家供应商只读取一次。未关闭配置加密，也未丢弃异常行。
+
+新增 `TestOverviewEncryptedKeyNames` 使用已启用真实文档加密的调度 fixture：修复前稳定复现相同错误，修复后读取成功并验证改名后的当前名称。`go test ./internal/records ./internal/app` 共181项通过。真实本机数据库仅做只读检查，提取66行概览和必要配置到受限副本；副本的真实应用服务读取通过，浏览器显示三张统计卡、趋势和热力图，不再出现 malformed JSON。没有修改原数据库或复制请求正文。证据位于 `.cache/overview-json-fix/verification.json` 和 `restored-page.png`。
+
+`npm run build` 已重新生成 macOS arm64 应用和 DMG，类型检查0错误/0警告。需求同步：无需更新，本次修复落实既有真实统计及加密配置边界，不改变需求行为。
+
+## 2026-11-13 总览时间范围单入口
+
+用户要求把顶部多个时间范围按钮和独立双日期面板收成一个时间框。总览现在只渲染一个时间范围触发器，复用 shadcn-svelte Popover 与 RangeCalendar：快捷范围在弹出层内选择，自定义范围按第一天、最后一天两个端点完成；完整区间选定后立即应用并关闭弹层。今天、近 7 天、近 30 天、全部及热力图选日继续共用原有统计口径。
+
+范围日历限制在统计起点至今天，未来日期不可选；入口展示当前口径或简洁日期区间，并显示统计时区。820×600 下弹层底部位于 `594.56px`，未超出 `600px` 视口；820px 与 390px 的内容页均满足 `scrollWidth === clientWidth`。浅深主题均读取现有语义色，没有另做控件色板。
+
+验证使用 `Vela Dev` 与真实本机统计：打开单入口后切到近 7 天，页头变为 `2026-11-07 — 2026-11-13`，汇总同步更新；重新打开后依次选择 `2026-11-12` 和 `2026-11-13`，范围应用后弹层关闭；点击热力图 `2026-11-12` 后入口更新为该日。浏览器同构页面覆盖快捷范围、端点选择、Esc 关闭、浅深主题和 390px 布局，Console 未发现错误。最终 `svelte-check` 为 0 错误、0 警告，`npm run build` 完成前端、darwin/arm64 应用及 DMG 构建。
+
+证据位于 `.cache/business-e2e-overview/date-range-real-820.png`、`date-range-popover-1180.png`、`date-range-applied-1180.png`、`date-range-820-final.png`、`date-range-390-final.png` 和 `date-range-dark-1180.png`。本轮验证开发桌面应用及真实本地统计，未替换日常安装包，也未访问外部供应商。
+
+需求同步：已更新 [UI 原型要求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/ui-prototype.md) 的“Vela 总览时间范围单入口”条款。

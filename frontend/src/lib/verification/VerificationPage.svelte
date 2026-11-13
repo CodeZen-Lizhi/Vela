@@ -2,7 +2,6 @@
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
   import { Progress } from "$lib/components/ui/progress";
-  import { mergeProps } from "bits-ui";
   import { Hint } from "$lib/components/ui/tooltip";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
@@ -385,9 +384,8 @@
             )}<Table.Row
               ><Table.Cell
                 ><div class="v-identity">
-                  <span class="v-avatar"
-                    >{report.target.providerName.slice(0, 1)}</span
-                  ><Hint text={report.target.providerName}>{#snippet children(hintProps0)}<strong {...hintProps0} >{report.target.providerName}</strong>{/snippet}</Hint>
+                  <span class="v-avatar">{report.target.providerName.slice(0, 1)}</span
+                  ><Hint overflowOnly text={report.target.providerName}>{#snippet children(hintProps0)}<strong {...hintProps0}>{report.target.providerName}</strong>{/snippet}</Hint>
                 </div></Table.Cell
               ><Table.Cell
                 ><strong>{report.target.modelName}</strong><small
@@ -397,7 +395,7 @@
                 ></Table.Cell
               ><Table.Cell
                 ><div class="v-identity">
-                  <KeyRound class="size-3" /><Hint text={report.target.keyName}>{#snippet children(hintProps1)}<span {...hintProps1} class="v-key-name" >{report.target.keyName}</span>{/snippet}</Hint>
+                  <KeyRound class="size-3" /><Hint overflowOnly text={report.target.keyName}>{#snippet children(hintProps1)}<span {...hintProps1} class="v-key-name">{report.target.keyName}</span>{/snippet}</Hint>
                 </div>
                 {#if reason}<small class="text-destructive">{reason}</small
                   >{/if}</Table.Cell
@@ -412,8 +410,7 @@
                     >{report.state === "cancelled" ? "已取消" : "执行失败"} · {report.reason}</small
                   >{:else if report.conclusion === "insufficient"}<small>{report.reason}</small>{/if}</Table.Cell
               ><Table.Cell data-align="number"
-                ><strong
-                  >{probability(report.candidates[0]?.probability)}</strong
+                ><strong>{probability(report.candidates[0]?.probability)}</strong
                 ><small
                   >{report.candidates[0]?.name ||
                     report.candidates[0]?.model ||
@@ -421,7 +418,7 @@
                 ></Table.Cell
               ><Table.Cell>{time(report.time)}</Table.Cell><Table.Cell data-align="control"
                 ><div class="v-actions">
-                  <Hint text={reason || "固定目标复测会产生上游消耗"}>{#snippet children(hintProps2)}<Button {...mergeProps(hintProps2, { onclick: () => start(report.target.providerId, report.id) })}
+                  <Button onclick={() => start(report.target.providerId, report.id)}
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`复测 ${report.target.modelName}`}
@@ -429,13 +426,13 @@
                     disabled={!desktop || running || busy || !!reason}
 
                     ><Play /></Button
-                  >{/snippet}</Hint><Hint text="验证详情">{#snippet children(hintProps3)}<Button {...mergeProps(hintProps3, { onclick: () => (reportID = report.id) })}
+                  ><Button onclick={() => (reportID = report.id)}
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`查看 ${report.target.modelName} 验证详情`}
 
                     ><Eye /></Button
-                  >{/snippet}</Hint>
+                  >
                 </div></Table.Cell
               ></Table.Row
             >{/each}</Table.Body
@@ -475,7 +472,7 @@
               <div class="v-identity">
                 <span class="v-avatar">{name.slice(0, 1)}</span>
                 <div>
-                  <Hint text={name}>{#snippet children(hintProps4)}<strong {...hintProps4} >{name}</strong>{/snippet}</Hint><small
+                  <Hint overflowOnly text={name}>{#snippet children(hintProps4)}<strong {...hintProps4}>{name}</strong>{/snippet}</Hint><small
                     >{plan.enabled
                       ? `自动运行 · 每 ${plan.hours} 小时`
                       : "仅手动检测"}</small
@@ -496,8 +493,7 @@
             </div>
             <div class="v-coverage">
               <div>
-                <span>组合覆盖</span><strong
-                  >{covered.done} / {covered.total}</strong
+                <span>组合覆盖</span><strong>{covered.done} / {covered.total}</strong
                 >
               </div>
               <Progress
@@ -513,7 +509,7 @@
                 >
               </div>
               {#each summaries(plan) as summary}<div>
-                  <strong>{summary.model}</strong><Hint text={summary.keys}>{#snippet children(hintProps5)}<small {...hintProps5}
+                  <strong>{summary.model}</strong><Hint overflowOnly text={summary.keys}>{#snippet children(hintProps5)}<small {...hintProps5}
                     >{summary.keys}</small
                   >{/snippet}</Hint><span>思考{summary.effort}</span>
                 </div>{/each}
@@ -527,12 +523,12 @@
                   variant="outline"
                   size="sm"
                   onclick={() => openPlan(plan)}>编辑范围</Button
-                ><Hint text="检测会产生上游消耗">{#snippet children(hintProps6)}<Button {...mergeProps(hintProps6, { onclick: () => start(plan.providerId) })}
+                ><Button onclick={() => start(plan.providerId)}
                   size="sm"
                   disabled={!desktop || busy || running || !covered.total}
 
                   ><Play data-icon="inline-start" />立即检测</Button
-                >{/snippet}</Hint>
+                >
               </div>
             </footer>
           </article>{/each}{#if !scopedPlans.length}<Empty.Root class="col-span-full">
@@ -549,8 +545,7 @@
     </Tabs.Content>
     {#if tab === "results"}
       <footer class="v-surface-footer">
-        <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span
-          >检测会产生上游消耗；结果不是身份认证。</span
+        <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span>检测会产生上游消耗；结果不是身份认证。</span
         >
       </footer>
     {/if}

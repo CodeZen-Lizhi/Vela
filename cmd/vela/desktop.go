@@ -41,14 +41,20 @@ func applyGeneral(value settings.GeneralSettings) {
 	})
 }
 
-// createMainWindow 创建主窗口；关闭到后台时保留 WebView，使当前页面、筛选与草稿不丢失。
+// createMainWindow 首次按当前屏幕工作区居中打开，尺寸不超过 1200×800 逻辑像素及工作区的 90%；后续由 MyGo 恢复窗口状态。
+// 关闭到后台时保留 WebView，使当前页面、筛选与草稿不丢失。
 func createMainWindow() *mygo.Window {
+	workArea := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
+	width := min(1200, workArea.Width*9/10)
+	height := min(800, workArea.Height*9/10)
 	window := mygo.NewWindow(mygo.WindowOptions{
 		Title:           "Vela",
-		Width:           1180,
-		Height:          760,
-		MinWidth:        820,
-		MinHeight:       600,
+		X:               workArea.X + (workArea.Width-width)/2,
+		Y:               workArea.Y + (workArea.Height-height)/2,
+		Width:           width,
+		Height:          height,
+		MinWidth:        min(820, width),
+		MinHeight:       min(600, height),
 		BackgroundColor: "light-dark(#f4f6f9, #10151c)",
 		TitleBarStyle:   mygo.TitleBarHidden,
 		// 系统按钮组向左上收紧，侧栏通过宿主提供的按钮占位保留右侧间距。

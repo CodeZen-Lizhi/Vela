@@ -357,7 +357,7 @@ func (s *Store) backfillOverviewTotals(ctx context.Context, tx *sql.Tx, keys boo
 	}
 }
 
-// Overview 在单个只读事务中解析当前名称与小时累计；超过十万维度明确报错而不静默截断。
+// Overview 在只读事务中解析模型、供应商名称与小时累计；Key 配置已加密，仅判断存在性，当前名称由应用层通过供应商模块解析。
 func (s *Store) Overview(ctx context.Context) (OverviewSnapshot, error) {
 	result := OverviewSnapshot{Timezone: s.zone.String(), Rows: []OverviewRow{}}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -365,7 +365,7 @@ func (s *Store) Overview(ctx context.Context) (OverviewSnapshot, error) {
 		return result, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT o.time,o.day,o.provider_id,CASE WHEN o.provider_id='' THEN '' ELSE COALESCE(p.name,o.provider_name||'（已删除）') END,o.model_id,COALESCE(json_extract(m.document,'$.name'),o.model_name||'（已删除）'),o.protocol,o.key_id,CASE WHEN o.key_id='' THEN '' ELSE COALESCE(json_extract(k.document,'$.name'),o.key_name||'（已删除）') END,o.metrics FROM request_overview o LEFT JOIN providers p ON p.id=o.provider_id LEFT JOIN models m ON m.id=o.model_id LEFT JOIN provider_keys k ON k.id=o.key_id AND k.provider_id=o.provider_id ORDER BY o.time,o.provider_id,o.model_id,o.protocol,o.key_id LIMIT 100001`)
+	rows, err := tx.QueryContext(ctx, `SELECT o.time,o.day,o.provider_id,CASE WHEN o.provider_id='' THEN '' ELSE COALESCE(p.name,o.provider_name||'（已删除）') END,o.model_id,COALESCE(json_extract(m.document,'$.name'),o.model_name||'（已删除）'),o.protocol,o.key_id,CASE WHEN o.key_id='' THEN '' WHEN k.id IS NULL THEN o.key_name||'（已删除）' ELSE o.key_name END,o.metrics FROM request_overview o LEFT JOIN providers p ON p.id=o.provider_id LEFT JOIN models m ON m.id=o.model_id LEFT JOIN provider_keys k ON k.id=o.key_id AND k.provider_id=o.provider_id ORDER BY o.time,o.provider_id,o.model_id,o.protocol,o.key_id LIMIT 100001`)
 	if err != nil {
 		return result, err
 	}

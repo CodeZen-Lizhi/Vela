@@ -24,7 +24,7 @@ func init() {
 			if received == syscall.SIGUSR2 {
 				mygo.RunOnMain(func() {
 					openMainWindow()
-					mainWindow.SetBounds(mygo.Rectangle{X: 100, Y: 100, Width: 1180, Height: 760})
+					mainWindow.SetBounds(mygo.Rectangle{X: 100, Y: 100, Width: 1200, Height: 800})
 				})
 			}
 			mygo.RunOnMain(logDesktopState)

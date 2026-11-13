@@ -121,7 +121,7 @@
 
     </div>
     <nav aria-label="主导航" class="flex flex-col gap-1">
-      {#each navigation as item}<Hint text={sidebarCollapsed ? item.name : undefined}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => {recordsProvider="";recordsID="";page = item.name;} })}
+      {#each navigation as item}<Hint side="right" overflowOnly={false} text={sidebarCollapsed ? item.name : undefined}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => {recordsProvider="";recordsID="";page = item.name;} })}
           variant="navigation" size="navigation"
           class="nav-item"
           aria-label={item.name}
@@ -133,7 +133,7 @@
         >{/snippet}</Hint>{/each}
     </nav>
     <div class="settings-nav">
-      <Hint text={sidebarCollapsed ? "设置" : undefined}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => openSettings() })}
+      <Hint side="right" overflowOnly={false} text={sidebarCollapsed ? "设置" : undefined}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => openSettings() })}
         class="nav-item w-full"
         variant="navigation" size="navigation"
         aria-label="设置"
@@ -158,7 +158,7 @@
     <p class="px-3 pt-4 text-xs text-muted-foreground">Vela 0.1.0</p>
   </aside>
   </Resizable.Pane>
-  <Hint text="左右拖动调整侧栏宽度，方向键微调">{#snippet children(hintProps2)}<Resizable.Handle {...hintProps2} aria-label="调整侧栏宽度"  />{/snippet}</Hint>
+  <Resizable.Handle  aria-label="调整侧栏宽度"  />
   <Resizable.Pane>
   <div class="app-workspace">
     <header class="app-titlebar">
