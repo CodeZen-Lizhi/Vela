@@ -13,7 +13,7 @@
 .provider-table tbody tr:hover { background:color-mix(in srgb,var(--muted) 55%,transparent); }
 .provider-identity { display:flex; gap:10px; align-items:center; min-width:0; }
 .provider-avatar { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border-radius:9px; color:var(--accent-foreground); background:var(--accent); font-size:14px; font-weight:600; }
-.provider-name { min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.provider-name { flex:0 1 auto; min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 
 .provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
 .provider-balance { display:inline-flex; align-items:baseline; gap:2px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -68,15 +68,21 @@
 .provider-methods { display:flex; flex-direction:column; gap:7px; }
 
 /* 列宽由容器分配，桌面最小窗口也完整显示状态与操作，不依赖横向滚动。 */
-.provider-table:not(.provider-key-table) th:nth-child(1) { width:22%; }
+.provider-table:not(.provider-key-table) th:nth-child(1) { width:21%; }
 .provider-table:not(.provider-key-table) th:nth-child(2) { width:11%; }
-.provider-table:not(.provider-key-table) th:nth-child(3) { width:18%; }
-.provider-table:not(.provider-key-table) th:nth-child(4) { width:10%; }
+.provider-table:not(.provider-key-table) th:nth-child(3) { width:16%; }
+.provider-table:not(.provider-key-table) th:nth-child(4) { width:13%; }
 .provider-table:not(.provider-key-table) th:nth-child(5) { width:10%; }
 .provider-table:not(.provider-key-table) th:nth-child(6) { width:8%; }
 .provider-table:not(.provider-key-table) th:nth-child(7) { width:21%; }
-.provider-table td { overflow-wrap:anywhere; }
+.provider-table td { white-space:normal; overflow-wrap:anywhere; }
 .provider-identity > a { flex-shrink:0; }
+
+/* 默认窗口或较宽侧栏下按剩余空间收紧表格留白，给状态和验证摘要留出文字宽度。 */
+@container workspace (max-width:1000px) {
+ .provider-table th,.provider-table td { padding-inline:6px; }
+ .provider-identity { gap:6px; }
+}
 
 .provider-key-table code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:1100px) {
@@ -91,7 +97,7 @@
  .provider-drawer-body { padding:20px; }
  .provider-tabs { padding-inline:20px; }
 }
-@media(max-width:760px) {
+@media(max-width:900px) {
  .provider-drawer-heading { padding:20px 64px 20px 20px; }
  .provider-drawer-body { padding:20px; }
  .provider-tabs { padding:0 20px; gap:20px; }
@@ -103,6 +109,8 @@
  .provider-table:not(.provider-key-table) td::before { content:attr(data-label); display:block; font-size:10px; color:var(--muted-foreground); margin-bottom:6px; }
  .provider-table:not(.provider-key-table) td.provider-main { grid-column:1/-1; }
  .provider-table:not(.provider-key-table) td.provider-main::before { display:none; }
+ .provider-table:not(.provider-key-table) :is(th,td)[data-align="control"] { text-align:left; }
+ .provider-table:not(.provider-key-table) td[data-align="control"] > div { justify-content:flex-start; }
  .provider-actions { justify-content:flex-start; }
  .provider-toolbar { padding:14px; }
 }

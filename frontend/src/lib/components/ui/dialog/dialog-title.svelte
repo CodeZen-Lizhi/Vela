@@ -12,6 +12,6 @@
 <DialogPrimitive.Title
 	bind:ref
 	data-slot="dialog-title"
-	class={cn("text-lg font-semibold leading-none uppercase tracking-wider", className)}
+	class={cn("text-lg font-semibold leading-snug uppercase tracking-wider [overflow-wrap:anywhere]", className)}
 	{...restProps}
 />

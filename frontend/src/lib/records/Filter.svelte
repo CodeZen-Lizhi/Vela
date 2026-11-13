@@ -42,7 +42,7 @@
       data-filter-active={selected}
 
       aria-label={selected ? `${title}筛选：${selectionLabel}` : `${title}筛选`}
-      ><span class="min-w-0 truncate">{title}{!column && values.length ? ` · ${values.length}` : ""}</span
+      ><span class={column ? "min-w-0 whitespace-normal leading-tight" : "min-w-0 truncate"}>{title}{!column && values.length ? ` · ${values.length}` : ""}</span
       ></Select.Trigger
     >
     <Select.Content align="start"
@@ -67,7 +67,7 @@
       data-filter-active={selected}
 
       aria-label={selected ? `${title}筛选：${selectionLabel}` : `${title}筛选`}
-      ><span class="min-w-0 truncate">{column || !value ? title : selectionLabel}</span
+      ><span class={column ? "min-w-0 whitespace-normal leading-tight" : "min-w-0 truncate"}>{column || !value ? title : selectionLabel}</span
       ></Select.Trigger
     >
     <Select.Content align="start"

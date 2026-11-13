@@ -414,7 +414,6 @@ input:not([data-slot]):focus-visible {
   gap: 5px;
   max-width: 180px;
 }
-
 .price-amount {
   display: flex;
   align-items: baseline;
@@ -562,6 +561,8 @@ input:not([data-slot]):focus-visible {
   }
 }
 .settings-page {
+  container: settings / inline-size;
+  min-width: 0;
   padding-bottom: 20px;
 }
 /* 端口、间隔与阈值直接输入数值，不显示 WebKit 的步进箭头；方向键仍可增减。 */
@@ -650,7 +651,8 @@ input:not([data-slot]):focus-visible {
   color: var(--muted-foreground);
 }
 
-@media (max-width: 620px) {
+/* 设置按实际内容宽度收紧，侧栏拉宽时也能使用紧凑布局。 */
+@container settings (max-width: 620px) {
   .settings-heading,
   .setting-row {
     padding-left: 16px;
@@ -699,9 +701,11 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
   grid-template-rows: auto minmax(0, 1fr);
 }
 .app-main {
+  container: workspace / inline-size;
   width: 100%;
   max-width: 1280px;
   min-height: 0;
+  min-width: 0;
   margin-inline: auto;
   padding: 8px 28px 24px;
   overflow-y: auto;
@@ -783,6 +787,6 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
 }
 .list-footer { flex-shrink: 0; }
 @media (max-width: 900px) {
-  .app-main { padding: 12px 20px 20px; }
+  .app-main { padding: 12px 12px 20px; }
   .app-titlebar { padding-inline: 20px; }
 }

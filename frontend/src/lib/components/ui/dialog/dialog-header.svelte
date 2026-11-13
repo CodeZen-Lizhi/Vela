@@ -10,10 +10,11 @@
 	}: WithElementRef<HTMLAttributes<HTMLDivElement>> = $props();
 </script>
 
+<!-- 标题和说明预留关闭按钮的位置，长名称换行后也不会被图标遮住。 -->
 <div
 	bind:this={ref}
 	data-slot="dialog-header"
-	class={cn("gap-2 flex flex-col", className)}
+	class={cn("min-w-0 gap-2 flex flex-col pr-10 [overflow-wrap:anywhere]", className)}
 	{...restProps}
 >
 	{@render children?.()}

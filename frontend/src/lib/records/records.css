@@ -89,6 +89,20 @@
 .record-column-heading { display: flex; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
 .record-column-heading > span:first-child { white-space: nowrap; }
 .record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
+/* 按实际内容宽度分配紧凑列，状态、类型与金额保留完整宽度；侧栏拉宽也使用同一规则。 */
+@container workspace (max-width: 700px) {
+  .records-table th:nth-child(1) { width: 10%; }
+  .records-table th:nth-child(2) { width: 9%; }
+  .records-table th:nth-child(3) { width: 9%; }
+  .records-table th:nth-child(4) { width: 8%; }
+  .records-table th:nth-child(5) { width: 12%; }
+  .records-table th:nth-child(6) { width: 10%; }
+  .records-table th:nth-child(7) { width: 14%; }
+  .records-table th:nth-child(8) { width: 13%; }
+  .records-table th:nth-child(9) { width: 15%; }
+  .records-table td { padding-inline: 3px; }
+  .record-column-heading { flex-wrap: wrap; row-gap: 2px; }
+}
 .records-table th { height: 36px; padding-block: 3px; }
 .record-protocol { display: block; overflow-wrap: anywhere; line-height: 1.4; }
 .record-protocol > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
