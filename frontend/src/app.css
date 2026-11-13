@@ -175,13 +175,6 @@
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
 }
-.vela-live-indicator {
-  width: 8px;
-  height: 8px;
-  margin-inline: 3px;
-  border-radius: 50%;
-  background: currentColor;
-}
 .vela-processing-label {
   color: var(--primary);
   background: linear-gradient(90deg, var(--primary), var(--positive), var(--primary));
@@ -191,7 +184,6 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .vela-running-border::after { animation: vela-border-orbit 3s linear infinite; }
-  .vela-live-indicator { animation: vela-status-breathe 1.8s ease-in-out infinite; }
   .vela-processing-label { animation: vela-text-flow 3s linear infinite; }
 }
 

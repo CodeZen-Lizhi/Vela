@@ -7,6 +7,8 @@
 			variant: {
 				/** 紧凑圆角标签按语义着色：info 主信息、positive 计量、neutral 中性、negative 失败。 */
 				info: "h-5 rounded-md border border-primary/15 bg-primary/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-primary",
+				/** 记录业务类型使用淡紫色矩形标签，与同尺寸的传输标签上下对齐。 */
+				category: "h-5 rounded-md border border-parameter/25 bg-parameter/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-parameter",
 				positive: "h-5 rounded-md border border-positive/20 bg-positive/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-positive",
 				neutral: "h-5 rounded-md border border-border bg-muted/40 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-muted-foreground",
 				negative: "h-5 rounded-md border border-destructive/15 bg-destructive/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-destructive",

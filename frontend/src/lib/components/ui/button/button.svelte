@@ -18,7 +18,7 @@
 				row: "justify-start rounded-none border-0 bg-card text-left hover:bg-muted focus-visible:bg-muted active:translate-y-0 data-[dragging=true]:rounded-lg data-[dragging=true]:bg-accent data-[dragging=true]:shadow-lg data-[inactive=true]:opacity-60 aria-disabled:cursor-wait",
                 /** 请求尝试卡按 HTTP 结果使用语义边框，选中时保留统一主题反馈。 */
                 attempt: "border-border bg-card hover:bg-muted data-[result=success]:border-positive/30 data-[result=failed]:border-destructive/30 data-[selected=true]:ring-1 data-[selected=true]:ring-primary/40 data-[selected=true]:bg-accent",
-				/** 实时开关以主题色与呼吸灯强调运行状态。 */
+				/** 实时开关以主题色文字和边框强调启用状态。 */
 				live: "border-primary/30 bg-background text-primary hover:bg-accent",
 				/** 数值详情入口保持正文色，悬停与展开时使用主题强调色。 */
                 metric: "text-foreground hover:text-primary aria-expanded:text-primary active:translate-y-0",

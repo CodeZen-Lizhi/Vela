@@ -206,12 +206,11 @@
 .records-token-usage > div > span {
   white-space: nowrap;
 }
-.record-input, .record-output {
-  color: var(--foreground);
-}
-.record-cache, .record-hit {
-  color: var(--muted-foreground);
-}
+/* 输入紫色、缓存蓝色，输出及已知命中率绿色；未知命中率保留中性占位。 */
+.record-input { color: var(--parameter); }
+.record-cache { color: var(--primary); }
+.record-output, .record-hit { color: var(--positive); }
+.record-hit.record-missing { color: var(--muted-foreground); }
 .record-type-status { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .record-total-time, .record-cost { color: var(--primary); }
 .record-speed { color: var(--positive); }

@@ -6,7 +6,6 @@
   import { Button } from "$lib/components/ui/button";
   import { ArrowRight } from "@lucide/svelte";
   import { date, duration, label, states } from "./display";
-  import DetailSection from "./DetailSection.svelte";
 
   /** 实际执行路径按连续供应商分组，选中一次尝试后在路径下方展示事实。 */
   let { record, attempt = $bindable("0"), onresponse }: {
@@ -74,7 +73,4 @@
       <Button variant="text" size="inline" onclick={onresponse}>查看本次响应</Button>
     </section>
   {/if}
-  {#if record.candidates?.length}<DetailSection title="排序候选" description="排序快照，非实际发送次数">
-    {#each record.candidates as candidate}<p>{candidate.providerName} / {candidate.keyName} · {candidate.reason || (record.attempts.some((item) => item.providerId === candidate.providerId && item.keyId === candidate.keyId) ? "已尝试" : "未执行")}</p>{/each}
-  </DetailSection>{/if}
 </section>

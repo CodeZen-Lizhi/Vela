@@ -8,12 +8,9 @@
   import {
     Search,
     RefreshCw,
-    Radio,
+    Activity,
     ChevronLeft,
     ChevronRight,
-    Waves,
-    ArrowRightLeft,
-    Cable,
     Check,
     Shuffle,
   } from "@lucide/svelte";
@@ -245,23 +242,7 @@
 </script>
 
 <div class="records-page list-page">
-  <PageHeader title="使用记录" description="请求明细 · 用量、估算费用与执行路径">
-    {#snippet actions()}
-    <div class="records-actions">
-      <Button
-        variant={realtime ? "live" : "outline"}
-        disabled={!desktop}
-        aria-pressed={realtime}
-        onclick={() => (realtime = !realtime)}
-        >{#if realtime}<span class="vela-live-indicator" aria-hidden="true"></span>{:else}<Radio aria-hidden="true" />{/if}{realtime ? "实时刷新已开启" : "实时刷新"}</Button
-      ><Button
-        variant="outline"
-        disabled={!desktop || loading}
-        onclick={refresh}><RefreshCw />刷新</Button
-      >
-    </div>
-    {/snippet}
-  </PageHeader>
+  <PageHeader title="使用记录" description="请求明细 · 用量、估算费用与执行路径" />
   {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览：请在 Vela 桌面应用中查询真实请求记录。
     </Alert.Description></Alert.Root>{/if}
@@ -431,7 +412,21 @@
     <footer class="records-pagination list-footer">
       <div class="records-pagination-summary">
         <span>共 {number(summary?.total)} 条</span>
-
+        <div class="records-actions">
+          <Button
+            variant={realtime ? "live" : "outline"}
+            size="sm"
+            disabled={!desktop}
+            aria-pressed={realtime}
+            onclick={() => (realtime = !realtime)}
+            ><Activity aria-hidden="true" />实时</Button
+          ><Button
+            variant="outline"
+            size="sm"
+            disabled={!desktop || loading}
+            onclick={refresh}><RefreshCw aria-hidden="true" />刷新</Button
+          >
+        </div>
       </div>
       <div class="records-pagination-controls">
         <div class="records-page-size">
@@ -494,9 +489,9 @@
 {/snippet}
 <!-- 类型与客户端传输独立于最终状态，未知类型保留原值。 -->
 {#snippet typeCell(row: RecordsRecord)}<div class="record-type-status">
-  <Badge variant="info">{label(types, row.type)}</Badge>
-  <Badge variant={row.transport === "websocket" || row.stream ? "transport" : "metadata"}>
-    {#if row.transport === "websocket"}<Cable aria-hidden="true" />WS{:else if row.stream}<Waves aria-hidden="true" />流式{:else}<ArrowRightLeft aria-hidden="true" />标准{/if}
+  <Badge variant="category">{label(types, row.type)}</Badge>
+  <Badge variant={row.transport === "websocket" || row.stream ? "positive" : "neutral"}>
+    {#if row.transport === "websocket"}WS{:else if row.stream}流式{:else}标准{/if}
   </Badge>
 </div>{/snippet}
 <!-- 进行中及整项未知只显示一个短横线，结束后区分真实零值、媒体和 Token 用量。 -->
@@ -513,7 +508,7 @@
         : "按时长"}</small
     >{:else}<div class="records-token-usage" aria-label="Token 用量" >
       <div><span class="record-input" class:record-missing={!row.usage} aria-label={`输入 ${row.usage?.input ?? "未知"} Token`}>{compact(row.usage?.input)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-output" class:record-missing={!row.usage} aria-label={`输出 ${row.usage?.output ?? "未知"} Token`}>{compact(row.usage?.output)}</span></div>
-      <div><span class="record-cache" aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
+      <div><span class="record-cache" aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" class:record-missing={row.usage.context <= 0} aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
     </div>{/if}{/snippet}
 {#snippet timingCell(row: RecordsRecord)}{#if row.state === "local"}<span>本地响应</span
     ><small>{seconds(row.durationMillis)}</small>{:else}<div class="record-timing-pair" >
