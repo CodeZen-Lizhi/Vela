@@ -327,6 +327,61 @@ export interface Options {
   mappings: string[];
 }
 
+/** OverviewMetrics 只累计已知量；未知值以数量表达，不将未知结果推断为成功。 */
+export interface OverviewMetrics {
+  /** Requests 为逻辑请求数或实际尝试数；Success、Failed 仅统计已知结果，DetailsKnown 为可恢复详情数。 */
+  requests: number;
+  success: number;
+  failed: number;
+  detailsKnown: number;
+  /** Active 为正在执行的逻辑请求，不参与已完成成功率与用量结算。 */
+  active: number;
+  /** Tokens 为 Context+Output；Input 为非缓存输入，Cached 为缓存读取，均以 Token 计。 */
+  tokens: number;
+  input: number;
+  output: number;
+  cached: number;
+  context: number;
+  /** Cost、StandardCost 为估算 USD；标准费用使用开始时价格快照和倍率一。 */
+  cost: number;
+  standardCost: number;
+  /** UnknownUsage、UnknownCost、UnknownStandard 为对应未知的调用数量。 */
+  unknownUsage: number;
+  unknownCost: number;
+  unknownStandard: number;
+  /** FirstByteTotal 为首字毫秒合计，OutputRateTotal 为每秒输出 Token 速率合计；Count 为各自样本数。 */
+  firstByteTotal: number;
+  firstByteCount: number;
+  outputRateTotal: number;
+  outputRateCount: number;
+}
+
+/** OverviewRow 以稳定身份分组；KeyID 为空是逻辑请求，非空是实际尝试，二者禁止混加。 */
+export interface OverviewRow {
+  /** Time 为小时起点 Unix 毫秒；Day 使用固定统计时区。 */
+  time: number;
+  day: string;
+  /** 资源身份稳定；名称读取当前配置，不存在时明确标记已删除。 */
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  modelName: string;
+  protocol: string;
+  keyId: string;
+  keyName: string;
+  /** Metrics 是该维度的可加总指标。 */
+  metrics: OverviewMetrics;
+}
+
+/** OverviewSnapshot 合并长期结算统计与当前进行中调用；空库 firstDay 为空，rows 为空数组。 */
+export interface OverviewSnapshot {
+  /** Timezone 为记录模块固定时区；FirstDay 是最早统计日（YYYY-MM-DD）。 */
+  timezone: string;
+  firstDay: string;
+  /** Rows 包含小时汇总及无法恢复小时的历史日累计（归入当日零点）。 */
+  rows: OverviewRow[];
+}
+
 /** Page 包含一次查询同一事务内的分页、摘要及筛选候选。 */
 export interface Page {
   /** Records 不含正文；Summary 覆盖整个匹配集合；Before 为数据库插入顺序快照。 */
@@ -1137,6 +1192,10 @@ export const VelaService = {
   /** ModelCatalog 加载真实目录，价格缺失保持未知。 */
   modelCatalog(): Promise<CatalogEntry[]> {
     return call("VelaService.ModelCatalog");
+  },
+  /** Overview 返回调用的长期小时汇总，逻辑请求与 Key 实际尝试通过 keyId 区分。 */
+  overview(): Promise<OverviewSnapshot> {
+    return call("VelaService.Overview");
   },
   /** PreviewRequestCleanup 预览已结束请求清理数量与固定截止时刻。 */
   previewRequestCleanup(days: number): Promise<CleanupPreview> {

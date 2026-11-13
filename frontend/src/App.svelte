@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import OverviewPage from "$lib/overview/OverviewPage.svelte";
+  import { observeAttention } from "$lib/overview/attention.svelte";
+  // 关注状态由外壳持有，切页继续观察已知倍率变化。
+  onMount(observeAttention);
   import { Button } from "$lib/components/ui/button";
   import { Toaster } from "$lib/components/ui/sonner";
   import { toast } from "svelte-sonner";
@@ -23,8 +28,8 @@
   import SchedulingPage from "$lib/scheduling/SchedulingPage.svelte";
   import SettingsPage from "$lib/settings/SettingsPage.svelte";
   import { settingsSections, type SettingsSection } from "$lib/settings/sections";
-  /** 当前会话的顶级页面；真正启动应用时默认进入供应商。 */
-  let page = $state("供应商");
+  /** 当前显示的顶级页面，默认打开已接入真实统计的总览。 */
+  let page = $state("总览");
  /** 供应商最近调用携带的一次性记录入口。 */
  let recordsProvider=$state(""),recordsID=$state("");
  /** 进入记录页时保留目标身份，普通导航清除定向范围。 */
@@ -74,7 +79,7 @@
   let settingsSection = $state<SettingsSection>("general");
   /** 已实现入口正常导航，其余模块保持明确的待开发状态。 */
   const navigation = [
-    { name: "总览", icon: LayoutDashboard, enabled: false },
+    { name: "总览", icon: LayoutDashboard, enabled: true },
     { name: "供应商", icon: Network, enabled: true },
     { name: "模型", icon: Box, enabled: true },
     { name: "调度", icon: Waypoints, enabled: true },
@@ -162,7 +167,7 @@
       </p>{/if}
     </header>
     <main class="app-main" class:list-workspace={["供应商", "模型", "使用记录", "模型验证"].includes(page)}>
-      {#if page === "供应商"}<ProvidersPage {notify} {openRecords} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
+      {#if page === "总览"}<OverviewPage {notify} navigate={(target) => { if (target === "providers") page = "供应商"; else openSettings("connection"); }} />{:else if page === "供应商"}<ProvidersPage {notify} {openRecords} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
           {notify}
         />{:else if page === "使用记录"}<RecordsPage {notify} initialProvider={recordsProvider} initialRecord={recordsID} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
           section={settingsSection}

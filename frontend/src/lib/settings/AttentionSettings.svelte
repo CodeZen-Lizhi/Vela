@@ -141,7 +141,7 @@
       {/each}
     </div>
     <p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-      仅控制总览展示，不会开启余额采集、模型验证或健康检查。总览接入后按这里的偏好显示。
+      仅控制总览展示，不会开启余额采集、模型验证或健康检查。总览按这里的已保存偏好显示。
     </p>
     {#if error}<Alert.Root variant="inline-error" class="mt-3"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
     <div class="mt-5 flex flex-wrap items-center justify-end gap-2">

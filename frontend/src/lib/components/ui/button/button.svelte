@@ -18,7 +18,13 @@
 				row: "justify-start rounded-none border-0 bg-card text-left hover:bg-muted focus-visible:bg-muted active:translate-y-0 data-[dragging=true]:rounded-lg data-[dragging=true]:bg-accent data-[dragging=true]:shadow-lg data-[inactive=true]:opacity-60 aria-disabled:cursor-wait",
 				/** 实时开关以主题色与呼吸灯强调运行状态。 */
 				live: "border-primary/30 bg-background text-primary hover:bg-accent",
-				ghost: "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground",
+				/** Token构成胶囊复用按钮的键盘焦点与提示触发，颜色来自内部统计分段。 */
+                token: "gap-0 overflow-hidden rounded-full border-0 bg-muted active:translate-y-0",
+                /** 趋势图的透明命中区保留鼠标反馈与键盘焦点。 */
+                plot: "rounded-sm border-0 bg-transparent hover:bg-primary/10 focus-visible:bg-primary/10 active:translate-y-0",
+                /** 年度热力图颜色仅表达真实数据强度，未记录日期降低对比。 */
+                heatmap: "rounded-[3px] border-0 bg-[color-mix(in_srgb,var(--primary)_var(--heat-strength,0%),var(--muted))] hover:ring-1 hover:ring-primary active:translate-y-0 disabled:opacity-45",
+                ghost: "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground",
 				destructive: "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30",
 				link: "text-primary underline-offset-4 hover:underline underline",
 				/** 无底色的次要文本操作，悬停时强调可点击性。 */
@@ -39,7 +45,13 @@
 				content: "h-auto gap-2 px-3 py-2 whitespace-normal",
 				// table-inline 用于表格文字入口，不占额外列宽，保留主题与焦点反馈。
 				"table-inline": "h-auto gap-1 p-0 text-xs",
-				default: "h-9 gap-2 px-3.5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",
+				/** 总览明细Token胶囊固定72×8，与参考原型一致。 */
+                token: "h-2 w-[72px] min-w-[72px] gap-0 p-0",
+                /** 图表命中区跟随绘图区布局，不引入控件固定尺寸。 */
+                plot: "h-full min-w-0 flex-1 p-0",
+                /** 年历以13px方格保持与认可原型一致的信息密度。 */
+                heatmap: "h-[13px] min-w-3 p-0",
+                default: "h-9 gap-2 px-3.5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",
 				xs: "h-7 gap-1 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-9 gap-2 px-3.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
 				lg: "h-11 gap-1.5 px-8 has-data-[icon=inline-end]:pr-5 has-data-[icon=inline-start]:pl-5",

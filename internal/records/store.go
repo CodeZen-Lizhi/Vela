@@ -80,7 +80,7 @@ type attemptScope struct {
 	number int
 }
 
-// New 建立表并清理上次进程中断的活跃状态，不能将进程中断冒充成功。
+// New 建立表并回填长期概览，再清理上次进程中断的活跃状态；不能将中断冒充成功。
 func New(db *sql.DB) (*Store, error) {
 	if db == nil {
 		return nil, errors.New("请求记录数据库尚未初始化")
@@ -112,7 +112,10 @@ func New(db *sql.DB) (*Store, error) {
 	if err = s.migrateMetrics(); err != nil {
 		return nil, err
 	}
-	// 恢复只读取未完成记录，不扫描历史正文。
+	if err = s.migrateOverview(); err != nil {
+		return nil, err
+	}
+	// 恢复只读取未完成记录；历史正文仅在首次概览迁移扫描。
 	rows, err := db.Query(`SELECT document FROM request_records WHERE state='active'`)
 	if err != nil {
 		return nil, err
@@ -233,7 +236,7 @@ func (s *Store) putPayload(ctx context.Context, id string, number int, p Payload
 	return err
 }
 
-// save 将结束标记和长期累计在一个事务结算，重复收尾不重复计数。
+// save 将结束标记、小时概览及长期日累计在一个事务结算，重复收尾不重复计数。
 func (s *Store) save(ctx context.Context, r Record, final bool) error {
 	r.Client = nil
 	for i := range r.Attempts {
@@ -277,6 +280,9 @@ func (s *Store) save(ctx context.Context, r Record, final bool) error {
 		}
 	}
 	if final {
+		if err = s.saveOverview(ctx, tx, r); err != nil {
+			return err
+		}
 		if err = s.saveKeyTotals(ctx, tx, r); err != nil {
 			return err
 		}
