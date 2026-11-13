@@ -409,14 +409,9 @@
                     conclusions.insufficient}</Badge
                 >{#if report.state !== "complete"}<small
                     >{report.state === "cancelled" ? "已取消" : "执行失败"} · {report.reason}</small
-                  >{:else if report.conclusion === "insufficient"}<small>{report.reason}</small>{/if}</Table.Cell
+                  >{/if}</Table.Cell
               ><Table.Cell data-align="number"
-                ><strong>{probability(report.candidates[0]?.probability)}</strong
-                ><small
-                  >{report.candidates[0]?.name ||
-                    report.candidates[0]?.model ||
-                    "无有效候选"} · 参考库内</small
-                ></Table.Cell
+                ><strong>{probability(report.candidates[0]?.probability)}</strong></Table.Cell
               ><Table.Cell>{time(report.time)}</Table.Cell><Table.Cell data-align="control"
                 ><div class="v-actions">
                   <Button onclick={() => start(report.target.providerId, report.id)}
