@@ -46,3 +46,13 @@
 证据位于 `.cache/business-e2e-overview/date-range-real-820.png`、`date-range-popover-1180.png`、`date-range-applied-1180.png`、`date-range-820-final.png`、`date-range-390-final.png` 和 `date-range-dark-1180.png`。本轮验证开发桌面应用及真实本地统计，未替换日常安装包，也未访问外部供应商。
 
 需求同步：已更新 [UI 原型要求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/ui-prototype.md) 的“Vela 总览时间范围单入口”条款。
+
+## 2026-11-13 时间范围弹层尺寸收紧
+
+用户反馈原弹层接近整窗大小。选择器宽度由 `320px` 收紧为 `288px`，日期格由 `32px` 收紧为 `28px`，并压缩标题、快捷范围、周间距和页脚密度。总览仍只有一个时间入口，快捷范围、自定义两端点、统计时区和热力图选日规则未变。
+
+浏览器实际渲染与交互检查：820×600 下弹层为 `288×416.56px`，底部位于 `502.56px`，高度占视口 `69.4%`；390×600 下弹层完整位于视口内，页面 `scrollWidth === clientWidth`。1180×760 深色外观下弹层保持 `288×416.56px`，使用主题浮层、文字和边框语义色。快捷范围切换后单入口更新为“近 7 天”，按 Escape 可关闭。真实 `Vela Dev` 同时打开同一选择器，本机统计、三张汇总卡和趋势继续正常渲染。
+
+证据位于 `.cache/business-e2e-overview/date-range-compact-820.png`、`date-range-compact-390.png`、`date-range-compact-dark-1180.png` 和 `date-range-compact-native-1180.png`。
+
+需求同步：已同步 [UI 原型要求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/ui-prototype.md) 的“Vela 总览时间范围单入口（2026-11-13，当前有效）”条款，新增紧凑浮层、28px 日期点击区域及 820×600 下不超过视口 75% 的验收。
