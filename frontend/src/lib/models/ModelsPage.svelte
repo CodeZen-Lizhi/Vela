@@ -42,6 +42,21 @@
     busy = $state(false),
     catalogLoading = $state(false),
     error = $state("");
+  /** 目录状态只读轮询；代次用于刷新目录，价格内容比较用于识别来源更新，不覆盖任何编辑草稿。 */
+  let catalogStatus = $state<Awaited<ReturnType<typeof VelaService.modelCatalogStatus>> | null>(null);
+  /** 防止轮询重叠，并在组件卸载后忽略未完成的读取结果。 */
+  let polling = false;
+  let disposed = false;
+  /** 本地读取失败独立展示，成功轮询后清除，不覆盖用户操作错误。 */
+  let pollError = $state("");
+  /** 表单打开时的有效价格快照，服务端据此按组识别本次用户修改。 */
+  let originalPricing = $state<Pricing | undefined>();
+  let createOriginalPricing = $state<Pricing | undefined>();
+  /** 编辑会话初始来源价格，用于恢复后仍未改价时采用最新来源。 */
+  let originalSourcePricing = $state<Pricing | undefined>();
+  /** 来源在本次表单会话中已更新；提示与错误独立，不阻止提交。 */
+  let sourceUpdated = $state(false);
+  let createSourceUpdated = $state(false);
   let restoredGroups = $state<string[]>([]);
   /** 创建草稿只在最终提交时落库；来源条目用于保持精确来源身份。 */
   let createDraft = $state<Model | null>(null);
@@ -95,13 +110,12 @@
     selectForCreate(null);
     addOpen = true;
   }
-  /** 打开在线目录，在真实请求结束后显示候选或错误。 */
+  /** 每次打开都读取本地目录缓存，已存在候选不等待后台联网检查。 */
   async function openCatalog(): Promise<void> {
     createDraft = null;
     createEntry = null;
     addOpen = true;
     dialogError = "";
-    if (catalog.length) return;
     catalogLoading = true;
     try {
       catalog = await VelaService.modelCatalog();
@@ -114,9 +128,11 @@
   /** 仅构造独立创建草稿，取消不写入；entry 为空表示手动创建。 */
   function selectForCreate(entry: CatalogEntry | null): void {
     createEntry = entry;
+    createSourceUpdated = false;
     dialogError = "";
     const pricing: Pricing = {base: [], tiers: [], modes: [], schedules: [], baseline: "", images: [], videos: []};
-    createDraft = {id: "", revision: 0, modelId: entry?.canonicalId.split("/")[1] || entry?.modelId || "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
+    createDraft = {id: "", revision: 0, editRevision: 0, modelId: entry?.canonicalId.split("/")[1] || entry?.modelId || "", name: entry?.name ?? "", family: entry?.family ?? "", kind: entry?.kind ?? "chat", context: entry?.context ?? 0, capabilities: [...(entry?.capabilities ?? [])], providerId: entry?.providerId ?? "", providerName: entry?.providerName ?? "手动创建", sourceModelId: entry?.modelId ?? "", canonicalId: entry?.canonicalId ?? "", official: entry?.official ?? false, sourceAvailable: !!entry, source: entry ? "LiteLLM" : "", sourceKey: entry?.sourceKey ?? "", warnings: [...(entry?.warnings ?? [])], syncedAt: "", pricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, sourcePricing: entry ? structuredClone($state.snapshot(entry.pricing)) : pricing, overrides: []};
+    createOriginalPricing = entry ? structuredClone($state.snapshot(entry.pricing)) : structuredClone(pricing);
   }
   /** 返回目录丢弃未提交草稿，保留目录筛选和滚动位置；焦点回到搜索框。 */
   async function returnToCatalog(): Promise<void> {
@@ -133,7 +149,7 @@
     busy = true;
     dialogError = "";
     try {
-      await VelaService.createModel({providerId: createEntry?.providerId ?? "", modelId: createDraft.modelId, sourceModelId: createEntry?.modelId ?? "", name: createDraft.name, kind: createDraft.kind, pricing: createDraft.pricing});
+      await VelaService.createModel({providerId: createEntry?.providerId ?? "", modelId: createDraft.modelId, sourceModelId: createEntry?.modelId ?? "", name: createDraft.name, kind: createDraft.kind, pricing: createDraft.pricing, originalPricing: createOriginalPricing});
       await load();
       addOpen = false;
     } catch (e) {
@@ -142,13 +158,13 @@
       busy = false;
     }
   }
-  /** 同步会替换 Go 目录候选，先失效前端快照，下次新增重新读取。 */
+  /** 手动强制同步不受自动更新设置限制，保留现有候选与表单直到取得新结果。 */
   async function sync(): Promise<void> {
     busy = true;
     error = "";
-    catalog = [];
     try {
       const result = await VelaService.syncModelPrices();
+      await refreshCatalogState();
       await load();
       if (result.failures.length) error = `部分模型未更新：${result.failures.join("；")}`;
     } catch (e) {
@@ -163,6 +179,9 @@
     restoredGroups = [];
     selected = m;
     draft = structuredClone($state.snapshot(m));
+    originalPricing = structuredClone($state.snapshot(m.pricing));
+    originalSourcePricing = structuredClone($state.snapshot(m.sourcePricing));
+    sourceUpdated = false;
     readOnly = detail;
     dialogError = "";
     editorOpen = true;
@@ -177,8 +196,11 @@
       await VelaService.updateModel({
         id: draft.id,
         revision: draft.revision,
+        editRevision: draft.editRevision,
         name: draft.name,
         pricing: draft.pricing,
+        originalPricing,
+        originalSourcePricing,
         restoreGroups: restoredGroups,
       });
       await load();
@@ -269,34 +291,63 @@
     }
   }
 
+  /** 只读轮询本地状态和清单；代次改变时刷新已打开目录，编辑及创建草稿保持原样。 */
+  async function refreshCatalogState(check = false): Promise<void> {
+    if (!isMyGo() || polling || disposed) return;
+    polling = true;
+    try {
+      const status = check
+        ? await VelaService.checkModelCatalog()
+        : await VelaService.modelCatalogStatus();
+      const changed = catalogStatus !== null && status.generation !== catalogStatus.generation;
+      if (disposed) return;
+      // 先记录检查代次，后续读取失败也不重复消费；无缓存或检查失败时禁止轮询触发目录下载。
+      catalogStatus = status;
+      const nextModels = await VelaService.listModels();
+      const nextCatalog = changed && addOpen && status.updatedAt && !status.error
+        ? await VelaService.modelCatalog()
+        : null;
+      if (disposed) return;
+      models = nextModels;
+      if (nextCatalog) catalog = nextCatalog;
+      // 检查成功、304 和失败均会推进代次，仅价格内容变化才提示当前模型来源更新。
+      if (editorOpen && draft?.providerId && originalSourcePricing) {
+        const latest = nextModels.find((model) => model.id === draft?.id);
+        sourceUpdated = !!latest && JSON.stringify(latest.sourcePricing) !== JSON.stringify(originalSourcePricing);
+      }
+      if (addOpen && createEntry && createOriginalPricing && nextCatalog) {
+        const latest = nextCatalog.find((entry) => entry.providerId === createEntry?.providerId && entry.modelId === createEntry?.modelId);
+        createSourceUpdated = !!latest && JSON.stringify(latest.pricing) !== JSON.stringify(createOriginalPricing);
+      }
+      pollError = "";
+    } catch (e) {
+      if (!disposed) pollError = message(e);
+    } finally {
+      polling = false;
+    }
+  }
+
   onMount(() => {
+    disposed = false;
     void load();
+    void refreshCatalogState(true);
+    const timer = setInterval(() => {
+      if (!busy && document.visibilityState === "visible") void refreshCatalogState();
+    }, 2000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshCatalogState(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   });
 </script>
 
 <div class="list-page models-page">
-  <PageHeader title="模型" description="统一管理模型与标准价格，调用成本按本地规则估算。">
-    {#snippet actions()}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || catalogLoading || !isMyGo() || !models.length}
-          onclick={() => void sync()}
-          ><RefreshCw class={busy ? "animate-spin" : ""} />同步全部价格</Button
-        >
-        <Button
-          size="sm"
-          disabled={busy || !isMyGo()}
-          onclick={() => void openCatalog()}><CloudDownload />在线添加</Button
-        >
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || !isMyGo()}
-          onclick={openManual}><PencilLine />手动创建</Button
-        >
-    {/snippet}
-  </PageHeader>
+  <PageHeader title="模型" description="统一管理模型与标准价格，调用成本按本地规则估算。" />
   {#if !isMyGo()}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 数据操作请在 Vela 桌面窗口中进行。
     </Alert.Description></Alert.Root>{/if}
@@ -331,6 +382,27 @@
             ></Select.Content
           >
         </Select.Root>
+      </div>
+      <div class="model-actions">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || catalogLoading || !isMyGo() || !models.length}
+          onclick={() => void sync()}
+          ><RefreshCw class={busy ? "animate-spin" : ""} />同步价格</Button
+        >
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !isMyGo()}
+          onclick={() => void openCatalog()}><CloudDownload />在线添加</Button
+        >
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !isMyGo()}
+          onclick={openManual}><PencilLine />手动创建</Button
+        >
       </div>
     </div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
@@ -440,7 +512,12 @@
       >{/if}
     </div>
     <div class="list-footer border-t px-4 py-3 text-xs text-muted-foreground">
-      来源 models.dev · 最近同步 {dateLabel(lastSync)}
+      来源 LiteLLM · 最近同步 {dateLabel(catalogStatus?.updatedAt || lastSync)}
+      {#if pollError}<p role="status" class="mt-1">读取更新状态失败：{pollError}</p>{/if}
+      {#if catalogStatus?.refreshing}<span role="status"> · 正在检查更新…</span>{/if}
+      {#if catalogStatus?.checkedAt}<span> · 最近检查 {dateLabel(catalogStatus.checkedAt)}</span>{/if}
+      {#if catalogStatus?.error}<p role="status" class="mt-1">更新失败：{catalogStatus.error}，已保留本地数据。</p>{/if}
+      {#if catalogStatus?.failures?.length}<p role="status" class="mt-1">部分模型未更新：{catalogStatus.failures.join("；")}</p>{/if}
     </div>
   </section>
 </div>
@@ -462,13 +539,14 @@
       ><Dialog.Description class="sr-only"
         >{createDraft && !createEntry
           ? "填写目录外模型的名称、模型 ID、类型和价格"
-          : "从 models.dev 在线目录选择模型，确认后创建"}</Dialog.Description
+          : "从 LiteLLM 在线目录选择模型，确认后创建"}</Dialog.Description
       ></Dialog.Header
     >
     {#if createDraft && !createEntry}
       <div class="flex min-h-0 flex-1 flex-col">
         <ModelEditor
           bind:model={createDraft}
+          sourceUpdated={createSourceUpdated}
           {busy}
           error={dialogError}
           mode={createEntry ? "online" : "manual"}
@@ -492,6 +570,7 @@
         <div class="flex min-h-0 flex-1 flex-col">
           <ModelEditor
             bind:model={createDraft}
+            sourceUpdated={createSourceUpdated}
             {busy}
             error={dialogError}
             mode="online"
@@ -530,6 +609,7 @@
     {:else if draft}<div class="flex min-h-0 flex-col">
         <ModelEditor
           bind:model={draft}
+          {sourceUpdated}
           {busy}
           error={dialogError}
           onsave={save}

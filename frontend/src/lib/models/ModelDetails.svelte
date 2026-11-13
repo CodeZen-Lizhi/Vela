@@ -7,6 +7,7 @@
   import PriceSummary from "./PriceSummary.svelte";
   import {
     dateLabel,
+    modeLabel,
     money,
     kinds,
     modelInitial,
@@ -61,6 +62,7 @@
 {/snippet}
 
 <div class="model-details">
+  {#each model.warnings ?? [] as warning}<p class="detail-note" role="status">{warning}</p>{/each}
   <header class="detail-identity">
     <span
       class="model-brand"
@@ -101,7 +103,7 @@
     <div>
       <dt>价格来源</dt>
       <dd>
-        {model.providerId ? `models.dev · ${model.providerName}` : '手动创建'}{model.providerId && !model.sourceAvailable
+        {model.providerId ? `LiteLLM · ${model.providerName}` : '手动创建'}{model.providerId && !model.sourceAvailable
           ? "（来源已下架，保留本地配置）"
           : ""}
       </dd>
@@ -150,7 +152,7 @@
           {pricing.tiers.length ? "按完整输入量选择上下文档位" : "取基础单价"}
         </li>
         {#if pricing.modes.length}<li>
-            按 Fast / Priority 模式取倍率或显式价格
+            按处理模式取倍率或显式价格
           </li>{/if}
         {#if pricing.schedules.length}<li>按请求时刻应用分时倍率</li>{/if}
       </ol>
@@ -179,7 +181,7 @@
             {#each pricing.modes as mode}
               <div class="detail-mode">
                 <div class="detail-rule-title">
-                  <strong>{mode.name}</strong
+                  <strong>{modeLabel(mode.name)}</strong
                   >{#if mode.multiplier !== null}<Badge variant="secondary"
                       >{mode.multiplier}×</Badge
                     >{:else}<span>显式价格</span>{/if}

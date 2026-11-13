@@ -26,6 +26,19 @@ type Store struct {
 	catalogURL string
 	mu         sync.Mutex
 	catalog    []CatalogEntry
+	// catalogState 为持久目录快照；更新请求和策略由 mu 保护，不占网络期间的写入锁。
+	catalogState   catalogCache
+	catalogFlight  chan struct{}
+	catalogAttempt time.Time
+	catalogResult  SyncResult
+	catalogError   error
+	catalogAuto    bool
+	catalogMinutes int
+	catalogWake    chan struct{}
+	// catalogContext 属于模块生命周期；关闭时取消网络并等待共享任务结束。
+	catalogContext context.Context
+	catalogCancel  context.CancelFunc
+	closed         bool
 	// credentials 加密可能含账号密码的全局代理配置，桌面入口在启动时接入。
 	credentials *credentials.Store
 }
@@ -49,11 +62,28 @@ func Open(path string, client *http.Client, catalogURL string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("初始化模型数据: %w", err)
 	}
-	return &Store{db: db, client: client, catalogURL: catalogURL}, nil
+	if client == nil {
+		client = http.DefaultClient
+	}
+	catalogContext, cancel := context.WithCancel(context.Background())
+	s := &Store{db: db, client: client, catalogURL: catalogURL, catalogContext: catalogContext, catalogCancel: cancel, catalogAuto: true, catalogMinutes: 10, catalogWake: make(chan struct{}, 1)}
+	s.catalogState.Status = CatalogStatus{Source: "LiteLLM", Failures: []string{}}
+	s.loadCatalogCache(context.Background())
+	return s, nil
 }
 
 // Close 由应用退出时关闭数据库，不暴露给桌面绑定。
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.mu.Lock()
+	s.closed = true
+	s.catalogCancel()
+	flight := s.catalogFlight
+	s.mu.Unlock()
+	if flight != nil {
+		<-flight
+	}
+	return s.db.Close()
+}
 
 // DB 返回本地数据库句柄，供同一数据文件中的其他模块复用；生命周期仍由 Close 管理。
 func (s *Store) DB() *sql.DB { return s.db }
@@ -118,7 +148,7 @@ func (s *Store) add(ctx context.Context, providerID, sourceModelID string, draft
 	var entry *CatalogEntry
 	for i := range s.catalog {
 		e := &s.catalog[i]
-		if e.ProviderID == providerID && e.ModelID == sourceModelID {
+		if e.ProviderID == providerID && e.ModelID == sourceModelID && !e.Deprecated {
 			entry = e
 			break
 		}
@@ -133,7 +163,7 @@ func (s *Store) add(ctx context.Context, providerID, sourceModelID string, draft
 	if err != nil {
 		return Model{}, err
 	}
-	m := Model{ID: id, ModelID: entry.ModelID, Name: entry.Name, Family: entry.Family, Kind: entry.Kind, Context: entry.Context, Capabilities: entry.Capabilities, ProviderID: entry.ProviderID, ProviderName: entry.ProviderName, SourceModelID: entry.ModelID, CanonicalID: entry.CanonicalID, Official: entry.Official, SourceAvailable: true, SyncedAt: time.Now().UTC().Format(time.RFC3339), Pricing: entry.Pricing, SourcePricing: entry.Pricing, Overrides: []string{}}
+	m := Model{Source: "LiteLLM", SourceKey: entry.SourceKey, Warnings: entry.Warnings, ID: id, ModelID: entry.ModelID, Name: entry.Name, Family: entry.Family, Kind: entry.Kind, Context: entry.Context, Capabilities: entry.Capabilities, ProviderID: entry.ProviderID, ProviderName: entry.ProviderName, SourceModelID: entry.ModelID, CanonicalID: entry.CanonicalID, Official: entry.Official, SourceAvailable: true, SyncedAt: time.Now().UTC().Format(time.RFC3339), Pricing: entry.Pricing, SourcePricing: entry.Pricing, Overrides: []string{}}
 	// 同一来源模型的跨供应商候选共用统一模型名，保留实际来源名称用于后续同步。
 	if entry.CanonicalID != "" {
 		parts := strings.SplitN(entry.CanonicalID, "/", 2)
@@ -145,9 +175,16 @@ func (s *Store) add(ctx context.Context, providerID, sourceModelID string, draft
 		// 用户确认的本地模型 ID 与目录来源 ID 分离；后续同步仍按 SourceModelID 命中来源。
 		m.ModelID = draft.ModelID
 		m.Name = draft.Name
-		m.Pricing = draft.Pricing
+		m.Pricing = clonePricing(draft.Pricing)
+		if draft.OriginalPricing != nil {
+			for _, g := range groups {
+				if sameGroup(draft.Pricing, *draft.OriginalPricing, g) {
+					copyGroup(&m.Pricing, entry.Pricing, g)
+				}
+			}
+		}
 		for _, g := range groups {
-			if !sameGroup(m.Pricing, m.SourcePricing, g) {
+			if !sameGroup(m.Pricing, m.SourcePricing, g) || (draft.OriginalPricing != nil && !sameGroup(draft.Pricing, *draft.OriginalPricing, g)) {
 				m.Overrides = append(m.Overrides, g)
 			}
 		}
@@ -188,11 +225,22 @@ func (s *Store) Update(ctx context.Context, edit Edit) (Model, error) {
 	if err != nil {
 		return m, err
 	}
-	if edit.Revision != m.Revision {
+	if (edit.OriginalPricing == nil && edit.Revision != m.Revision) || (edit.OriginalPricing != nil && edit.EditRevision != m.EditRevision) {
 		return Model{}, errors.New("模型已更新，请取消编辑并重新打开，已保留最新配置")
 	}
+	userChanged := map[string]bool{}
+	if edit.OriginalPricing != nil {
+		merged := clonePricing(m.Pricing)
+		for _, g := range groups {
+			if !sameGroup(edit.Pricing, *edit.OriginalPricing, g) {
+				userChanged[g] = true
+				copyGroup(&merged, edit.Pricing, g)
+			}
+		}
+		edit.Pricing = merged
+	}
 	for _, g := range groups {
-		if !sameGroup(m.Pricing, edit.Pricing, g) && !contains(m.Overrides, g) {
+		if (userChanged[g] || !sameGroup(m.Pricing, edit.Pricing, g)) && !contains(m.Overrides, g) {
 			m.Overrides = append(m.Overrides, g)
 		}
 	}
@@ -202,6 +250,10 @@ func (s *Store) Update(ctx context.Context, edit Edit) (Model, error) {
 		}
 		if !m.SourceAvailable || !hasGroup(m.SourcePricing, g) {
 			return Model{}, errors.New("没有可用的来源值，已保留本地配置")
+		}
+		// 恢复后未再次改价时采用最新来源，避免后台刷新后将旧来源误保护为人工改价。
+		if edit.OriginalSourcePricing != nil && sameGroup(edit.Pricing, *edit.OriginalSourcePricing, g) {
+			copyGroup(&edit.Pricing, m.SourcePricing, g)
 		}
 		// 用户恢复后又编辑该组时保留新的编辑，不用恢复标记覆盖用户输入。
 		if !sameGroup(edit.Pricing, m.SourcePricing, g) {
@@ -216,6 +268,7 @@ func (s *Store) Update(ctx context.Context, edit Edit) (Model, error) {
 		m.Overrides = remaining
 	}
 	m.Name = edit.Name
+	m.EditRevision++
 	m.Pricing = edit.Pricing
 	return s.save(ctx, m)
 }

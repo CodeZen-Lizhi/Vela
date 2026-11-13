@@ -46,7 +46,7 @@
     onselect: (entry: CatalogEntry) => void;
   } = $props();
   /**
-   * 厂商条只列热门官方厂商，顺序即展示顺序：id 为 models.dev 供应商标识，label 为界面名称，logo 为本地品牌图标。
+   * 厂商条只列热门官方厂商，顺序即展示顺序：id 为 LiteLLM 供应商标识，label 为界面名称，logo 为本地品牌图标。
    * 未列出的来源不在厂商条出现，仍可通过搜索选到。
    */
   const officialVendors = [
@@ -185,6 +185,7 @@
             {#if entry.official}<Badge variant="secondary">官方</Badge>{/if}
           </div>
           <ModelCapabilities values={entry.capabilities} />
+          {#if entry.warnings?.length}<Hint text={entry.warnings.join("；")}>{#snippet children(warningProps)}<span {...warningProps}><Badge variant="neutral">部分规则未导入</Badge></span>{/snippet}</Hint>{/if}
           {#if entry.problem}<p class="text-destructive">
               {entry.problem}
             </p>{:else}<PriceSummary

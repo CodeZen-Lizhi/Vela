@@ -246,7 +246,7 @@ func TestGlobalProxy(t *testing.T) {
 	if err = s.SetProxy(ctx, Proxy{Enabled: true, URL: proxy.URL}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Catalog(ctx); err != nil {
+	if _, err = s.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if proxyHits.Load() != 1 || directHits.Load() != 0 {
@@ -255,7 +255,7 @@ func TestGlobalProxy(t *testing.T) {
 	if err = s.SetProxy(ctx, Proxy{Enabled: false, URL: proxy.URL}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Catalog(ctx); err != nil {
+	if _, err = s.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if directHits.Load() != 1 || proxyHits.Load() != 1 {

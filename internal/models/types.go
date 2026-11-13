@@ -65,7 +65,8 @@ func (r *VideoPrice) UnmarshalJSON(data []byte) error {
 
 // Rate 是一项美元单价；Key 指定计费维度，Unit 为 million_tokens、image、second 或 request。
 type Rate struct {
-	// Key 计费维度键，与价格单位一起决定含义。
+	// Key 计费维度键；缓存写入可区分 30m、1h、12h，有声/图片缓存和视频 Token 使用独立维度。
+	// per_image_input、per_second_input 为媒体输入价，per_image、per_second 为媒体输出价。
 	Key string `json:"key"`
 	// Price 非负美元单价，零明确表示免费。
 	Price float64 `json:"price"`
@@ -81,7 +82,7 @@ type Tier struct {
 	Rates []Rate `json:"rates"`
 }
 
-// Mode 表示 fast 或 priority 模式；倍率与显式价格二选一。
+// Mode 表示 fast、priority 或 ultrafast 模式；倍率与显式价格二选一。
 type Mode struct {
 	// Name 模型显示名称或处理模式标识，按所属类型解释。
 	Name string `json:"name"`
@@ -137,7 +138,7 @@ type Pricing struct {
 	Base []Rate `json:"base"`
 	// Tiers 按输入量递增的整套上下文阶梯。
 	Tiers []Tier `json:"tiers"`
-	// Modes Fast 和 priority 模式的倍率或显式价格。
+	// Modes fast、priority 和 ultrafast 模式的倍率或显式价格。
 	Modes []Mode `json:"modes"`
 	// Schedules 同一时区内的分时窗口，窗口不能重叠。
 	Schedules []Schedule `json:"schedules"`
@@ -151,6 +152,14 @@ type Pricing struct {
 
 // Model 保持本地稳定身份与来源身份分离；SourceAvailable 记录最近目录是否仍包含此来源模型。
 type Model struct {
+	// Source 价格目录来源名称；旧记录未标明时为空。
+	Source string `json:"source"`
+	// SourceKey 目录原始键，用于跟随同一来源条目同步。
+	SourceKey string `json:"sourceKey"`
+	// Warnings 最近来源解析的计价告警，空集合表示没有告警。
+	Warnings []string `json:"warnings"`
+	// EditRevision 仅在手动编辑时递增，用于区分用户改动与后台同步。
+	EditRevision int64 `json:"editRevision"`
 	// ID 本地稳定身份，删除重建时不复用。
 	ID string `json:"id"`
 	// Revision 每次保存或同步后递增；旧记录缺失时为零，用于拒绝过期编辑草稿。
@@ -191,6 +200,16 @@ type Model struct {
 
 // CatalogEntry 是搜索目录候选；非官方来源必须由用户主动选择。
 type CatalogEntry struct {
+	// Deprecated 标记来源明确弃用的条目，解析阶段保留供同步使用。
+	Deprecated bool `json:"deprecated"`
+	// SourceKey 保留 LiteLLM 原始目录键，用于追溯别名和来源。
+	SourceKey string `json:"sourceKey"`
+	// SourceURL 来源声明的价格文档地址，缺失时为空。
+	SourceURL string `json:"sourceUrl"`
+	// Warnings 记录未支持的复杂计价等来源信息，不将未知价格解释为免费。
+	Warnings []string `json:"warnings"`
+	// Metadata 保留完整来源条目，包含输出上限、向量维度和未映射能力。
+	Metadata json.RawMessage `json:"metadata"`
 	// ProviderID 价格来源供应商的稳定标识，不是用户中转站配置。
 	ProviderID string `json:"providerId"`
 	// ProviderName 价格来源供应商显示名称。
@@ -219,6 +238,12 @@ type CatalogEntry struct {
 
 // Edit 仅开放显示名称及价格，不接受调用方改写来源、身份或修改保护标记。
 type Edit struct {
+	// EditRevision 打开草稿时的手动编辑版本，用于检测其他用户编辑。
+	EditRevision int64 `json:"editRevision"`
+	// OriginalPricing 打开草稿时的价格快照；缺失时沿用旧版提交契约。
+	OriginalPricing *Pricing `json:"originalPricing,omitempty"`
+	// OriginalSourcePricing 打开编辑时的来源价格快照，用于在后台更新后识别恢复来源的意图。
+	OriginalSourcePricing *Pricing `json:"originalSourcePricing,omitempty"`
 	// ID 本地稳定身份，删除重建时不复用。
 	ID string `json:"id"`
 	// Revision 打开编辑时读取的模型版本，须与当前保存版本一致。
@@ -249,6 +274,8 @@ type Proxy struct {
 
 // Create 提交创建草稿，目录资料由服务端读取，空来源表示手动创建。
 type Create struct {
+	// OriginalPricing 在线确认时看到的来源价格快照；手动创建或旧版提交可省略。
+	OriginalPricing *Pricing `json:"originalPricing,omitempty"`
 	// ProviderID 精确目录来源；为空时不关联任何目录。
 	ProviderID string `json:"providerId"`
 	// ModelID 创建后对外使用的本地统一模型 ID；在线新增允许覆盖目录默认值，创建后只读。

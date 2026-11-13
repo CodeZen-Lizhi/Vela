@@ -11,7 +11,7 @@
   import * as Field from "$lib/components/ui/field";
   import type { Mode, Pricing, Rate } from "$lib/generated/mygo";
   import RateFields from "./RateFields.svelte";
-  import { groupNames, newRate } from "./display";
+  import { groupNames, newRate, modeLabel } from "./display";
   /** 完整价格草稿，按实际计费语义分组，恢复由父级统一处理。 */
   let {
     pricing = $bindable(),
@@ -88,11 +88,11 @@
   }
 </script>
 
-<Accordion.Root type="multiple" bind:value={openGroups}>
+<Accordion.Root type="multiple" bind:value={openGroups} class="price-editor">
   {#each visibleGroups as [group, label]}
     <Accordion.Item value={group} data-price-group={group}>
       <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <Accordion.Trigger class="flex-1 py-3">
+        <Accordion.Trigger class="flex-1 py-2.5">
           <span>
             {group === "modes" ? "处理模式" : label}
             {#if overrides.includes(group)}<Badge variant="neutral">本地修改</Badge>{/if}
@@ -104,11 +104,11 @@
             onclick={() => onrestore?.(group)}>恢复来源值</Button
           >{/if}
       </div>
-      <Accordion.Content>
+      <Accordion.Content class="pb-3">
         {#if group === "base"}
           <RateFields bind:rates={pricing.base} {readOnly} allowAdd={manual} {kind} />
         {:else if group === "tiers"}
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-2">
             {#each pricing.tiers as tier, i}
               <div class="rule-block">
                 <Field.Field class="max-w-64"
@@ -161,14 +161,14 @@
                     ><Select.Trigger
                       id={`${prefix}-field-1-${i}`}
                       class="w-full"
-                      >{mode.name === "priority"
-                        ? "Priority"
-                        : "Fast"}</Select.Trigger
+                      >{modeLabel(mode.name)}</Select.Trigger
                     ><Select.Content
                       ><Select.Group
                         ><Select.Item value="fast">Fast</Select.Item
                         ><Select.Item value="priority">Priority</Select.Item
-                        ></Select.Group
+                        ><Select.Item value="ultrafast">UltraFast</Select.Item
+                        >{#if !["fast", "priority", "ultrafast"].includes(mode.name)}<Select.Item value={mode.name}>{mode.name}</Select.Item>{/if}
+                        </Select.Group
                       ></Select.Content
                     ></Select.Root
                   ></Field.Field
@@ -193,9 +193,7 @@
                         id={`${prefix}-field-2-${i}`}
                         checked={usesMultiplier(mode)}
                         disabled={readOnly}
-                        aria-label={`${mode.name === "priority"
-                          ? "Priority"
-                          : "Fast"} 使用 Standard 倍率`}
+                        aria-label={`${modeLabel(mode.name)} 使用 Standard 倍率`}
                         onCheckedChange={(enabled) =>
                           setMultiplierMode(mode, enabled)}
                       />
@@ -209,9 +207,7 @@
                           step="any"
                           required
                           placeholder="例如 2"
-                          aria-label={`${mode.name === "priority"
-                            ? "Priority"
-                            : "Fast"} Standard 倍率`}
+                          aria-label={`${modeLabel(mode.name)} Standard 倍率`}
                           value={mode.multiplier ?? ""}
                           readonly={readOnly}
                           oninput={(e) => {
@@ -296,7 +292,7 @@
           >
           {#each pricing.schedules as window, i}
             <div class="rule-block">
-              <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">
+              <Field.FieldGroup class="price-rule-fields">
                 <Field.Field
                   ><Field.Label for={`${prefix}-field-5-${i}`}>时区</Field.Label
                   ><Input
@@ -399,7 +395,7 @@
             >{/if}
         {:else if group === "images"}
           {#each pricing.images as image, i}<div class="rule-block">
-              <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">
+              <Field.FieldGroup class="price-rule-fields">
                 <Field.Field
                   ><Field.Label for={`${prefix}-field-10-${i}`}
                     >尺寸</Field.Label
@@ -480,7 +476,7 @@
             >{/if}
         {:else if group === "videos"}
           {#each pricing.videos as video, i}<div class="rule-block">
-              <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">
+              <Field.FieldGroup class="price-rule-fields">
                 <Field.Field
                   ><Field.Label for={`${prefix}-field-15-${i}`}
                     >分辨率</Field.Label
@@ -536,6 +532,19 @@
 {#if manual && !readOnly}<Button variant="ghost" size="sm" class="mt-2" onclick={() => (supplement = !supplement)}>{supplement ? "收起补充规则" : "补充价格规则"}</Button>{/if}
 
 <style>
+  /* 规则内统一压缩标签与字段间距，输入控件沿用共享尺寸。 */
+  :global(.price-editor [data-slot="field"]) { gap: 6px; }
+  :global(.price-rule-fields) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: 8px;
+  }
+  .rule-block {
+    gap: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+
   /* 倍率输入与胶囊开关同排，避免短下拉框被拉到半行宽。 */
   .mode-pricing-controls {
     display: flex;

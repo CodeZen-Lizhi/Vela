@@ -111,6 +111,16 @@ export interface Candidate {
 
 /** CatalogEntry 是搜索目录候选；非官方来源必须由用户主动选择。 */
 export interface CatalogEntry {
+  /** Deprecated 标记来源明确弃用的条目，解析阶段保留供同步使用。 */
+  deprecated: boolean;
+  /** SourceKey 保留 LiteLLM 原始目录键，用于追溯别名和来源。 */
+  sourceKey: string;
+  /** SourceURL 来源声明的价格文档地址，缺失时为空。 */
+  sourceUrl: string;
+  /** Warnings 记录未支持的复杂计价等来源信息，不将未知价格解释为免费。 */
+  warnings: string[];
+  /** Metadata 保留完整来源条目，包含输出上限、向量维度和未映射能力。 */
+  metadata: unknown;
   /** ProviderID 价格来源供应商的稳定标识，不是用户中转站配置。 */
   providerId: string;
   /** ProviderName 价格来源供应商显示名称。 */
@@ -137,6 +147,24 @@ export interface CatalogEntry {
   problem: string;
 }
 
+/** CatalogStatus 区分检查时间、内容变更时间、后台状态和失败，供页面轻量轮询。 */
+export interface CatalogStatus {
+  /** Source 当前在线数据源名称。 */
+  source: string;
+  /** CheckedAt 最近成功检查的 UTC 时间，不将网络失败伪装成成功检查。 */
+  checkedAt: string;
+  /** UpdatedAt 当前缓存内容最近改变的 UTC 时间。 */
+  updatedAt: string;
+  /** Refreshing 是否有共享的更新请求正在进行。 */
+  refreshing: boolean;
+  /** Error 最近更新失败原因；失败时仍保留有效缓存。 */
+  error: string;
+  /** Failures 个别模型未同步的具体原因。 */
+  failures: string[];
+  /** Generation 每次完成检查或发生失败后递增，供前端刷新本地快照。 */
+  generation: number;
+}
+
 /** Charge 是按历史快照计算的一项估算金额。 */
 export interface Charge {
   /** Key、Quantity、Price、Amount 分别是维度、数量、美元单价和美元分项金额。 */
@@ -155,6 +183,8 @@ export interface CleanupPreview {
 
 /** Create 提交创建草稿，目录资料由服务端读取，空来源表示手动创建。 */
 export interface Create {
+  /** OriginalPricing 在线确认时看到的来源价格快照；手动创建或旧版提交可省略。 */
+  originalPricing?: Pricing;
   /** ProviderID 精确目录来源；为空时不关联任何目录。 */
   providerId: string;
   /** ModelID 创建后对外使用的本地统一模型 ID；在线新增允许覆盖目录默认值，创建后只读。 */
@@ -171,6 +201,12 @@ export interface Create {
 
 /** Edit 仅开放显示名称及价格，不接受调用方改写来源、身份或修改保护标记。 */
 export interface Edit {
+  /** EditRevision 打开草稿时的手动编辑版本，用于检测其他用户编辑。 */
+  editRevision: number;
+  /** OriginalPricing 打开草稿时的价格快照；缺失时沿用旧版提交契约。 */
+  originalPricing?: Pricing;
+  /** OriginalSourcePricing 打开编辑时的来源价格快照，用于在后台更新后识别恢复来源的意图。 */
+  originalSourcePricing?: Pricing;
   /** ID 本地稳定身份，删除重建时不复用。 */
   id: string;
   /** Revision 打开编辑时读取的模型版本，须与当前保存版本一致。 */
@@ -189,7 +225,7 @@ export interface GatewaySettings {
   port: number;
 }
 
-/** GeneralSettings 是常规设置：外观、关闭窗口后的行为、后台入口与页面刷新间隔。 */
+/** GeneralSettings 是常规设置：外观、窗口行为、页面刷新和模型目录自动更新。 */
 export interface GeneralSettings {
   /** Appearance 界面外观：light 浅色、dark 深色、system 跟随系统。 */
   appearance: string;
@@ -201,6 +237,10 @@ export interface GeneralSettings {
   dashboardSeconds: number;
   /** ProviderSeconds 供应商列表本地状态重读间隔，单位秒，不触发上游查询。 */
   providerSeconds: number;
+  /** ModelAutoUpdate 是否后台更新模型目录及未修改的来源价格，默认开启。 */
+  modelAutoUpdate: boolean;
+  /** ModelUpdateMinutes 自动检查间隔，单位分钟，至少为 1；关闭时仍保留。 */
+  modelUpdateMinutes: number;
 }
 
 /** ImagePrice 按尺寸和质量给出每张美元价格；像素区间通过 MinPixels/MaxPixels 表达。 */
@@ -242,7 +282,7 @@ export interface KeyOption {
   label: string;
 }
 
-/** Mode 表示 fast 或 priority 模式；倍率与显式价格二选一。 */
+/** Mode 表示 fast、priority 或 ultrafast 模式；倍率与显式价格二选一。 */
 export interface Mode {
   /** Name 模型显示名称或处理模式标识，按所属类型解释。 */
   name: string;
@@ -256,6 +296,14 @@ export interface Mode {
 
 /** Model 保持本地稳定身份与来源身份分离；SourceAvailable 记录最近目录是否仍包含此来源模型。 */
 export interface Model {
+  /** Source 价格目录来源名称；旧记录未标明时为空。 */
+  source: string;
+  /** SourceKey 目录原始键，用于跟随同一来源条目同步。 */
+  sourceKey: string;
+  /** Warnings 最近来源解析的计价告警，空集合表示没有告警。 */
+  warnings: string[];
+  /** EditRevision 仅在手动编辑时递增，用于区分用户改动与后台同步。 */
+  editRevision: number;
   /** ID 本地稳定身份，删除重建时不复用。 */
   id: string;
   /** Revision 每次保存或同步后递增；旧记录缺失时为零，用于拒绝过期编辑草稿。 */
@@ -421,7 +469,7 @@ export interface Pricing {
   base: Rate[];
   /** Tiers 按输入量递增的整套上下文阶梯。 */
   tiers: Tier[];
-  /** Modes Fast 和 priority 模式的倍率或显式价格。 */
+  /** Modes fast、priority 和 ultrafast 模式的倍率或显式价格。 */
   modes: Mode[];
   /** Schedules 同一时区内的分时窗口，窗口不能重叠。 */
   schedules: Schedule[];
@@ -753,7 +801,10 @@ export interface QueryStatus {
 
 /** Rate 是一项美元单价；Key 指定计费维度，Unit 为 million_tokens、image、second 或 request。 */
 export interface Rate {
-  /** Key 计费维度键，与价格单位一起决定含义。 */
+  /**
+   * Key 计费维度键；缓存写入可区分 30m、1h、12h，有声/图片缓存和视频 Token 使用独立维度。
+   * per_image_input、per_second_input 为媒体输入价，per_image、per_second 为媒体输出价。
+   */
   key: string;
   /** Price 非负美元单价，零明确表示免费。 */
   price: number;
@@ -1139,6 +1190,10 @@ export const VelaService = {
   cancelProviderModelTest(id: string): Promise<void> {
     return call("VelaService.CancelProviderModelTest", id);
   },
+  /** CheckModelCatalog 按已保存策略触发到期检查，立即返回，关闭自动更新时不会联网。 */
+  checkModelCatalog(): Promise<CatalogStatus> {
+    return call("VelaService.CheckModelCatalog");
+  },
   /** CleanupRequestRecords 仅在页面明确确认预览后调用，不影响长期累计和配置。 */
   cleanupRequestRecords(before: number): Promise<number> {
     return call("VelaService.CleanupRequestRecords", before);
@@ -1194,6 +1249,10 @@ export const VelaService = {
   /** ModelCatalog 加载真实目录，价格缺失保持未知。 */
   modelCatalog(): Promise<CatalogEntry[]> {
     return call("VelaService.ModelCatalog");
+  },
+  /** ModelCatalogStatus 返回目录缓存和后台更新状态，不访问网络。 */
+  modelCatalogStatus(): Promise<CatalogStatus> {
+    return call("VelaService.ModelCatalogStatus");
   },
   /** Overview 返回长期小时汇总，通过供应商模块解密解析当前 Key 名称，不在统计 SQL 中读取配置密文。 */
   overview(): Promise<OverviewSnapshot> {

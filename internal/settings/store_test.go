@@ -47,7 +47,7 @@ func TestDefaultsAndPersistence(t *testing.T) {
 		t.Fatalf("提醒默认值 = %+v, %v", attention, err)
 	}
 
-	wantGeneral := GeneralSettings{Appearance: "system", CloseAction: "quit", BackgroundEntry: "both", DashboardSeconds: 30, ProviderSeconds: 120}
+	wantGeneral := GeneralSettings{Appearance: "system", CloseAction: "quit", BackgroundEntry: "both", DashboardSeconds: 30, ProviderSeconds: 120, ModelAutoUpdate: true, ModelUpdateMinutes: 10}
 	wantAttention := AttentionSettings{Balance: false, Difference: true, Health: false, Rate: true, BalanceThreshold: 0}
 	if err = s.SaveGeneral(ctx, wantGeneral); err != nil {
 		t.Fatal(err)

@@ -192,7 +192,7 @@ func TestReasoningPartialSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	independent.Store(true)
-	if _, err = s.Catalog(ctx); err != nil {
+	if _, err = s.Sync(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.Create(ctx, Create{ProviderID: "openrouter", ModelID: "sonar", Name: "Sonar"}); err == nil || !strings.Contains(err.Error(), "reasoning") {

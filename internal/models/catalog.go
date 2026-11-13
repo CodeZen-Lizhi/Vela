@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -62,42 +61,9 @@ func proxyTransport(p Proxy) (*http.Transport, error) {
 	return outbound.Transport(u), nil
 }
 
-// fetchCatalog 有界读取来源并按发布日期倒序排列；includeDeprecated 控制是否保留已弃用条目供同步使用。
-func (s *Store) fetchCatalog(ctx context.Context, includeDeprecated bool) ([]CatalogEntry, error) {
-	p, err := s.GetProxy(ctx)
-	if err != nil {
-		return nil, err
-	}
-	transport, err := proxyTransport(p)
-	if err != nil {
-		return nil, err
-	}
-	defer transport.CloseIdleConnections()
-	client := *s.client
-	client.Transport = transport
-	if client.Timeout == 0 {
-		client.Timeout = 45 * time.Second
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.catalogURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	response, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("无法读取模型目录: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("模型目录返回 HTTP %d", response.StatusCode)
-	}
-	const limit = 32 << 20
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > limit {
-		return nil, errors.New("模型目录超过 32 MB")
-	}
+// decodeLegacyCatalog 保留旧目录快照的读取能力，不作为联网回退来源。
+func decodeLegacyCatalog(data []byte, includeDeprecated bool) ([]CatalogEntry, error) {
+	var err error
 	var providers map[string]rawProvider
 	if err = json.Unmarshal(data, &providers); err != nil {
 		return nil, fmt.Errorf("模型目录格式错误: %w", err)
@@ -124,6 +90,7 @@ func (s *Store) fetchCatalog(ctx context.Context, includeDeprecated bool) ([]Cat
 				deprecatedCount++
 				continue
 			}
+			entry.Deprecated = m.Status == "deprecated"
 			entry.Name = m.Name
 			releaseDates[[2]string{pid, mid}] = catalogReleaseDate(m.ReleaseDate)
 			if entry.Name == "" {
@@ -285,90 +252,87 @@ func decodePricing(raw json.RawMessage, modes map[string]struct {
 	return p, validatePricing(p)
 }
 
-// Catalog 重新读取未弃用的目录候选，添加时从该结果取值而不信任前端传来的价格。
-func (s *Store) Catalog(ctx context.Context) ([]CatalogEntry, error) {
-	entries, err := s.fetchCatalog(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	s.mu.Lock()
-	s.catalog = entries
-	s.mu.Unlock()
-	return entries, nil
-}
-
-// Sync 全量读取来源后按模型更新；来源缺失和非法模型保留原价格，成功模型独立提交。
-func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
+// syncEntries 在写入锁内按精确来源身份合并价格；无效或缺失条目保留已有配置。
+func (s *Store) syncEntries(ctx context.Context, entries []CatalogEntry, syncedAt string) (SyncResult, error) {
 	result := SyncResult{Failures: []string{}}
-	entries, err := s.fetchCatalog(ctx, true)
-	if err != nil {
-		return result, err
-	}
 	lookup := map[string]CatalogEntry{}
 	for _, e := range entries {
 		lookup[e.ProviderID+"\x00"+e.ModelID] = e
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.catalog = entries
 	list, err := s.List(ctx)
 	if err != nil {
 		return result, err
 	}
 	for _, m := range list {
-		// 手动模型不自动关联同名目录，也不报告来源下架。
 		if m.ProviderID == "" {
 			continue
 		}
 		e, ok := lookup[m.ProviderID+"\x00"+m.SourceModelID]
 		if !ok {
-			m.SourceAvailable = false
-			if _, err = s.save(ctx, m); err != nil {
-				return result, err
+			if m.SourceAvailable {
+				m.SourceAvailable = false
+				if _, err = s.save(ctx, m); err != nil {
+					return result, err
+				}
 			}
-			result.Failures = append(result.Failures, m.ModelID+"：来源已下架，保留本地配置")
+			result.Failures = append(result.Failures, m.ModelID+"：新来源没有对应条目，保留本地配置")
 			continue
 		}
 		if e.Problem != "" {
 			result.Failures = append(result.Failures, m.ModelID+"："+e.Problem)
 			continue
 		}
-		// 修正旧版导入器将重排模型保存为对话模型的记录，保留本地有效价格和修改保护。
+		previous, _ := json.Marshal(m)
 		if e.Kind == "vector" && m.Kind != "vector" {
 			m.Kind = "vector"
 			removeVectorOutput(&m.Pricing)
 		}
 		for _, g := range groups {
 			if hasGroup(e.Pricing, g) && !contains(m.Overrides, g) {
-				if g == "base" {
-					// 来源移除单个价格字段时保留本地已知值，仍允许其他来源字段更新。
-					merged := append([]Rate{}, m.Pricing.Base...)
-					for _, rate := range e.Pricing.Base {
-						found := false
-						for i := range merged {
-							if merged[i].Key == rate.Key {
-								merged[i] = rate
-								found = true
-								break
-							}
-						}
-						if !found {
-							merged = append(merged, rate)
-						}
-					}
-					m.Pricing.Base = merged
-				} else {
-					copyGroup(&m.Pricing, e.Pricing, g)
-				}
+				mergeSourceGroup(&m.Pricing, e.Pricing, g)
 			}
 		}
 		m.SourcePricing = e.Pricing
 		m.SourceAvailable = true
-		m.SyncedAt = time.Now().UTC().Format(time.RFC3339)
+		m.SyncedAt = syncedAt
+		if e.SourceKey != "" {
+			m.Source = "LiteLLM"
+			m.SourceKey = e.SourceKey
+		}
+		m.Warnings = e.Warnings
+		current, _ := json.Marshal(m)
+		if string(previous) == string(current) {
+			result.Updated++
+			continue
+		}
+		// 旧模型的本地 ID 和 canonical 身份仍保留，精确 provider/source ID 足以迁移。
 		if _, err = s.save(ctx, m); err != nil {
 			return result, fmt.Errorf("%s 同步保存失败: %w", m.ModelID, err)
 		}
 		result.Updated++
 	}
 	return result, nil
+}
+
+// mergeSourceGroup 按规则组更新来源；基础价格缺失项保持已知值，其余关联规则整体替换。
+func mergeSourceGroup(dst *Pricing, src Pricing, group string) {
+	if group != "base" {
+		copyGroup(dst, src, group)
+		return
+	}
+	merged := append([]Rate{}, dst.Base...)
+	for _, rate := range src.Base {
+		found := false
+		for i := range merged {
+			if merged[i].Key == rate.Key {
+				merged[i] = rate
+				found = true
+				break
+			}
+		}
+		if !found {
+			merged = append(merged, rate)
+		}
+	}
+	dst.Base = merged
 }

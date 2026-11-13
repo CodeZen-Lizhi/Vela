@@ -312,6 +312,7 @@ input:not([data-slot]):focus-visible {
 /* 模型页沿用原型的紧凑工具栏和四列信息层次，共享控件保持 36px 高度。 */
 .model-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -329,6 +330,14 @@ input:not([data-slot]):focus-visible {
 }
 .model-kind-filter {
   width: 126px;
+}
+/* 操作与筛选同排，空间不足时按组自然换行。 */
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 .catalog-source-filter {
   width: 190px;
@@ -452,13 +461,10 @@ input:not([data-slot]):focus-visible {
 }
 
 @media (max-width: 1100px) {
-  /* 桌面窄窗口统一两行工具栏；搜索保持正常窗口宽度，不随剩余空间拉长。 */
+  /* 窄窗口按可用空间换行，搜索框保持正常窗口的最大宽度。 */
   .model-toolbar {
     flex-wrap: wrap;
     gap: 12px;
-  }
-  .model-filters {
-    flex: 1 0 100%;
   }
   .model-search {
     width: 260px;

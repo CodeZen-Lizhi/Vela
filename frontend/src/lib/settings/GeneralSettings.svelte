@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
+  import * as InputGroup from "$lib/components/ui/input-group";
   import * as Select from "$lib/components/ui/select";
   import { Switch } from "$lib/components/ui/switch";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
@@ -55,6 +56,19 @@
     } finally {
       busy = false;
     }
+  }
+
+  /** 分钟输入完成后立即保存整数；非法值不写入，失败恢复已保存的间隔。 */
+  async function updateModelMinutes(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const minutes = input.valueAsNumber;
+    if (!input.validity.valid || !Number.isSafeInteger(minutes) || minutes < 1) {
+      error = "模型更新间隔请输入至少 1 分钟的整数。";
+      input.reportValidity();
+      return;
+    }
+    await update({ modelUpdateMinutes: minutes });
+    input.value = String(saved.modelUpdateMinutes);
   }
 
   /** 向系统登记或取消开机启动，界面以系统返回的实际状态为准。 */
@@ -171,6 +185,32 @@
         ></Select.Content
       >
     </Select.Root>
+  </div>
+  <div class="setting-row">
+    <span id="model-update-label"><strong>模型目录与价格自动更新</strong><small class="block text-xs text-muted-foreground">定期检查 LiteLLM 来源，保留本地修改；关闭后仍可手动同步价格。</small></span>
+    <Switch
+      aria-labelledby="model-update-label"
+      checked={saved.modelAutoUpdate}
+      onCheckedChange={(enabled) => void update({ modelAutoUpdate: enabled })}
+      disabled={!desktop || busy}
+    />
+  </div>
+  <div class="setting-row">
+    <label id="model-minutes-label" for="model-update-minutes">模型更新间隔</label>
+    <InputGroup.Root class="w-32">
+      <InputGroup.Input
+        id="model-update-minutes"
+        type="number"
+        min="1"
+        step="1"
+        required
+        value={saved.modelUpdateMinutes}
+        disabled={!desktop || busy || !saved.modelAutoUpdate}
+        aria-labelledby="model-minutes-label"
+        onchange={(event) => void updateModelMinutes(event)}
+      />
+      <InputGroup.Addon align="inline-end"><InputGroup.Text>分钟</InputGroup.Text></InputGroup.Addon>
+    </InputGroup.Root>
   </div>
 </section>
 {#if error}<Alert.Root variant="destructive" class="mt-4"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}

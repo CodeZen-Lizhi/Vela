@@ -7,7 +7,7 @@ import (
 	"regexp"
 )
 
-// GeneralSettings 是常规设置：外观、关闭窗口后的行为、后台入口与页面刷新间隔。
+// GeneralSettings 是常规设置：外观、窗口行为、页面刷新和模型目录自动更新。
 type GeneralSettings struct {
 	// Appearance 界面外观：light 浅色、dark 深色、system 跟随系统。
 	Appearance string `json:"appearance"`
@@ -19,6 +19,10 @@ type GeneralSettings struct {
 	DashboardSeconds int `json:"dashboardSeconds"`
 	// ProviderSeconds 供应商列表本地状态重读间隔，单位秒，不触发上游查询。
 	ProviderSeconds int `json:"providerSeconds"`
+	// ModelAutoUpdate 是否后台更新模型目录及未修改的来源价格，默认开启。
+	ModelAutoUpdate bool `json:"modelAutoUpdate"`
+	// ModelUpdateMinutes 自动检查间隔，单位分钟，至少为 1；关闭时仍保留。
+	ModelUpdateMinutes int `json:"modelUpdateMinutes"`
 }
 
 // GatewaySettings 是本机网关的监听设置；监听地址固定为 127.0.0.1。
@@ -57,7 +61,7 @@ type AttentionSettings struct {
 
 // DefaultGeneral 返回常规设置默认值：浅色、关闭窗口继续运行、仅保留菜单栏入口。
 func DefaultGeneral() GeneralSettings {
-	return GeneralSettings{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60}
+	return GeneralSettings{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60, ModelAutoUpdate: true, ModelUpdateMinutes: 10}
 }
 
 // DefaultGateway 返回默认监听端口。
@@ -87,6 +91,9 @@ func (g GeneralSettings) Validate() error {
 	}
 	if g.ProviderSeconds != 60 && g.ProviderSeconds != 120 {
 		return errors.New("供应商列表刷新间隔只能是 60 或 120 秒")
+	}
+	if g.ModelUpdateMinutes < 1 || g.ModelUpdateMinutes > 525600 {
+		return errors.New("模型更新间隔须为 1～525600 分钟的整数")
 	}
 	return nil
 }

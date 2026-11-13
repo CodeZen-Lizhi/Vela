@@ -13,6 +13,16 @@ import (
 // groups 定义独立修改保护的规则组，关联阶梯永远作为整体。
 var groups = []string{"base", "tiers", "modes", "schedules", "images", "videos"}
 
+// RequiresUnrecordedUsage 标记当前用量记录尚不能区分的计价维度；导入保留价格，估算不得将其遗漏后返回完整金额。
+func RequiresUnrecordedUsage(key string) bool {
+	switch key {
+	case "cache_write_12h", "cache_write_30m", "cache_read_audio", "cache_read_image", "cache_write_audio", "video_input", "video_output", "per_image_input", "per_second_input":
+		return true
+	default:
+		return false
+	}
+}
+
 // removeVectorOutput 清除误分类为对话模型时导入的输出价，其余价格及完整规则组保持不变。
 func removeVectorOutput(p *Pricing) {
 	remove := func(rates []Rate) []Rate {
@@ -118,14 +128,14 @@ func validPrice(v float64, multiplier bool) bool {
 func validateRates(rates []Rate) error {
 	seen := map[string]bool{}
 	for _, r := range rates {
-		if !contains([]string{"input", "output", "cache_read", "cache_write", "cache_write_1h", "image_input", "image_output", "audio_input", "audio_output", "per_image", "per_second", "per_request"}, r.Key) || !contains([]string{"million_tokens", "image", "second", "request"}, r.Unit) || !validPrice(r.Price, false) || seen[r.Key] {
+		if !contains([]string{"input", "output", "cache_read", "cache_write", "cache_write_1h", "cache_write_12h", "cache_write_30m", "cache_read_audio", "cache_read_image", "cache_write_audio", "image_input", "image_output", "audio_input", "audio_output", "video_input", "video_output", "per_image", "per_image_input", "per_second", "per_second_input", "per_request"}, r.Key) || !contains([]string{"million_tokens", "image", "second", "request"}, r.Unit) || !validPrice(r.Price, false) || seen[r.Key] {
 			return errors.New("价格维度、单位或金额无效，且同组不能重复")
 		}
 		expected := "million_tokens"
 		switch r.Key {
-		case "per_image":
+		case "per_image", "per_image_input":
 			expected = "image"
-		case "per_second":
+		case "per_second", "per_second_input":
 			expected = "second"
 		case "per_request":
 			expected = "request"
@@ -175,8 +185,8 @@ func validatePricing(p Pricing) error {
 	}
 	seen := map[string]bool{}
 	for _, m := range p.Modes {
-		if !contains([]string{"fast", "priority"}, m.Name) || seen[m.Name] {
-			return errors.New("处理模式仅支持 fast 或 priority，不能重复")
+		if !contains([]string{"fast", "priority", "ultrafast"}, m.Name) || seen[m.Name] {
+			return errors.New("处理模式仅支持 fast、priority 或 ultrafast，不能重复")
 		}
 		seen[m.Name] = true
 		if m.Multiplier != nil {

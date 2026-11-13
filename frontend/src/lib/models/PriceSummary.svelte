@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Badge } from "$lib/components/ui/badge";
   import type { Pricing, Rate } from "$lib/generated/mygo";
-  import { money, rateNames, unitLabel } from "./display";
+  import { money, rateNames, unitLabel, modeLabel } from "./display";
   /** 模型行展示标准主价，缓存和分时等完整规则保留在详情中。 */
   let {
     pricing,
@@ -64,7 +64,7 @@
   <div class="price-traits">
     {#if pricing.base.some((r) => r.key.startsWith("cache_"))}<Badge variant="positive">缓存价</Badge>{/if}
     {#if pricing.tiers.length}<Badge variant="info">阶梯价</Badge>{/if}
-    {#if pricing.modes.length}<Badge variant="parameter">Fast</Badge>{/if}
+    {#each pricing.modes as mode}<Badge variant="parameter">{modeLabel(mode.name)}</Badge>{/each}
     {#if pricing.schedules.length}<Badge variant="warning">峰谷价</Badge>{/if}
     {#if pricing.images.length}<Badge variant="info">图片矩阵</Badge>{/if}
     {#if pricing.videos.length}<Badge variant="info">分辨率</Badge>{/if}

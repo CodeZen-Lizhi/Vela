@@ -95,3 +95,21 @@ func (s *VelaService) CreateModel(ctx context.Context, draft models.Create) (mod
 	}
 	return store.Create(ctx, draft)
 }
+
+// ModelCatalogStatus 返回目录缓存和后台更新状态，不访问网络。
+func (s *VelaService) ModelCatalogStatus() (models.CatalogStatus, error) {
+	store, err := s.modelStore()
+	if err != nil {
+		return models.CatalogStatus{}, err
+	}
+	return store.CatalogStatus(), nil
+}
+
+// CheckModelCatalog 按已保存策略触发到期检查，立即返回，关闭自动更新时不会联网。
+func (s *VelaService) CheckModelCatalog() (models.CatalogStatus, error) {
+	store, err := s.modelStore()
+	if err != nil {
+		return models.CatalogStatus{}, err
+	}
+	return store.CheckCatalog(), nil
+}

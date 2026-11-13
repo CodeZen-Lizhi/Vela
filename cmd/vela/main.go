@@ -113,7 +113,7 @@ func startApplication(dataDir string, isolated bool) error {
 	if err != nil {
 		return fmt.Errorf("读取本机凭据: %w", err)
 	}
-	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, "https://models.dev/api.json")
+	store, err := models.Open(filepath.Join(dataDir, "vela.sqlite"), &http.Client{Timeout: 45 * time.Second}, models.LiteCatalogURL)
 	if err != nil {
 		return fmt.Errorf("打开模型数据库: %w", err)
 	}
@@ -208,6 +208,16 @@ func startApplication(dataDir string, isolated bool) error {
 	if general, err = preferences.General(context.Background()); err != nil {
 		log.Printf("读取常规设置失败，本次使用默认行为: %v", err)
 	}
+	store.ConfigureCatalogUpdates(general.ModelAutoUpdate, general.ModelUpdateMinutes)
+	catalogContext, stopCatalog := context.WithCancel(context.Background())
+	catalogDone := make(chan struct{})
+	defer func() { stopCatalog(); <-catalogDone }()
+	go func() {
+		defer close(catalogDone)
+		if runErr := store.RunCatalogUpdates(catalogContext); runErr != nil && catalogContext.Err() == nil {
+			log.Printf("模型目录自动更新停止: %v", runErr)
+		}
+	}()
 	verifier, err := verification.New(store.DB(), upstreams, store)
 	if err != nil {
 		return fmt.Errorf("初始化模型验证: %w", err)
@@ -220,6 +230,7 @@ func startApplication(dataDir string, isolated bool) error {
 	})
 	mygo.Power.OnSuspend(verifier.Suspend)
 	mygo.Power.OnResume(func() {
+		store.CheckCatalog()
 		if err := verifier.Resume(context.Background()); err != nil {
 			log.Printf("恢复模型验证计时失败: %v", err)
 		}
@@ -250,6 +261,7 @@ func startApplication(dataDir string, isolated bool) error {
 	}))
 
 	refreshOnVisible = func() {
+		store.CheckCatalog()
 		if err := windowVisible.Broadcast(true); err != nil {
 			log.Printf("推送窗口恢复事件失败: %v", err)
 		}

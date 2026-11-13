@@ -31,6 +31,8 @@
       backgroundEntry: "menu",
       dashboardSeconds: 10,
       providerSeconds: 60,
+      modelAutoUpdate: true,
+      modelUpdateMinutes: 10,
     },
     openAtLogin: false,
     gateway: { port: 18080 },

@@ -20,8 +20,11 @@
     onrestore,
     onclose,
     mode = "edit",
+    sourceUpdated = false,
   }: {
     model: Model;
+    /** 来源更新时说明保存合并规则，不替换当前草稿。 */
+    sourceUpdated?: boolean;
     busy: boolean;
     error: string;
     onsave: (event: SubmitEvent) => Promise<void>;
@@ -82,7 +85,7 @@
       </div>
     </div>
     <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">
-      <Field.Field
+      <Field.Field class="gap-1.5"
         ><Field.Label for={`${prefix}-name`}>显示名称</Field.Label><Input
           id={`${prefix}-name`}
           bind:value={model.name}
@@ -90,7 +93,7 @@
           required
         /></Field.Field
       >
-      <Field.Field>
+      <Field.Field class="gap-1.5">
         <Field.Label for={`${prefix}-id`}>模型 ID</Field.Label>
         <Input
           id={`${prefix}-id`}
@@ -103,7 +106,7 @@
         {#if mode === "edit"}<Field.Description id={`${prefix}-id-note`}>创建后不可修改。</Field.Description>{/if}
       </Field.Field>
       {#if mode === "manual"}
-        <Field.Field><Field.Label for={`${prefix}-kind`}>模型类型</Field.Label>
+        <Field.Field class="gap-1.5"><Field.Label for={`${prefix}-kind`}>模型类型</Field.Label>
           <Select.Root type="single" bind:value={model.kind}><Select.Trigger id={`${prefix}-kind`} class="w-full">{kinds[model.kind]}</Select.Trigger><Select.Content><Select.Group>{#each Object.entries(kinds) as [value, label]}<Select.Item {value}>{label}</Select.Item>{/each}</Select.Group></Select.Content></Select.Root>
         </Field.Field>
       {/if}
@@ -114,6 +117,8 @@
       {#if model.family}<span>{model.family}</span>{/if}
       <ModelCapabilities values={model.capabilities} />
     </div>
+    {#if sourceUpdated}<Alert.Root variant="info"><Alert.Description>来源价格已更新，保存时未修改部分采用最新来源值，本地修改保留</Alert.Description></Alert.Root>{/if}
+    {#each model.warnings ?? [] as warning}<Alert.Root variant="info"><Alert.Description>{warning}</Alert.Description></Alert.Root>{/each}
     <PriceEditor
       bind:pricing={model.pricing}
       source={model.sourcePricing}
@@ -123,7 +128,7 @@
       onrestore={mode === "edit" ? onrestore : undefined}
       bind:openGroups
     />
-    <p class="text-xs text-muted-foreground">{model.providerId ? `价格来源 models.dev · ${model.providerName}` : "手动创建 · 未填写价格保持未知"}</p>
+    <p class="text-xs text-muted-foreground">{model.providerId ? `价格来源 LiteLLM · ${model.providerName}` : "手动创建 · 未填写价格保持未知"}</p>
   </div>
   {#if validationError || error}<Alert.Root variant="destructive" class="mx-6 mb-3 shrink-0"><Alert.Description>
       {validationError || error}
@@ -149,11 +154,11 @@
   .model-edit-body {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 24px;
+    padding: 16px 20px;
   }
 
   .model-origin {

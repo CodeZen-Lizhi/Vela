@@ -256,6 +256,12 @@ func estimate(p models.Pricing, u *Usage, multiplier *float64, tier string, star
 			rates = t.Rates
 		}
 	}
+	// 用量尚不能区分这些价格维度，不能把普通输入价或仅输出费用当作完整金额。
+	for _, rate := range rates {
+		if models.RequiresUnrecordedUsage(rate.Key) {
+			return nil, charges
+		}
+	}
 	for _, window := range p.Schedules {
 		loc, err := time.LoadLocation(window.Timezone)
 		if err != nil {

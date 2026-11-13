@@ -27,9 +27,9 @@
   {#each rates as rate, i}
     {@const multiplier = cacheMultiplier(rate, rates)}
     <Field.Field class="min-w-0 gap-1.5">
-      <Field.Label for={`${prefix}-price-${i}`}>
-        {rate.key === "cache_write" && !rates.some((item) => item.key === "cache_write_1h") ? "缓存创建" : rateNames[rate.key] ?? rate.key}
-        <span class="text-muted-foreground">（{multiplier !== null ? "倍率" : rate.unit === "million_tokens" ? "$/M" : unitLabel(rate.unit)}）</span>
+      <Field.Label for={`${prefix}-price-${i}`} class="flex-wrap gap-x-1 gap-y-0">
+        <span class="whitespace-nowrap">{rate.key === "cache_write" ? rates.some((item) => item.key.startsWith("cache_write_")) ? "缓存创建·5分钟" : "缓存创建" : rate.key === "cache_write_1h" ? "缓存创建·1小时" : rateNames[rate.key] ?? rate.key}</span>
+        <span class="whitespace-nowrap text-muted-foreground">{multiplier !== null ? "倍率" : rate.unit === "million_tokens" ? "$/M" : unitLabel(rate.unit)}</span>
       </Field.Label>
       <div class="flex items-center gap-1">
         <Input id={`${prefix}-price-${i}`} type="number" min="0" step="any" required
@@ -57,8 +57,6 @@
 {/if}
 
 <style>
-  :global(.rate-fields) { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-items: start; }
-  /* 桌面窄窗口固定三列，避免同一价格组随弹窗宽度改变排列。 */
-  @media (max-width: 1100px) { :global(.rate-fields) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  @media (max-width: 640px) { :global(.rate-fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* 按价格组实际宽度排列短数值，避免视口断点让足够宽的弹窗提前换行。 */
+  :global(.rate-fields) { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr)); gap: 8px; align-items: start; }
 </style>

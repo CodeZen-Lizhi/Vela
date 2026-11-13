@@ -65,6 +65,9 @@ func (s *VelaService) SaveGeneralSettings(ctx context.Context, value settings.Ge
 	if err = store.SaveGeneral(ctx, value); err != nil {
 		return err
 	}
+	if s.models != nil {
+		s.models.ConfigureCatalogUpdates(value.ModelAutoUpdate, value.ModelUpdateMinutes)
+	}
 	if s.applyGeneral != nil {
 		s.applyGeneral(value)
 	}

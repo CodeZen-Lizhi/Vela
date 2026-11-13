@@ -13,7 +13,7 @@ export const kinds: Record<string, string> = {
 export const groupNames: Record<string, string> = {
   base: "基础价格",
   tiers: "上下文阶梯",
-  modes: "Fast 模式",
+  modes: "处理模式",
   schedules: "峰谷时段",
   images: "图片矩阵",
   videos: "视频分辨率",
@@ -34,6 +34,8 @@ export const rateNames: Record<string, string> = {
   cache_read: "缓存读取",
   cache_write: "缓存创建（5 分钟）",
   cache_write_1h: "缓存创建（1 小时）",
+  cache_write_30m: "缓存创建（30 分钟）",
+  cache_write_12h: "缓存创建（12 小时）",
   image_input: "图片输入 Token",
   image_output: "图片输出 Token",
   audio_input: "音频输入 Token",
@@ -91,4 +93,9 @@ export function dateLabel(value: string): string {
 /** 构造用户主动新增的价格项，零值只在明确填写的行中表示免费。 */
 export function newRate(key = "input"): Rate {
   return { key, price: 0, unit: rateUnit(key) };
+}
+
+/** 处理模式保留来源语义，未知名称原样显示，避免误标为 Fast。 */
+export function modeLabel(name: string): string {
+  return ({ fast: "Fast", priority: "Priority", ultrafast: "UltraFast" } as Record<string, string>)[name] ?? name;
 }

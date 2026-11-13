@@ -50,6 +50,9 @@ func TestCatalogDeprecated(t *testing.T) {
 		t.Fatal(err)
 	}
 	deprecated.Store(true)
+	if _, err = store.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
 	entries, err = store.Catalog(ctx)
 	if err != nil || len(entries) != 3 {
 		t.Fatalf("新弃用模型未从候选移除: %+v, %v", entries, err)
