@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -20,8 +21,13 @@ type uploadBinding struct {
 	expires   time.Time
 }
 
-// prepareUpload 为原生 resumable 握手安装本机 URL 改写，客户端后续上传继续经过原 Key 校验。
+// prepareUpload 按本次接入的本机监听地址改写 resumable URL，拒绝使用客户端 Host，后续上传仍经过原 Key 校验。
 func (s *Server) prepareUpload(r *http.Request, req *scheduling.ExecutionRequest) error {
+	address, ok := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr)
+	if !ok || address == nil || !address.IP.IsLoopback() || address.Port <= 0 {
+		return errors.New("无法确定上传会话的本机监听地址")
+	}
+	baseURL := "http://" + address.String()
 	var random [16]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return errors.New("无法创建上传会话")
@@ -56,7 +62,7 @@ func (s *Server) prepareUpload(r *http.Request, req *scheduling.ExecutionRequest
 			delete(s.uploads, oldest)
 		}
 		s.uploads[id] = uploadBinding{principal: principal, path: target.RequestURI(), expires: now.Add(24 * time.Hour)}
-		headers.Set("X-Goog-Upload-URL", "http://"+r.Host+"/upload/v1beta/files/"+id)
+		headers.Set("X-Goog-Upload-URL", baseURL+"/upload/v1beta/files/"+id)
 	}
 	return nil
 }

@@ -47,12 +47,12 @@ func (s *WebSocketSession) Close() {
 	}
 }
 
-// filter 只允许启用 WebSocket 的供应商，已有物理连接后所有轮次必须重新验证同一完整绑定。
-func (s *WebSocketSession) filter(req ExecutionRequest, candidates []Candidate) []Candidate {
+// filter 只允许启用 WebSocket 的供应商；已绑定会话失效时返回续接冲突，要求客户端重连而非透明换目标。
+func (s *WebSocketSession) filter(req ExecutionRequest, candidates []Candidate) ([]Candidate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return nil
+		return nil, context.Canceled
 	}
 	result := make([]Candidate, 0, len(candidates))
 	for _, c := range candidates {
@@ -60,15 +60,19 @@ func (s *WebSocketSession) filter(req ExecutionRequest, candidates []Candidate) 
 			result = append(result, c)
 		}
 	}
-	if len(result) == 0 && s.conn != nil {
+	if len(result) == 0 && s.binding != nil {
+		s.closed = true
 		if s.readCancel != nil {
 			s.readCancel()
 			s.readCancel = nil
 		}
-		_ = s.conn.CloseNow()
-		s.conn = nil
+		if s.conn != nil {
+			_ = s.conn.CloseNow()
+			s.conn = nil
+		}
+		return nil, ErrContinuation
 	}
-	return result
+	return result, nil
 }
 
 // discard 清理失败的连接；只有未向客户端提交任何状态时才允许下一候选重新选路。

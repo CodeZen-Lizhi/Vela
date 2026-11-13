@@ -3,9 +3,11 @@ package settings
 import (
 	"context"
 	"database/sql"
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -22,6 +24,34 @@ func openStore(t *testing.T, path string) (*Store, *sql.DB) {
 		t.Fatal(err)
 	}
 	return s, db
+}
+
+// TestAccountRefreshDurationBounds 验证两组间隔均拒绝时长溢出，失败保留旧设置，最大可表示分钟数可保存并重读。
+func TestAccountRefreshDurationBounds(t *testing.T) {
+	ctx := context.Background()
+	s, db := openStore(t, filepath.Join(t.TempDir(), "vela.sqlite"))
+	defer db.Close()
+	maximum := int(math.MaxInt64 / int64(time.Minute))
+	for _, value := range []AccountRefresh{
+		{Minutes: maximum + 1, KeyMinutes: 30},
+		{Minutes: 5, KeyMinutes: maximum + 1},
+		{Minutes: math.MaxInt, KeyMinutes: 30},
+		{Minutes: 5, KeyMinutes: math.MaxInt},
+	} {
+		if err := s.SaveAccountRefresh(ctx, value); err == nil {
+			t.Fatalf("溢出间隔被保存: %+v", value)
+		}
+		if got, err := s.AccountRefresh(ctx); err != nil || got != DefaultAccountRefresh() {
+			t.Fatalf("拒绝后设置改变: %+v, %v", got, err)
+		}
+	}
+	want := AccountRefresh{Enabled: true, Minutes: maximum, KeyEnabled: true, KeyMinutes: maximum}
+	if err := s.SaveAccountRefresh(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.AccountRefresh(ctx); err != nil || got != want {
+		t.Fatalf("有效边界重读失败: %+v, %v", got, err)
+	}
 }
 
 // TestDefaultsAndPersistence 验证未保存时的默认值，以及各分类保存后重新打开数据库仍可重读。

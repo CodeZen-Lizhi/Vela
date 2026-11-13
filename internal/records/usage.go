@@ -223,8 +223,11 @@ func decimal(value float64) *big.Rat {
 
 // pricingPlan 是请求实际适用的价格规则、阶梯和倍率组合。
 type pricingPlan struct {
-	rates  []models.Rate
-	tiers  []models.Tier
+	// rates 是当前模式及上下文阶梯选中的价格项。
+	rates []models.Rate
+	// tiers 是当前处理模式的上下文阶梯，空表示直接使用基础价格。
+	tiers []models.Tier
+	// factor 合并 Key、处理模式及分时倍率，零表示免费。
 	factor float64
 }
 

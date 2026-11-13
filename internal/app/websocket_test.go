@@ -394,6 +394,79 @@ func TestWebSocketToggleRefresh(t *testing.T) {
 	}
 }
 
+// TestWebSocketBindingChangeRequiresReconnect 验证已成功会话在模型、凭据或地址变化后返回 409 并断开，拒绝透明切换；新连接仍可调用。
+func TestWebSocketBindingChangeRequiresReconnect(t *testing.T) {
+	for _, change := range []string{"model", "credential", "url"} {
+		t.Run(change, func(t *testing.T) {
+			f := newExecutionFixture(t)
+			enableWebSocket(t, f, true)
+			var turns atomic.Int32
+			f.handle = func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer conn.CloseNow()
+				ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+				defer cancel()
+				if _, _, err = conn.Read(ctx); err != nil {
+					t.Error(err)
+					return
+				}
+				turns.Add(1)
+				writeSocketJSON(t, ctx, conn, map[string]any{"type": "response.completed", "response": map[string]any{"id": "resp-binding", "status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": "ok"}}}}}})
+				_, _, _ = conn.Read(ctx)
+			}
+			base := startCompatibilityGateway(t, f)
+			conn := dialGatewaySocket(t, base)
+			socketSend(t, conn, `{"type":"response.create","model":"logical-model","input":"hi"}`)
+			if event := socketReceive(t, conn); event["type"] != "response.completed" {
+				t.Fatal(event)
+			}
+			model := "logical-model"
+			ctx := context.Background()
+			switch change {
+			case "model":
+				model = "other-model"
+				if _, err := f.catalog.DB().Exec(`INSERT INTO models VALUES('model-2','other-model','{"id":"model-2","modelId":"other-model","name":"Other","kind":"chat"}')`); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.vendors.SaveModels(ctx, f.provider.ID, providers.ProviderModelsDraft{ModelIDs: []string{"model-1", "model-2"}}); err != nil {
+					t.Fatal(err)
+				}
+			case "credential":
+				key := f.keys[0]
+				if _, err := f.vendors.UpdateKey(ctx, key.ID, providers.ProviderKeyDraft{Name: key.Name, Secret: "rotated-key", Multiplier: key.Multiplier, Priority: key.Priority, CacheMinutes: key.CacheMinutes, ProbeMinutes: key.ProbeMinutes, Proxy: key.Proxy}); err != nil {
+					t.Fatal(err)
+				}
+			case "url":
+				if _, err := f.vendors.Update(ctx, f.provider.ID, providers.ProviderDraft{Name: f.provider.Name, URL: strings.Replace(f.provider.URL, "127.0.0.1", "localhost", 1), Request: f.provider.Request}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			body := `{"type":"response.create","model":"` + model + `","input":"next"}`
+			socketSend(t, conn, body)
+			if event := socketReceive(t, conn); event["type"] != "error" || event["status"] != float64(409) {
+				t.Fatal("绑定失效未明确返回 409", event)
+			}
+			readCtx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+			if _, _, err := conn.Read(readCtx); err == nil || readCtx.Err() != nil {
+				t.Fatalf("失效会话未主动断开: %v", err)
+			}
+			if turns.Load() != 1 {
+				t.Fatal("失效会话透明调用了新目标")
+			}
+			fresh := dialGatewaySocket(t, base)
+			socketSend(t, fresh, body)
+			if event := socketReceive(t, fresh); event["type"] != "response.completed" || turns.Load() != 2 {
+				t.Fatal("重新连接仍无法调用", event)
+			}
+		})
+	}
+}
+
 // TestWebSocketUsesGlobalProxy 验证握手实际经过项目已有代理客户端，原生 WebSocket 不绕过供应商出口继承。
 func TestWebSocketUsesGlobalProxy(t *testing.T) {
 	f := newExecutionFixture(t)

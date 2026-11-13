@@ -2,7 +2,9 @@ package records
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/CodeZen-Lizhi/vela/internal/models"
@@ -93,6 +95,78 @@ func TestRepairMissingCost(t *testing.T) {
 	var marked string
 	if err = catalog.DB().QueryRow(`SELECT document FROM settings WHERE name='records-cost-repair-v1'`).Scan(&marked); err != nil || marked != "done" {
 		t.Fatal("费用修复未幂等完成", marked, err)
+	}
+}
+
+// TestRepairMissingTotalsRollsBack 验证缺失任一累计行时全部费用调整回滚且不写完成标记，补回累计后可安全重试。
+func TestRepairMissingTotalsRollsBack(t *testing.T) {
+	for _, table := range []string{"request_key_totals", "request_totals"} {
+		t.Run(table, func(t *testing.T) {
+			s, catalog := fixture(t)
+			ctx := context.Background()
+			one := 1.0
+			usage := &Usage{Input: 1000, Context: 1000}
+			for _, id := range []string{"repair-a", "repair-b"} {
+				r := Record{ID: id, StartedAt: s.now().UnixMilli(), EndedAt: s.now().UnixMilli() + 1,
+					ModelID: "m1", ProviderID: id, Protocol: "chat", State: "success", Usage: usage, UnknownCosts: 1,
+					Pricing:  models.Pricing{Base: []models.Rate{{Key: "input", Price: 2, Unit: "million_tokens"}}},
+					Attempts: []Attempt{{Target: Target{ProviderID: id, KeyID: id, Multiplier: &one}, Number: 1, Status: 200, Usage: usage}}}
+				if err := s.save(ctx, r, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// 表名来自上面的固定测试列表；备份缺失行以验证修复后的重试，不从明细猜测长期累计。
+			for _, query := range []string{
+				`DELETE FROM settings WHERE name='records-cost-repair-v1'`,
+				`CREATE TEMP TABLE missing_total AS SELECT * FROM ` + table + ` WHERE provider_id='repair-b'`,
+				`DELETE FROM ` + table + ` WHERE provider_id='repair-b'`,
+			} {
+				if _, err := catalog.DB().Exec(query); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := New(catalog.DB()); err == nil || !strings.Contains(err.Error(), "累计") {
+				t.Fatalf("缺失累计仍完成费用修复: %v", err)
+			}
+			for _, id := range []string{"repair-a", "repair-b"} {
+				var raw string
+				var cost any
+				if err := catalog.DB().QueryRow(`SELECT document,cost FROM request_records WHERE id=?`, id).Scan(&raw, &cost); err != nil {
+					t.Fatal(err)
+				}
+				var r Record
+				if err := json.Unmarshal([]byte(raw), &r); err != nil || cost != nil || r.Cost != nil || r.Attempts[0].Cost != nil {
+					t.Fatalf("修复失败未回滚明细 %s: %+v, %v", id, r, err)
+				}
+			}
+			var marked int
+			if err := catalog.DB().QueryRow(`SELECT COUNT(*) FROM settings WHERE name=?`, costRepairMarker).Scan(&marked); err != nil || marked != 0 {
+				t.Fatal("失败仍写完成标记", marked, err)
+			}
+			for _, totals := range []string{"request_key_totals", "request_totals"} {
+				var cost float64
+				var unknown int
+				if err := catalog.DB().QueryRow(`SELECT cost,unknown_cost FROM `+totals+` WHERE provider_id='repair-a'`).Scan(&cost, &unknown); err != nil || cost != 0 || unknown != 1 {
+					t.Fatal("修复失败未回滚累计", totals, cost, unknown, err)
+				}
+			}
+			if _, err := catalog.DB().Exec(`INSERT INTO ` + table + ` SELECT * FROM missing_total`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := New(catalog.DB()); err != nil {
+				t.Fatal("补齐后不能重试", err)
+			}
+			if _, err := New(catalog.DB()); err != nil {
+				t.Fatal(err)
+			}
+			for _, totals := range []string{"request_key_totals", "request_totals"} {
+				var cost float64
+				var unknown int
+				if err := catalog.DB().QueryRow(`SELECT SUM(cost),SUM(unknown_cost) FROM `+totals).Scan(&cost, &unknown); err != nil || math.Abs(cost-0.004) > 1e-12 || unknown != 0 {
+					t.Fatal("重试费用错误或重复累加", totals, cost, unknown, err)
+				}
+			}
+		})
 	}
 }
 

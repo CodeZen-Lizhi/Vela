@@ -178,7 +178,10 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		return result, err
 	}
 	if req.WebSocket != nil {
-		candidates = req.WebSocket.filter(req, candidates)
+		candidates, err = req.WebSocket.filter(req, candidates)
+		if err != nil {
+			return result, err
+		}
 	}
 	if req.PreviousResponseID != "" {
 		if e.Continuations != nil {

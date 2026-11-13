@@ -58,9 +58,15 @@ func (s *VelaService) SchedulingSnapshot(ctx context.Context) (SchedulingSnapsho
 		positions[id] = i
 	}
 	sort.SliceStable(snapshot.Providers, func(i, j int) bool {
-		left,ok:=positions[snapshot.Providers[i].Provider.ID];if !ok{left=len(positions)}
- right,ok:=positions[snapshot.Providers[j].Provider.ID];if !ok{right=len(positions)}
- return left<right
+		left, ok := positions[snapshot.Providers[i].Provider.ID]
+		if !ok {
+			left = len(positions)
+		}
+		right, ok := positions[snapshot.Providers[j].Provider.ID]
+		if !ok {
+			right = len(positions)
+		}
+		return left < right
 	})
 	return SchedulingSnapshot{Policy: policy, Providers: snapshot.Providers}, nil
 }

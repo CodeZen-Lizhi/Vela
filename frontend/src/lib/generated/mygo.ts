@@ -24,11 +24,11 @@ export interface AccountBalance {
 export interface AccountRefresh {
   /** Enabled 是否定时刷新余额，沿用旧字段，默认关闭。 */
   enabled: boolean;
-  /** Minutes 余额刷新间隔，单位分钟，至少为 1。 */
+  /** Minutes 余额刷新间隔，单位分钟，范围 1～153722867。 */
   minutes: number;
   /** KeyEnabled 是否定时刷新上游 Key 信息，默认关闭。 */
   keyEnabled: boolean;
-  /** KeyMinutes Key 信息刷新间隔，单位分钟，至少为 1。 */
+  /** KeyMinutes Key 信息刷新间隔，单位分钟，范围 1～153722867。 */
   keyMinutes: number;
   /** OnVisible 是否在启动及隐藏/最小化恢复后刷新，默认关闭。 */
   onVisible: boolean;
@@ -1342,7 +1342,7 @@ export const VelaService = {
   saveAttentionSettings(value: AttentionSettings): Promise<void> {
     return call("VelaService.SaveAttentionSettings", value);
   },
-  /** SaveGatewaySettings 先让新端口实际开始监听，成功后再保存；绑定失败保留原配置和监听。 */
+  /** SaveGatewaySettings 先校验端口，再实际监听并保存；非法输入不触发监听，绑定失败保留原配置和监听。 */
   saveGatewaySettings(value: GatewaySettings): Promise<void> {
     return call("VelaService.SaveGatewaySettings", value);
   },

@@ -24,9 +24,19 @@ func TestSaveGatewaySettingsAppliesBeforePersisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyErr := errors.New("端口占用")
+	applied := 0
 	service := NewVelaService(Options{Settings: preferences, ApplyGateway: func(context.Context, settings.GatewaySettings) error {
+		applied++
 		return applyErr
 	}})
+	for _, port := range []int{0, 80, 1023, 65536, -1} {
+		if err = service.SaveGatewaySettings(context.Background(), settings.GatewaySettings{Port: port}); err == nil {
+			t.Fatalf("非法端口 %d 未被拒绝", port)
+		}
+	}
+	if applied != 0 {
+		t.Fatalf("非法端口触发监听 %d 次", applied)
+	}
 	if err = service.SaveGatewaySettings(context.Background(), settings.GatewaySettings{Port: 19090}); err == nil {
 		t.Fatal("监听失败仍返回成功")
 	}

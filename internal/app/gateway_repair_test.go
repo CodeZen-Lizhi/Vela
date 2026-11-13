@@ -232,6 +232,7 @@ func TestGatewayGeminiFileLifecycle(t *testing.T) {
 	})
 	base := startCompatibilityGateway(t, f)
 	request, _ := http.NewRequest(http.MethodPost, base+"/upload/v1beta/files", strings.NewReader(`{"file":{"display_name":"sample"}}`))
+	request.Host = "untrusted.example:1234"
 	request.Header.Set("X-Goog-Api-Key", "gateway-test-key")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Goog-Upload-Protocol", "resumable")

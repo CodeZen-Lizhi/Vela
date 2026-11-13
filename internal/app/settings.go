@@ -82,8 +82,11 @@ func (s *VelaService) SetOpenAtLogin(enabled bool) (bool, error) {
 	return mygo.App.OpenAtLogin(), nil
 }
 
-// SaveGatewaySettings 先让新端口实际开始监听，成功后再保存；绑定失败保留原配置和监听。
+// SaveGatewaySettings 先校验端口，再实际监听并保存；非法输入不触发监听，绑定失败保留原配置和监听。
 func (s *VelaService) SaveGatewaySettings(ctx context.Context, value settings.GatewaySettings) error {
+	if err := value.Validate(); err != nil {
+		return err
+	}
 	store, err := s.settingsStore()
 	if err != nil {
 		return err

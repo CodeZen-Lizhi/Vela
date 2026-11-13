@@ -5,7 +5,11 @@ import (
 	"errors"
 	"math"
 	"regexp"
+	"time"
 )
+
+// maxRefreshMinutes 是 time.Duration 可完整表示的最大整数分钟数，避免定时任务转换后溢出。
+const maxRefreshMinutes = int64(math.MaxInt64) / int64(time.Minute)
 
 // GeneralSettings 是常规设置：外观、窗口行为、页面刷新和模型目录自动更新。
 type GeneralSettings struct {
@@ -35,11 +39,11 @@ type GatewaySettings struct {
 type AccountRefresh struct {
 	// Enabled 是否定时刷新余额，沿用旧字段，默认关闭。
 	Enabled bool `json:"enabled"`
-	// Minutes 余额刷新间隔，单位分钟，至少为 1。
+	// Minutes 余额刷新间隔，单位分钟，范围 1～153722867。
 	Minutes int `json:"minutes"`
 	// KeyEnabled 是否定时刷新上游 Key 信息，默认关闭。
 	KeyEnabled bool `json:"keyEnabled"`
-	// KeyMinutes Key 信息刷新间隔，单位分钟，至少为 1。
+	// KeyMinutes Key 信息刷新间隔，单位分钟，范围 1～153722867。
 	KeyMinutes int `json:"keyMinutes"`
 	// OnVisible 是否在启动及隐藏/最小化恢复后刷新，默认关闭。
 	OnVisible bool `json:"onVisible"`
@@ -106,10 +110,10 @@ func (g GatewaySettings) Validate() error {
 	return nil
 }
 
-// Validate 要求间隔至少 1 分钟；关闭时仍保留间隔。
+// Validate 要求间隔为可转换为 time.Duration 的正整数分钟数；关闭时仍校验并保留间隔。
 func (a AccountRefresh) Validate() error {
-	if a.Minutes < 1 || a.KeyMinutes < 1 {
-		return errors.New("请输入至少 1 分钟的整数刷新间隔")
+	if a.Minutes < 1 || a.KeyMinutes < 1 || int64(a.Minutes) > maxRefreshMinutes || int64(a.KeyMinutes) > maxRefreshMinutes {
+		return errors.New("请输入 1～153722867 分钟之间的整数刷新间隔")
 	}
 	return nil
 }

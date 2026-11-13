@@ -14,7 +14,9 @@ const costRepairMarker = "records-cost-repair-v1"
 
 // attemptCostSnapshot 保存修复前的尝试费用事实，用于只调整对应的 Key 累计差值。
 type attemptCostSnapshot struct {
-	cost    *float64
+	// cost 为修复前估算 USD 的独立副本，nil 表示费用未知。
+	cost *float64
+	// unknown 表示该尝试修复前是否计入 Key 的未知费用次数。
 	unknown bool
 }
 
@@ -69,7 +71,7 @@ func recoverRecordCost(r *Record) bool {
 	return true
 }
 
-// adjustKeyTotals 按尝试费用差量修正 Key 累计，不改变尝试次数、Token 或身份归属。
+// adjustKeyTotals 按尝试费用差量修正 Key 累计；累计缺失时报错，由调用方回滚整笔修复。
 func adjustKeyTotals(ctx context.Context, tx *sql.Tx, s *Store, r Record, before []attemptCostSnapshot) error {
 	day := time.UnixMilli(r.StartedAt).In(s.zone).Format("2006-01-02")
 	for i, attempt := range r.Attempts {
@@ -96,20 +98,36 @@ func adjustKeyTotals(ctx context.Context, tx *sql.Tx, s *Store, r Record, before
 		if costDelta == 0 && unknownDelta == 0 {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE request_key_totals SET cost=cost+?,unknown_cost=MAX(0,unknown_cost+?) WHERE day=? AND provider_id=? AND model_id=? AND protocol=? AND key_id=?`,
-			costDelta, unknownDelta, day, attempt.ProviderID, r.ModelID, r.Protocol, attempt.KeyID); err != nil {
+		result, err := tx.ExecContext(ctx, `UPDATE request_key_totals SET cost=cost+?,unknown_cost=MAX(0,unknown_cost+?) WHERE day=? AND provider_id=? AND model_id=? AND protocol=? AND key_id=?`,
+			costDelta, unknownDelta, day, attempt.ProviderID, r.ModelID, r.Protocol, attempt.KeyID)
+		if err != nil {
 			return fmt.Errorf("修正 Key 费用累计: %w", err)
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("核对 Key 费用累计: %w", err)
+		}
+		if count != 1 {
+			return errors.New("Key 费用累计缺失，已取消费用修复")
 		}
 	}
 	return nil
 }
 
-// adjustRequestTotals 将逻辑请求从未知费用修正为完整金额，已清理明细的长期累计保持同步。
+// adjustRequestTotals 将逻辑请求从未知费用修正为完整金额；累计缺失时报错，避免明细与长期累计不一致。
 func adjustRequestTotals(ctx context.Context, tx *sql.Tx, s *Store, r Record) error {
 	day := time.UnixMilli(r.StartedAt).In(s.zone).Format("2006-01-02")
-	if _, err := tx.ExecContext(ctx, `UPDATE request_totals SET cost=cost+?,unknown_cost=MAX(0,unknown_cost-1) WHERE day=? AND provider_id=? AND model_id=? AND protocol=?`,
-		*r.Cost, day, r.ProviderID, r.ModelID, r.Protocol); err != nil {
+	result, err := tx.ExecContext(ctx, `UPDATE request_totals SET cost=cost+?,unknown_cost=MAX(0,unknown_cost-1) WHERE day=? AND provider_id=? AND model_id=? AND protocol=?`,
+		*r.Cost, day, r.ProviderID, r.ModelID, r.Protocol)
+	if err != nil {
 		return fmt.Errorf("修正请求费用累计: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("核对请求费用累计: %w", err)
+	}
+	if count != 1 {
+		return errors.New("请求费用累计缺失，已取消费用修复")
 	}
 	return nil
 }

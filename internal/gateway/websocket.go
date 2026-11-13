@@ -52,7 +52,7 @@ func sendSocketError(ctx context.Context, conn *websocket.Conn, status int, code
 	return conn.Write(bounded, websocket.MessageText, data)
 }
 
-// responsesWebSocket 运行标准 Responses 默认通道；逐轮复核认证、模型和配置，原生上游连接随会话复用。
+// responsesWebSocket 运行标准 Responses 默认通道，逐轮复核认证、模型和配置；绑定失效时返回 409 并断开，要求重连。
 func (s *Server) responsesWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -168,6 +168,10 @@ func (s *Server) responsesWebSocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if runErr != nil {
+			if errors.Is(runErr, scheduling.ErrContinuation) {
+				_ = sendSocketError(ctx, conn, 409, "continuation_unavailable", "连续会话的原上游绑定无法验证，请重新连接后使用完整历史发起请求")
+				return
+			}
 			if !writer.Terminal {
 				status := result.Result.Status
 				if status < 400 {
@@ -175,9 +179,6 @@ func (s *Server) responsesWebSocket(w http.ResponseWriter, r *http.Request) {
 				}
 				if errors.Is(runErr, scheduling.ErrNoCandidates) {
 					status = 503
-				}
-				if errors.Is(runErr, scheduling.ErrContinuation) {
-					status = 409
 				}
 				active.Store(false)
 				if sendSocketError(ctx, conn, status, "upstream_error", runErr.Error()) != nil {
