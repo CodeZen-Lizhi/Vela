@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Badge } from "$lib/components/ui/badge";
   import type { Pricing, Rate } from "$lib/generated/mygo";
   import { rateNames, unitLabel } from "./display";
   /** 模型行展示标准主价，缓存和分时等完整规则保留在详情中。 */
@@ -61,16 +62,12 @@
       ).replace("美元 / ", "")}
     </p>{/if}
   <div class="price-traits">
-    {#if pricing.base.some((r) => r.key.startsWith("cache_"))}<span
-        class="price-trait cache">缓存价</span
-      >{/if}
-    {#if pricing.tiers.length}<span class="price-trait tier">阶梯价</span>{/if}
-    {#if pricing.modes.length}<span class="price-trait speed">Fast</span>{/if}
-    {#if pricing.schedules.length}<span class="price-trait time">峰谷价</span
-      >{/if}
-    {#if pricing.images.length}<span class="price-trait tier">图片矩阵</span
-      >{/if}
-    {#if pricing.videos.length}<span class="price-trait tier">分辨率</span>{/if}
-    {#if modified}<span class="price-trait">本地修改</span>{/if}
+    {#if pricing.base.some((r) => r.key.startsWith("cache_"))}<Badge variant="positive">缓存价</Badge>{/if}
+    {#if pricing.tiers.length}<Badge variant="info">阶梯价</Badge>{/if}
+    {#if pricing.modes.length}<Badge variant="parameter">Fast</Badge>{/if}
+    {#if pricing.schedules.length}<Badge variant="warning">峰谷价</Badge>{/if}
+    {#if pricing.images.length}<Badge variant="info">图片矩阵</Badge>{/if}
+    {#if pricing.videos.length}<Badge variant="info">分辨率</Badge>{/if}
+    {#if modified}<Badge variant="neutral">本地修改</Badge>{/if}
   </div>
 </div>

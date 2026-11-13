@@ -6,7 +6,7 @@
 		variants: {
 			variant: {
 				default: "bg-muted",
-				line: "gap-1 bg-transparent",
+				line: "h-auto! gap-6 rounded-none border-b border-border bg-transparent p-0",
 			},
 		},
 		defaultVariants: {

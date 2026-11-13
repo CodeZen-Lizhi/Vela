@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { Label } from "$lib/components/ui/label";
+  import * as InputGroup from "$lib/components/ui/input-group";
+  import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Accordion from "$lib/components/ui/accordion";
@@ -92,8 +95,7 @@
         <Accordion.Trigger class="flex-1 py-3">
           <span>
             {group === "modes" ? "处理模式" : label}
-            {#if overrides.includes(group)}<span class="tag">本地修改</span
-              >{/if}
+            {#if overrides.includes(group)}<Badge variant="neutral">本地修改</Badge>{/if}
           </span>
         </Accordion.Trigger>
         {#if !readOnly && onrestore}<Button
@@ -198,10 +200,10 @@
                           setMultiplierMode(mode, enabled)}
                       />
                     </div>
-                    {#if usesMultiplier(mode)}<label
+                    {#if usesMultiplier(mode)}<InputGroup.Root
                         class="mode-multiplier-input"
                       >
-                        <Input
+                        <InputGroup.Input
                           type="number"
                           min="0.000001"
                           step="any"
@@ -219,8 +221,8 @@
                               : null;
                           }}
                         />
-                        <span aria-hidden="true">×</span>
-                      </label>{/if}
+                        <InputGroup.Addon align="inline-end">×</InputGroup.Addon>
+                      </InputGroup.Root>{/if}
                   </div>
                 </Field.Field>
               </Field.FieldGroup>
@@ -340,9 +342,9 @@
                   /></Field.Field
                 >
               </Field.FieldGroup>
-              <fieldset class="flex flex-wrap gap-3">
-                <legend class="mb-2 text-sm">生效日期</legend
-                >{#each weekdays as day, d}<label
+              <Field.Set class="flex flex-row flex-wrap gap-3">
+                <Field.Legend class="mb-2 text-sm">生效日期</Field.Legend
+                >{#each weekdays as day, d}<Label variant="content"
                     class="flex items-center gap-1 text-sm"
                     ><Checkbox
                     aria-label={day}
@@ -352,9 +354,9 @@
                         (window.days = checked
                           ? [...window.days, d]
                           : window.days.filter((n) => n !== d))}
-                    />{day}</label
+                    />{day}</Label
                   >{/each}
-              </fieldset>
+              </Field.Set>
               <Field.Field
                 ><Field.Label for={`${prefix}-field-9-${i}`}
                   >例外日期（YYYY-MM-DD，逗号分隔）</Field.Label
@@ -563,11 +565,7 @@
     flex-direction: column;
     gap: 1px;
   }
-  .mode-multiplier-toggle :global([data-slot="field-label"]) {
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.2;
-  }
+
   .mode-multiplier-toggle small {
     color: var(--muted-foreground);
     font-size: 11px;
@@ -577,19 +575,9 @@
     border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
     background: color-mix(in oklch, var(--primary) 7%, var(--background));
   }
-  .mode-multiplier-input {
+  :global(.mode-multiplier-input) {
     position: relative;
     flex: 0 0 104px;
   }
-  .mode-multiplier-input :global(input) {
-    padding-right: 26px;
-  }
-  .mode-multiplier-input span {
-    position: absolute;
-    top: 50%;
-    right: 11px;
-    color: var(--muted-foreground);
-    pointer-events: none;
-    transform: translateY(-50%);
-  }
+
 </style>

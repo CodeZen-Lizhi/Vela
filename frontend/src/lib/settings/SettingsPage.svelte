@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import { Button } from "$lib/components/ui/button";
@@ -64,14 +65,14 @@
 </script>
 
 <div class="settings-page">
-  {#if !desktop}<p class="feedback mb-5">
+  {#if !desktop}<Alert.Root variant="info" class="mb-5"><Alert.Description>
       浏览器预览 · 设置的读取与保存请在 Vela 桌面窗口中进行。
-    </p>{/if}
+    </Alert.Description></Alert.Root>{/if}
   {#if loadError}
-    <div role="alert" class="error-banner">
+    <Alert.Root variant="destructive"><Alert.Description>
       设置读取失败：{loadError}
       <Button variant="ghost" size="sm" onclick={() => void load()}>重试</Button>
-    </div>
+    </Alert.Description></Alert.Root>
   {:else if !snapshot}
     <p class="p-16 text-center text-sm text-muted-foreground">正在读取设置…</p>
   {:else}

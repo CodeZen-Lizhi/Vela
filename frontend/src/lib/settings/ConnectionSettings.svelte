@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { Label } from "$lib/components/ui/label";
+  import { Badge } from "$lib/components/ui/badge";
+  import * as Alert from "$lib/components/ui/alert";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { untrack } from "svelte";
   import {
     ArrowDownToLine,
@@ -189,7 +194,7 @@
           <p class="mt-1 text-xs text-muted-foreground">配置本机连接，将接入地址与密钥填入你的工具</p>
         </div>
       </div>
-      <span class="tag">仅限本机</span>
+      <Badge variant="neutral">仅限本机</Badge>
     </div>
     <Field.Group class="gap-5 px-6 py-5">
       <Field.Field class="grid items-start gap-3 grid-cols-[112px_minmax(0,1fr)]">
@@ -203,7 +208,7 @@
             {#if portChanged}<Button variant="outline" size="sm" disabled={portBusy} onclick={cancelPort}>取消</Button>{/if}
             <Button type="submit" size="sm" disabled={!desktop || !portChanged || portBusy}>{portBusy ? "正在保存…" : "保存端口"}</Button>
           </div>
-          {#if portError}<p class="mt-2 text-xs text-destructive" role="alert">{portError}</p>{/if}
+          {#if portError}<Alert.Root variant="inline-error" class="mt-2"><Alert.Description>{portError}</Alert.Description></Alert.Root>{/if}
         </form>
       </Field.Field>
       <Field.Field class="grid items-start gap-3 grid-cols-[112px_minmax(0,1fr)]">
@@ -211,7 +216,7 @@
         <div class="min-w-0">
           <InputGroup.Root>
             <InputGroup.Input id="gateway-endpoint" value={endpoint} readonly aria-label="本机接入地址" />
-            <InputGroup.Addon align="inline-end"><InputGroup.Button size="icon-xs" aria-label="复制网关地址" title={copied === "address" ? "已复制" : "复制网关地址"} disabled={!desktop} onclick={() => void copy("address")}>{#if copied === "address"}<Check />{:else}<Copy />{/if}</InputGroup.Button></InputGroup.Addon>
+            <InputGroup.Addon align="inline-end"><Hint text={copied === "address" ? "已复制" : "复制网关地址"}>{#snippet children(hintProps0)}<InputGroup.Button {...mergeProps(hintProps0, { onclick: () => void copy("address") })} size="icon-xs" aria-label="复制网关地址"  disabled={!desktop} >{#if copied === "address"}<Check />{:else}<Copy />{/if}</InputGroup.Button>{/snippet}</Hint></InputGroup.Addon>
           </InputGroup.Root>
         </div>
       </Field.Field>
@@ -224,14 +229,14 @@
               {#if keySet}
                 <InputGroup.Addon align="inline-end">
                   <InputGroup.Button size="icon-xs" aria-label={revealed ? "隐藏访问密钥" : "显示访问密钥"} aria-pressed={!!revealed} onclick={() => void toggleReveal()}>{#if revealed}<EyeOff />{:else}<Eye />{/if}</InputGroup.Button>
-                  <InputGroup.Button size="icon-xs" aria-label="复制访问密钥" title={copied === "key" ? "已复制" : "复制访问密钥"} onclick={() => void copy("key")}>{#if copied === "key"}<Check />{:else}<Copy />{/if}</InputGroup.Button>
+                  <Hint text={copied === "key" ? "已复制" : "复制访问密钥"}>{#snippet children(hintProps1)}<InputGroup.Button {...mergeProps(hintProps1, { onclick: () => void copy("key") })} size="icon-xs" aria-label="复制访问密钥"  >{#if copied === "key"}<Check />{:else}<Copy />{/if}</InputGroup.Button>{/snippet}</Hint>
                 </InputGroup.Addon>
               {/if}
             </InputGroup.Root>
             <Button variant="outline" size="sm" disabled={!desktop || keySet === null} onclick={openEditor}><Pencil />{keySet ? "修改密钥" : "设置密钥"}</Button>
           </div>
           {#if keyError}
-            <p class="mt-2 text-xs text-destructive" role="alert">{keyError}</p>
+            <Alert.Root variant="inline-error" class="mt-2"><Alert.Description>{keyError}</Alert.Description></Alert.Root>
             {#if keySet === null}<Button variant="link" size="xs" class="px-0" disabled={keyBusy} onclick={() => void loadKey()}>重新读取</Button>{/if}
           {/if}
         </div>
@@ -287,7 +292,7 @@
       ></Dialog.Header
     >
     <form class="grid gap-4" novalidate onsubmit={saveKey}>
-      <label class="grid gap-2 text-xs" for="new-gateway-key">新访问密钥</label>
+      <Label variant="content" class="grid gap-2 text-xs" for="new-gateway-key">新访问密钥</Label>
       <InputGroup.Root class="-mt-2">
         <InputGroup.Input
           id="new-gateway-key"
@@ -314,7 +319,7 @@
       <p id="key-help" class="text-xs text-muted-foreground">
         1–256 个英文字符、数字或符号，不能包含空格。
       </p>
-      {#if draftError}<p class="error-banner" role="alert">{draftError}</p>{/if}
+      {#if draftError}<Alert.Root variant="destructive"><Alert.Description>{draftError}</Alert.Description></Alert.Root>{/if}
       <Dialog.Footer
         ><Button variant="outline" disabled={saving} onclick={closeEditor}
           >取消</Button

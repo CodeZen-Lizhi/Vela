@@ -1,4 +1,7 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { onMount, tick } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
@@ -295,14 +298,14 @@
         >
     {/snippet}
   </PageHeader>
-  {#if !isMyGo()}<p class="feedback">
+  {#if !isMyGo()}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 数据操作请在 Vela 桌面窗口中进行。
-    </p>{/if}
-  {#if error}<div role="alert" class="error-banner">
+    </Alert.Description></Alert.Root>{/if}
+  {#if error}<Alert.Root variant="destructive"><Alert.Description>
       {error}<Button variant="ghost" size="sm" onclick={() => void load()}
         >重试</Button
       >
-    </div>{/if}
+    </Alert.Description></Alert.Root>{/if}
   <section class="list-surface" aria-label="模型列表">
     <div class="model-toolbar">
       <div class="model-filters">
@@ -386,19 +389,18 @@
                   <div class="model-identity-copy">
                     <strong>{model.name}</strong>
                     <div class="model-id-row">
-                      <code title={model.modelId}>{model.modelId}</code>
-                      <Button
+                      <Hint text={model.modelId}>{#snippet children(hintProps0)}<code {...hintProps0} >{model.modelId}</code>{/snippet}</Hint>
+                      <Hint text={copiedModelId === model.id
+                          ? "已复制"
+                          : "复制模型 ID"}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => void copyModelId(model) })}
                         variant="ghost"
                         size="icon-xs"
                         aria-label={`复制模型 ID ${model.modelId}`}
-                        title={copiedModelId === model.id
-                          ? "已复制"
-                          : "复制模型 ID"}
-                        onclick={() => void copyModelId(model)}
+
                       >
                         {#if copiedModelId === model.id}<Check />{:else}<Copy
                           />{/if}
-                      </Button>
+                      </Button>{/snippet}</Hint>
                     </div>
                   </div>
                 </div>
@@ -546,9 +548,9 @@
       ><Dialog.Title>删除模型？</Dialog.Title><Dialog.Description
         >将删除 {selected?.name} 的本地模型配置。取消则保持不变。</Dialog.Description
       ></Dialog.Header
-    >{#if dialogError}<p class="error-banner" role="alert">
+    >{#if dialogError}<Alert.Root variant="destructive"><Alert.Description>
         {dialogError}
-      </p>{/if}<Dialog.Footer
+      </Alert.Description></Alert.Root>{/if}<Dialog.Footer
       ><Button variant="outline" onclick={() => (deleteOpen = false)}
         >取消</Button
       ><Button

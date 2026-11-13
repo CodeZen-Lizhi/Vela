@@ -31,7 +31,7 @@
   function setConnectionMode(value: string): void { draft.reuseProvider = value === "provider"; }
 </script>
 
-<fieldset {disabled} class="query-fields">
+<Field.Set {disabled} class="min-w-0">
   <Field.Set><Field.Legend>信息查询</Field.Legend><Field.Group>
     <Field.Field><Field.Label>名称来源</Field.Label><Choice bind:value={draft.nameSource} label="Key 名称来源" {disabled} options={[{ value: "manual", label: "手动填写" }, { value: "upstream_key", label: "上游 Key 名称" }, { value: "upstream_group", label: "上游分组名称" }]} /><Field.Description>与倍率来源独立。上游查询失败时保留当前名称。</Field.Description></Field.Field>
     <Field.Field><Field.Label>倍率来源</Field.Label><MultiplierSource value={draft.multiplierSource} label="Key 倍率来源" {disabled} onchange={(value) => draft.multiplierSource = value}/><Field.Description>手动项不会被同步覆盖；自动跟随上游倍率，0 表示免费，未知不视为 1。</Field.Description></Field.Field>
@@ -70,10 +70,10 @@
       </Field.Group></Field.Set>
     {/if}
   </Field.Group></Field.Set>
-</fieldset>
+</Field.Set>
 
 <style>
-  .query-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+
   .query-status { padding: 14px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
   .query-status h3 { font-size: 13px; font-weight: 600; }
   .status-help, .status-entry small { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }

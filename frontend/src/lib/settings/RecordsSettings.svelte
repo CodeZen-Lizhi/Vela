@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import { isMyGo } from "mygo-runtime";
   import { Trash2 } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
@@ -77,9 +78,9 @@
   {#if !desktop}<p class="px-6 pb-4 text-xs text-muted-foreground">
       浏览器预览：请在桌面应用中清理真实请求记录。
     </p>{/if}
-  {#if error}<p class="px-6 pb-4 text-xs text-destructive" role="alert">
+  {#if error}<Alert.Root variant="inline-error" class="px-6 pb-4"><Alert.Description>
       {error}
-    </p>{/if}{#if message}<p class="px-6 pb-4 text-xs" role="status">
+    </Alert.Description></Alert.Root>{/if}{#if message}<p class="px-6 pb-4 text-xs" role="status">
       {message}
     </p>{/if}
   <p

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
@@ -201,7 +204,7 @@
 
 <form class="v-editor" onsubmit={submit}>
   <div class="v-editor-body">
-    <fieldset disabled={busy} class="v-fieldset">
+    <Field.Set disabled={busy} class="v-fieldset">
       <section class="v-editor-scope" aria-label="运行范围">
         <Field.Group class="v-run-settings">
           <Field.Field
@@ -309,15 +312,15 @@
                   onValueChange={(value) => change(line, "referenceModel", value)} />
                 <small class="text-muted-foreground">未选择时按原始模型 ID：{scope.find((target) => target.modelId === line.modelId)?.originalModel || "未知"}。</small>
               </Field.Field>{/if}
-              <Button
+              <Hint text={`移除第 ${index + 1} 行`}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => remove(line.id) })}
                 type="button"
                 variant="ghost"
                 size="icon-sm"
                 disabled={!line.modelId && !line.keyId && !line.protocol}
                 aria-label={`移除第 ${index + 1} 行`}
-                title={`移除第 ${index + 1} 行`}
-                onclick={() => remove(line.id)}><Trash2 /></Button
-              >
+
+                ><Trash2 /></Button
+              >{/snippet}</Hint>
             </div>
           {/each}
         </div>
@@ -328,10 +331,10 @@
             </div>{/each}
         </div>
       </section>
-    </fieldset>
-    {#if validation || error}<p role="alert" class="v-error">
+    </Field.Set>
+    {#if validation || error}<Alert.Root variant="inline-error"><Alert.Description>
         {validation || error}
-      </p>{/if}
+      </Alert.Description></Alert.Root>{/if}
   </div>
   <footer class="v-editor-footer">
     <p>

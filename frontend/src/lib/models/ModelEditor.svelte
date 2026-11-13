@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -77,7 +79,7 @@
       >
       <div>
         <strong>{model.providerName}</strong>
-        {#if model.providerId}<code title="来源模型 ID">{model.sourceModelId}</code>{/if}
+        {#if model.providerId}<Hint text="来源模型 ID">{#snippet children(hintProps0)}<code {...hintProps0} >{model.sourceModelId}</code>{/snippet}</Hint>{/if}
       </div>
     </div>
     <Field.FieldGroup class="grid gap-3 sm:grid-cols-2">
@@ -124,9 +126,9 @@
     />
     <p class="text-xs text-muted-foreground">{model.providerId ? `价格来源 models.dev · ${model.providerName}` : "手动创建 · 未填写价格保持未知"}</p>
   </div>
-  {#if validationError || error}<p role="alert" class="error-banner model-edit-error">
+  {#if validationError || error}<Alert.Root variant="destructive" class="mx-6 mb-3 shrink-0"><Alert.Description>
       {validationError || error}
-    </p>{/if}
+    </Alert.Description></Alert.Root>{/if}
   <footer class="model-edit-footer">
     <Button variant="outline" disabled={busy} onclick={onclose}>取消</Button
     ><Button type="submit" disabled={busy}
@@ -137,15 +139,7 @@
 
 <style>
   /* 新建与编辑模型隐藏浏览器数字调节箭头，仍保留 number 类型及其范围、精度校验。 */
-  .model-edit-form :global(input[type="number"]) {
-    appearance: textfield;
-    -moz-appearance: textfield;
-  }
-  .model-edit-form :global(input[type="number"]::-webkit-inner-spin-button),
-  .model-edit-form :global(input[type="number"]::-webkit-outer-spin-button) {
-    -webkit-appearance: none;
-    margin: 0;
-  }
+
   /* 资料与价格规则在内容区滚动，错误提示和操作栏固定在底部保持可见。 */
   .model-edit-form {
     display: flex;
@@ -162,10 +156,7 @@
     overflow-y: auto;
     padding: 24px;
   }
-  .model-edit-error {
-    flex-shrink: 0;
-    margin: 0 24px 12px;
-  }
+
   .model-origin {
     display: flex;
     align-items: center;

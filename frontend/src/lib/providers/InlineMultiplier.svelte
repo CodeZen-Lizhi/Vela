@@ -1,4 +1,7 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { tick } from "svelte";
   import { Pencil } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
@@ -40,19 +43,15 @@
 
 <div class="inline-multiplier">
   {#if editing}
-    <Input bind:ref={input} type="number" min={0} max={100} step="any" bind:value={draft} aria-label={`${label} 手动倍率`} aria-invalid={!!error} disabled={saving} onblur={save} onkeydown={keydown}/>
+    <Input density="compact" class="w-16" bind:ref={input} type="number" min={0} max={100} step="any" bind:value={draft} aria-label={`${label} 手动倍率`} aria-invalid={!!error} disabled={saving} onblur={save} onkeydown={keydown}/>
   {:else if editable}
-    <Button variant="ghost" size="xs" class="inline-multiplier-trigger" {disabled} title="点击修改倍率" aria-label={`修改 ${label} 倍率`} onclick={start}>{value===null?"倍率未知":`${value}×`}<Pencil class="size-3" aria-hidden="true"/></Button>
+    <Hint text="点击修改倍率">{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: start })} variant="ghost" size="table-inline" class="w-full justify-start" {disabled}  aria-label={`修改 ${label} 倍率`} >{value===null?"倍率未知":`${value}×`}<Pencil class="size-3" aria-hidden="true"/></Button>{/snippet}</Hint>
   {:else}<span class="provider-multiplier-value">{value===null?"倍率未知":`${value}×`}</span>{/if}
-  {#if error}<small role="alert">{error}</small>{/if}
+  {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
 </div>
 
 <style>
   /* 手动按钮、自动文本与输入框共用尺寸，不让来源切换改变表格的内容宽度。 */
   .inline-multiplier { position:relative; display:flex; align-items:center; width:64px; min-height:32px; flex:0 0 64px; }
-  .inline-multiplier :global(input) { width:64px; height:30px; padding:4px 7px; font-size:12px; appearance:textfield; }
-  .inline-multiplier :global(input::-webkit-inner-spin-button),.inline-multiplier :global(input::-webkit-outer-spin-button) { -webkit-appearance:none; margin:0; }
-  .inline-multiplier :global(.inline-multiplier-trigger) { width:100%; justify-content:flex-start; padding:0; gap:4px; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
-  .inline-multiplier :global(.inline-multiplier-trigger svg) { color:var(--muted-foreground); }
-  small { display:block; max-width:180px; margin-top:4px; font-size:10px; color:var(--destructive); }
+
 </style>

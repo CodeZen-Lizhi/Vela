@@ -1,4 +1,7 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Empty from "$lib/components/ui/empty";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { onMount, onDestroy } from "svelte";
   import {
     Activity,
@@ -224,10 +227,7 @@
           验证 {model.name} 在真实供应商、Key 与映射组合下的可用性；测试会产生上游调用。
         </Dialog.Description>
       </div>
-      <span class="model-test-state" data-state={statusKind} role="status" aria-live="polite">
-        <span class="model-test-state-dot"></span>
-        {statusLabel}
-      </span>
+      <Badge variant={statusKind === "testing" ? "processing" : statusKind === "success" ? "positive" : statusKind === "failure" ? "negative" : statusKind === "stopped" ? "warning" : "neutral"} role="status" aria-live="polite">{statusLabel}</Badge>
     </header>
 
     <div class="model-test-body">
@@ -237,9 +237,9 @@
             <div class="min-w-0">
               <div class="model-test-panel-eyebrow"><SlidersHorizontal />测试范围</div>
               <h3 id="model-test-config-title" class="model-test-panel-title">测试配置</h3>
-              <p class="model-test-panel-description" title={configExpanded ? configSummary : panelDescription}>
+              <Hint text={configExpanded ? configSummary : panelDescription}>{#snippet children(hintProps0)}<p {...hintProps0} class="model-test-panel-description" >
                 {configExpanded ? configSummary : panelDescription}
-              </p>
+              </p>{/snippet}</Hint>
             </div>
             <Button
               variant="ghost"
@@ -297,7 +297,7 @@
                   />
                 </div>
                 {#if !options.keys.length}
-                  <p class="model-test-notice" role="alert">没有具备该模型权限且已设置密钥的 Key，请先配置密钥。</p>
+                  <Alert.Root variant="inline-error"><Alert.Description>没有具备该模型权限且已设置密钥的 Key，请先配置密钥。</Alert.Description></Alert.Root>
                 {/if}
               </div>
             {:else}
@@ -388,9 +388,9 @@
                           >
                             <Table.Cell class="attempt-index"><code>{String(index + 1).padStart(2, "0")}</code></Table.Cell>
                             <Table.Cell class="attempt-key"><strong>{attempt.keyName || "—"}</strong></Table.Cell>
-                            <Table.Cell class="attempt-model"><code title={attempt.requestModel}>{attempt.requestModel || "—"}</code></Table.Cell>
+                            <Table.Cell class="attempt-model"><Hint text={attempt.requestModel}>{#snippet children(hintProps1)}<code {...hintProps1} >{attempt.requestModel || "—"}</code>{/snippet}</Hint></Table.Cell>
                             <Table.Cell class="attempt-status">
-                              <Badge variant="secondary" class="attempt-state" data-state={attempt.state}>{stateLabel(attempt.state)}</Badge>
+                              <Badge variant={attempt.state === "success" ? "positive" : attempt.state === "failed" ? "negative" : "neutral"}>{stateLabel(attempt.state)}</Badge>
                             </Table.Cell>
                             <Table.Cell class="attempt-duration">{attempt.durationMillis} ms</Table.Cell>
                             <Table.Cell class="attempt-action">
@@ -410,7 +410,7 @@
                     </Table.Root>
                   </div>
                 {:else}
-                  <div class="attempt-empty">没有执行记录</div>
+                  <Empty.Root size="compact">没有执行记录</Empty.Root>
                 {/if}
 
                 {#if selectedAttempt !== null}
@@ -440,11 +440,11 @@
                 <span class="idle-icon"><Play /></span>
                 <h4>等待开始测试</h4>
                 <p>开始后会按当前范围发送一次真实请求，最终状态、HTTP 与耗时都会保留在这里。</p>
-                <div class="idle-note">自动模式按映射优先级与 Key 顺序尝试，成功后立即停止。</div>
+                <Badge variant="metadata" class="mt-3.5 h-auto whitespace-normal text-left">自动模式按映射优先级与 Key 顺序尝试，成功后立即停止。</Badge>
               </div>
             {/if}
             {#if error}
-              <p class="model-test-notice" role="alert">{error}</p>
+              <Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>
             {/if}
           </div>
         </section>
@@ -509,7 +509,7 @@
   .model-test-mark :global(svg) { width: 20px; height: 20px; }
   .model-test-heading-copy { min-width: 0; flex: 1; }
   .model-test-title-row { display: flex; align-items: center; gap: 9px; }
-  :global(.model-test-title) { font-size: 20px; font-weight: 650; letter-spacing: -.025em; line-height: 1.2; text-transform: none; }
+
   .model-test-eyebrow {
     display: inline-flex;
     align-items: center;
@@ -522,27 +522,7 @@
     font-size: 10px;
     font-weight: 650;
   }
-  :global(.model-test-description) { min-width: 0; margin-top: 5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size: 10.5px; }
-  .model-test-state {
-    display: inline-flex;
-    height: 30px;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 7px;
-    padding: 0 11px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--muted) 72%, var(--background));
-    color: var(--muted-foreground);
-    font-size: 11px;
-    font-weight: 650;
-  }
-  .model-test-state-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 13%, transparent); }
-  .model-test-state[data-state=testing],
-  .model-test-state[data-state=stopped] { border-color: color-mix(in srgb, #b45309 28%, var(--border)); background: color-mix(in srgb, #f59e0b 8%, var(--background)); color: #b45309; }
-  .model-test-state[data-state=success] { border-color: var(--test-success-border); background: var(--test-success-soft); color: var(--test-success); }
-  .model-test-state[data-state=failure] { border-color: color-mix(in srgb, var(--destructive) 22%, var(--border)); background: color-mix(in srgb, var(--destructive) 6%, var(--background)); color: var(--destructive); }
-  .model-test-state[data-state=testing] .model-test-state-dot { animation: model-test-pulse 1.5s ease-in-out infinite; }
+  :global(.model-test-description) { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .model-test-body { min-height: 0; flex: 1; overflow: auto; padding: 16px; background: #f5f8fb; scrollbar-width: none; }
   .model-test-body::-webkit-scrollbar { display: none; }
@@ -556,7 +536,7 @@
   .model-test-panel-eyebrow :global(svg) { width: 13px; height: 13px; }
   .model-test-panel-title { margin-top: 2px; font-size: 14px; font-weight: 650; letter-spacing: -.01em; line-height: 1.4; }
   .model-test-panel-description { margin-top: 2px; overflow: hidden; color: var(--muted-foreground); font-size: 10px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; }
-  :global(.panel-toggle) { flex-shrink: 0; color: var(--muted-foreground); }
+  :global(.panel-toggle) { flex-shrink: 0; }
   :global(.panel-toggle svg) { transition: transform .18s ease; }
   .record-time { flex-shrink: 0; color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
   .config-content { display: grid; gap: 15px; padding: 16px; }
@@ -621,10 +601,6 @@
   .attempt-table-wrap :global(.attempt-model) { min-width: 0; }
   .attempt-table-wrap :global(.attempt-model code) { display: block; overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
   .attempt-table-wrap :global(.attempt-duration) { color: var(--primary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
-  .attempt-table-wrap :global(.attempt-state) { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 9px; font-weight: 650; letter-spacing: 0; text-transform: none; }
-  .attempt-table-wrap :global(.attempt-state[data-state=success]) { border-color: var(--test-success-border); background: var(--test-success-soft); color: var(--test-success); }
-  .attempt-table-wrap :global(.attempt-state[data-state=failed]) { border-color: color-mix(in srgb, var(--destructive) 20%, var(--border)); background: color-mix(in srgb, var(--destructive) 5%, var(--background)); color: var(--destructive); }
-  .attempt-table-wrap :global(.attempt-state[data-state=unused]) { opacity: .78; }
   .attempt-inspector { margin-top: 11px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--muted); }
   .attempt-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .attempt-inspector-heading > div { display: flex; align-items: center; gap: 8px; }
@@ -644,15 +620,12 @@
   .idle-icon :global(svg) { width: 17px; height: 17px; }
   .idle-stage h4 { margin-top: 12px; font-size: 15px; font-weight: 650; }
   .idle-stage > p { max-width: 400px; margin-top: 5px; color: var(--muted-foreground); font-size: 10px; line-height: 1.7; }
-  .idle-note { margin-top: 14px; padding: 5px 9px; border-radius: 999px; background: color-mix(in srgb, var(--primary) 6%, transparent); color: var(--muted-foreground); font-size: 9px; line-height: 1.5; }
-  .model-test-notice { margin-top: 12px; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--destructive) 20%, var(--border)); border-radius: 9px; background: color-mix(in srgb, var(--destructive) 4%, var(--background)); color: var(--destructive); font-size: 10px; line-height: 1.6; white-space: pre-wrap; }
+
+
   :global(.provider-model-test-dialog [data-slot=dialog-footer]) { flex-shrink: 0; padding: 14px 24px; border-top: 1px solid var(--border); background: var(--card); }
   :global(.model-test-footer) { justify-content: flex-end; }
 
-  @keyframes model-test-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: .55; transform: scale(.82); }
-  }
+
   @keyframes model-test-run {
     from { transform: translateX(-110%); }
     to { transform: translateX(280%); }
@@ -670,7 +643,7 @@
   }
   @media (max-width: 640px) {
     .model-test-heading { flex-wrap: wrap; padding: 16px 60px 16px 18px; }
-    .model-test-state { margin-left: 56px; }
+
     .model-test-body { padding: 10px; }
     .model-test-workbench { gap: 10px; }
     .config-field-grid { grid-template-columns: minmax(0, 1fr); }
@@ -682,7 +655,6 @@
     .attempt-inspector dl { grid-template-columns: minmax(0, 1fr); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .model-test-state[data-state=testing] .model-test-state-dot,
     .run-track span { animation: none !important; }
     :global(.panel-toggle svg) { transition: none; }
   }

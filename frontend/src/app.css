@@ -220,26 +220,7 @@
   overflow-y: auto;
   scrollbar-width: none;
 }
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px var(--sidebar-nav-inset);
-  border-radius: 8px;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-.nav-item.active {
-  color: var(--primary);
-  background: var(--accent);
-}
-.nav-item:not(:disabled):not(.active):hover {
-  color: var(--foreground);
-  background: var(--secondary);
-}
+
 .nav-item svg {
   flex-shrink: 0;
 }
@@ -258,46 +239,7 @@
 }
 .sidebar-collapsed .nav-item { padding-inline: 0; }
 .sidebar-collapsed .sidebar-brand { justify-content: center; }
-.nav-item:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.control {
-  display: block;
-  min-height: 36px;
-  border: 1px solid var(--input);
-  background: var(--background);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
-  width: 100%;
-}
-.tag {
-  display: inline-block;
-  border: 1px solid var(--border);
-  padding: 2px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--muted-foreground);
-  background: var(--muted);
-}
-.feedback {
-  border: 1px solid var(--border);
-  background: var(--accent);
-  padding: 12px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--accent-foreground);
-}
-.error-banner {
-  padding: 12px 14px;
-  border: 1px solid var(--destructive);
-  border-radius: 8px;
-  color: var(--destructive);
-  font-size: 13px;
-  background: var(--background);
-}
+
 .price-section {
   padding: 16px;
   border: 1px solid var(--border);
@@ -343,10 +285,6 @@ input:not([data-slot]):focus-visible {
   }
 }
 
-.control.model-kind {
-  width: 9rem;
-}
-
 /* 系统按钮的占位随全屏自动归零，页面顶部使用同一底色并提供原生拖动区域。 */
 .app-titlebar {
   --app-region: drag;
@@ -387,12 +325,7 @@ input:not([data-slot]):focus-visible {
 .catalog-source-filter {
   width: 190px;
 }
-[data-slot="input-group-addon"][data-align="inline-start"] {
-  padding-left: 11px;
-}
-[data-slot="input-group-addon"][data-align="inline-end"] {
-  padding-right: 11px;
-}
+
 .model-table {
   table-layout: fixed;
   width: 100%;
@@ -481,36 +414,7 @@ input:not([data-slot]):focus-visible {
   gap: 5px;
   max-width: 180px;
 }
-.capability-pill {
-  --capability-accent: #667085;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 23px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  border: 1px solid
-    color-mix(in srgb, var(--capability-accent) 28%, var(--card));
-  color: var(--capability-accent);
-  background: color-mix(in srgb, var(--capability-accent) 7%, var(--card));
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: normal;
-  line-height: 1;
-}
-.capability-pill.vision {
-  --capability-accent: #176da8;
-}
-.capability-pill.tools {
-  --capability-accent: #b9560d;
-}
-.capability-pill.reasoning {
-  --capability-accent: #7b35bd;
-}
-.capability-pill.structured {
-  --capability-accent: #087a4c;
-}
+
 .price-amount {
   display: flex;
   align-items: baseline;
@@ -539,31 +443,7 @@ input:not([data-slot]):focus-visible {
   gap: 4px;
   margin-top: 7px;
 }
-.price-trait {
-  --trait-accent: #667085;
-  display: inline-flex;
-  align-items: center;
-  min-height: 19px;
-  padding: 1px 5px;
-  border: 1px solid color-mix(in srgb, var(--trait-accent) 28%, var(--card));
-  border-radius: 4px;
-  color: var(--trait-accent);
-  background: color-mix(in srgb, var(--trait-accent) 5%, var(--card));
-  font-size: 10px;
-  line-height: 1.5;
-}
-.price-trait.cache {
-  --trait-accent: #087b87;
-}
-.price-trait.tier {
-  --trait-accent: #315b9d;
-}
-.price-trait.speed {
-  --trait-accent: #7354c8;
-}
-.price-trait.time {
-  --trait-accent: #a75a23;
-}
+
 @media (max-width: 1100px) {
   /* 桌面窄窗口统一两行工具栏；搜索保持正常窗口宽度，不随剩余空间拉长。 */
   .model-toolbar {
@@ -651,23 +531,7 @@ input:not([data-slot]):focus-visible {
   padding-left: 9px;
   border-left: 1px solid var(--border);
 }
-.settings-subnav button {
-  min-height: 31px;
-  padding: 5px 10px;
-  border-radius: 6px;
-  text-align: left;
-  font-size: 12px;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-.settings-subnav button:hover {
-  color: var(--foreground);
-}
-.settings-subnav button.active {
-  background: var(--secondary);
-  color: var(--foreground);
-  font-weight: 600;
-}
+
 /* 矮窗口下仅在展开设置分类时收紧侧栏间距，超出高度时仍可滚动到达；其他页面的侧栏不变。 */
 @media (max-height: 720px) {
   .sidebar:has(.settings-subnav) {
@@ -701,11 +565,7 @@ input:not([data-slot]):focus-visible {
   padding-bottom: 20px;
 }
 /* 端口、间隔与阈值直接输入数值，不显示 WebKit 的步进箭头；方向键仍可增减。 */
-.settings-page input[type="number"]::-webkit-inner-spin-button,
-.settings-page input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
+
 .settings-card {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -730,9 +590,7 @@ input:not([data-slot]):focus-visible {
   font-size: 11px;
   line-height: 1.7;
 }
-.settings-heading .tag {
-  flex-shrink: 0;
-}
+
 .setting-row {
   display: flex;
   align-items: center;
@@ -791,21 +649,7 @@ input:not([data-slot]):focus-visible {
   background: var(--secondary);
   color: var(--muted-foreground);
 }
-.toast {
-  position: fixed;
-  bottom: 28px;
-  left: 50%;
-  z-index: 60;
-  max-width: calc(100vw - 30px);
-  padding: 11px 18px;
-  border-radius: 8px;
-  background: var(--foreground);
-  color: var(--background);
-  font-size: 12px;
-  box-shadow: 0 6px 24px rgb(15 23 42 / 0.18);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
+
 @media (max-width: 620px) {
   .settings-heading,
   .setting-row {
@@ -823,7 +667,7 @@ input:not([data-slot]):focus-visible {
   }
 }
 
-/* 深色外观下提亮模型页的品牌、能力与价格标签色，保持文字对比度。 */
+/* 深色外观下提亮模型品牌图标，能力与价格标签由共享Badge维护。 */
 @media (prefers-color-scheme: dark) {
   .model-brand {
     --brand-accent: #9fb4d0;
@@ -837,36 +681,7 @@ input:not([data-slot]):focus-visible {
   .model-brand[data-brand="deepseek"] {
     --brand-accent: #7fa8f5;
   }
-  .capability-pill {
-    --capability-accent: #a3adbd;
-  }
-  .capability-pill.vision {
-    --capability-accent: #6cb8ea;
-  }
-  .capability-pill.tools {
-    --capability-accent: #f0a05f;
-  }
-  .capability-pill.reasoning {
-    --capability-accent: #c39af0;
-  }
-  .capability-pill.structured {
-    --capability-accent: #5fcf9b;
-  }
-  .price-trait {
-    --trait-accent: #a3adbd;
-  }
-  .price-trait.cache {
-    --trait-accent: #5ecbd6;
-  }
-  .price-trait.tier {
-    --trait-accent: #8fb3ee;
-  }
-  .price-trait.speed {
-    --trait-accent: #b3a0f2;
-  }
-  .price-trait.time {
-    --trait-accent: #e8a878;
-  }
+
 }
 
 /* 全局表格规则：文字与组合信息左对齐，纯数值右对齐，开关及操作居中；表头与单元格使用相同标记。 */

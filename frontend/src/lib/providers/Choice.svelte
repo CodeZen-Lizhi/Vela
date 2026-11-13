@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Hint } from "$lib/components/ui/tooltip";
   import * as Select from "$lib/components/ui/select";
   /** 供应商表单内统一的单选控件；选项值由所属业务字段约束。 */
   let { value = $bindable(""), options, label, disabled = false }: {
@@ -11,7 +12,7 @@
   const selectedLabel = $derived(options.find((option) => option.value === value)?.label ?? "请选择");
 </script>
 <Select.Root type="single" bind:value {disabled}>
-  <Select.Trigger aria-label={label} class="w-full"><span class="min-w-0 truncate" title={selectedLabel}>{selectedLabel}</span></Select.Trigger>
+  <Select.Trigger aria-label={label} class="w-full"><Hint text={selectedLabel}>{#snippet children(hintProps0)}<span {...hintProps0} class="min-w-0 truncate" >{selectedLabel}</span>{/snippet}</Hint></Select.Trigger>
   <Select.Content><Select.Group>
     {#each options as option}<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>{/each}
   </Select.Group></Select.Content>

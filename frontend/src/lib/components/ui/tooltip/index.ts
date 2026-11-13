@@ -17,3 +17,5 @@ export {
 	Provider as TooltipProvider,
 	Portal as TooltipPortal,
 };
+
+export { default as Hint } from "./hint.svelte";

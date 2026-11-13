@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Label } from "$lib/components/ui/label";
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
 
@@ -36,10 +37,10 @@
 </div>
 <div class="provider-selection">
   {#each models as model (model.id)}
-    <label class="provider-check-row">
+    <Label variant="content" class="provider-check-row">
       <Checkbox disabled={disabled} checked={selected.includes(model.id)} onCheckedChange={(value) => onselect(model.id, value === true)} />
       <span class="min-w-0 flex-1"><strong class="block font-medium break-words">{model.name}</strong><code class="text-[11px] text-muted-foreground break-all">{model.modelName}</code></span>
       {#if model.status}<small class="shrink-0 text-muted-foreground">{model.status}</small>{/if}
-    </label>
+    </Label>
   {:else}<p class="p-5 text-xs text-muted-foreground">{emptyText}</p>{/each}
 </div>

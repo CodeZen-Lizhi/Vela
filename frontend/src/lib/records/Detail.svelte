@@ -1,4 +1,7 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { VelaService, type RecordsRecord } from "$lib/generated/mygo";
   import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
@@ -267,7 +270,7 @@
         <div class="record-detail-title-main">
           <Sheet.Title>请求详情</Sheet.Title>
           {#if record}
-            <code class="record-model-chip" title={record.model}>{record.model || "未知模型"}</code>
+            <Hint text={record.model}>{#snippet children(hintProps0)}{#if record}<Badge {...hintProps0} variant="neutral" class="max-w-full truncate">{record.model || "未知模型"}</Badge>{/if}{/snippet}</Hint>
             {#if record.effort}<Badge variant="secondary">{record.effort}</Badge>{/if}
             {#if record.tier && record.tier !== "standard"}<Badge variant="secondary">{record.tier}</Badge>{/if}
             <Badge variant={record.state === "failed" ? "destructive" : "default"}>{label(states, record.state)}{lastStatus ? ` · ${lastStatus}` : ""}</Badge>
@@ -275,38 +278,38 @@
           {/if}
         </div>
         <div class="records-actions">
-          <Button variant="ghost" size="icon-sm" aria-label="刷新请求详情" title="刷新请求详情" disabled={loading} onclick={() => load(viewedID)}><RefreshCw /></Button>
-          <Button variant="ghost" size="icon-sm" aria-label="关闭请求详情" title="关闭请求详情" onclick={onclose}><X /></Button>
+          <Hint text="刷新请求详情">{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => load(viewedID) })} variant="ghost" size="icon-sm" aria-label="刷新请求详情"  disabled={loading} ><RefreshCw /></Button>{/snippet}</Hint>
+          <Hint text="关闭请求详情">{#snippet children(hintProps2)}<Button {...mergeProps(hintProps2, { onclick: onclose })} variant="ghost" size="icon-sm" aria-label="关闭请求详情"  ><X /></Button>{/snippet}</Hint>
         </div>
       </div>
       <Sheet.Description class="record-detail-meta">
-        <span title={record?.id ?? viewedID}>ID: {record?.id ?? viewedID}</span>
+        <Hint text={record?.id ?? viewedID}>{#snippet children(hintProps3)}<span {...hintProps3} >ID: {record?.id ?? viewedID}</span>{/snippet}</Hint>
         {#if record}<span>{date(record.startedAt, "day")} {date(record.startedAt)}</span><span>{protocol(record.protocol)}</span>{/if}
       </Sheet.Description>
     </header>
     <div class="record-detail-body">
-      {#if error}<div class="records-error" role="alert">{error}<Button variant="outline" onclick={() => load(viewedID)}>重试</Button></div>{/if}
+      {#if error}<Alert.Root variant="destructive"><Alert.Description>{error}<Button variant="outline" onclick={() => load(viewedID)}>重试</Button></Alert.Description></Alert.Root>{/if}
       {#if loading && !record}<p role="status">正在读取请求详情…</p>{/if}
       {#if record}
         <section class="record-detail-metrics" aria-label="费用与性能概览">
           <div><strong>{money(record.cost)}</strong><span>总费用 · 本地估算</span></div>
           <div><strong>{duration(elapsed)}</strong><span>总耗时</span></div>
-          <div><strong title={number(record.usage?.unit ? record.usage.quantity : record.usage?.output)}>{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong><span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span></div>
-          <div><strong title={number(record.outputRate)}>{record.outputRate == null ? "—" : `${compact(record.outputRate)} tps`}</strong><span>输出速度</span></div>
+          <div><Hint text={number(record.usage?.unit ? record.usage.quantity : record.usage?.output)}>{#snippet children(hintProps4)}{#if record}<strong {...hintProps4} >{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong>{/if}{/snippet}</Hint><span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span></div>
+          <div><Hint text={number(record.outputRate)}>{#snippet children(hintProps5)}{#if record}<strong {...hintProps5} >{record.outputRate == null ? "—" : `${compact(record.outputRate)} tps`}</strong>{/if}{/snippet}</Hint><span>输出速度</span></div>
           <div><strong>{duration(record.firstByteMillis)}</strong><span>首字耗时</span></div>
         </section>
-        {#if record.error}<p class="records-error" role="alert">{record.error}</p>{/if}
+        {#if record.error}<Alert.Root variant="destructive"><Alert.Description>{record.error}</Alert.Description></Alert.Root>{/if}
         {#if !record.usage}<p class="record-detail-note">{record.state === "active" ? "请求进行中，用量与估算费用尚未结算。" : record.state === "local" ? "请求未发上游，无上游用量。" : "上游未提供可验证用量，未知值不显示为零。"}</p>{/if}
-        {#if record.circuitSourceId}<p class="records-notice">本地熔断 · 触发请求 <Button variant="link" size="inline" onclick={() => openSource(record!.circuitSourceId)}>{record.circuitSourceId}</Button></p>{/if}
+        {#if record.circuitSourceId}<Alert.Root variant="info"><Alert.Description>本地熔断 · 触发请求 <Button variant="link" size="inline" onclick={() => openSource(record!.circuitSourceId)}>{record.circuitSourceId}</Button></Alert.Description></Alert.Root>{/if}
 
         <DetailSection title="计费明细" description="价格、Token 与媒体费用">
           <p class="record-detail-note">按请求开始时价格快照和实际用量估算，非上游已对账扣款。</p>
           <dl class="record-context-grid">
-            <div><dt>输入</dt><dd title={number(record.usage?.input)}>{compact(record.usage?.input)} Token</dd></div>
-            <div><dt>输出</dt><dd title={number(record.usage?.output)}>{compact(record.usage?.output)} Token</dd></div>
-            <div><dt>缓存读取</dt><dd title={number(record.usage?.cacheRead)}>{compact(record.usage?.cacheRead)} Token</dd></div>
-            <div><dt>缓存创建 · 5 分钟 / 1 小时</dt><dd title={`${number(record.usage?.cacheWrite)} / ${number(record.usage?.cacheWrite1h)} Token`}>{compact(record.usage?.cacheWrite)} / {compact(record.usage?.cacheWrite1h)} Token</dd></div>
-            <div><dt>完整输入上下文</dt><dd title={number(record.usage?.context)}>{compact(record.usage?.context)} Token</dd></div>
+            <div><dt>输入</dt><Hint text={number(record.usage?.input)}>{#snippet children(hintProps6)}{#if record}<dd {...hintProps6} >{compact(record.usage?.input)} Token</dd>{/if}{/snippet}</Hint></div>
+            <div><dt>输出</dt><Hint text={number(record.usage?.output)}>{#snippet children(hintProps7)}{#if record}<dd {...hintProps7} >{compact(record.usage?.output)} Token</dd>{/if}{/snippet}</Hint></div>
+            <div><dt>缓存读取</dt><Hint text={number(record.usage?.cacheRead)}>{#snippet children(hintProps8)}{#if record}<dd {...hintProps8} >{compact(record.usage?.cacheRead)} Token</dd>{/if}{/snippet}</Hint></div>
+            <div><dt>缓存创建 · 5 分钟 / 1 小时</dt><Hint text={`${number(record.usage?.cacheWrite)} / ${number(record.usage?.cacheWrite1h)} Token`}>{#snippet children(hintProps9)}{#if record}<dd {...hintProps9} >{compact(record.usage?.cacheWrite)} / {compact(record.usage?.cacheWrite1h)} Token</dd>{/if}{/snippet}</Hint></div>
+            <div><dt>完整输入上下文</dt><Hint text={number(record.usage?.context)}>{#snippet children(hintProps10)}{#if record}<dd {...hintProps10} >{compact(record.usage?.context)} Token</dd>{/if}{/snippet}</Hint></div>
             <div><dt>执行倍率</dt><dd>{record.multiplier == null ? "未知" : `${record.multiplier}×`}</dd></div>
             {#if record.usage?.unit}<div><dt>媒体数量 / 规格</dt><dd>{number(record.usage.quantity)} {record.usage.unit === "image" ? "张" : "秒"} · {record.usage.specification || "规格未记录"}</dd></div>{/if}
           </dl>
@@ -349,17 +352,17 @@
                       <ToggleGroup.Item value="client" aria-label="客户端数据">客户端</ToggleGroup.Item><ToggleGroup.Item value="provider" aria-label="上游数据">上游</ToggleGroup.Item>
                     </ToggleGroup.Root>
                     {#if bodyPanel}<ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root>{:else}<Button variant={compare ? "secondary" : "ghost"} size="sm" aria-pressed={compare} onclick={() => (compare = !compare)}>对比上下游</Button>{/if}
-                    {#if panel === "request" || panel === "headers"}<Button variant="ghost" size="icon-sm" aria-label="复制 cURL" title="复制 cURL" disabled={!curl()} onclick={() => copy(curl())}><Terminal /></Button>{/if}
-                    <Button variant="ghost" size="icon-sm" aria-label="复制当前内容" title="复制当前内容" disabled={!content || (!bodyPanel && compare)} onclick={() => copy(content)}><Copy /></Button>
+                    {#if panel === "request" || panel === "headers"}<Hint text="复制 cURL">{#snippet children(hintProps11)}<Button {...mergeProps(hintProps11, { onclick: () => copy(curl()) })} variant="ghost" size="icon-sm" aria-label="复制 cURL"  disabled={!curl()} ><Terminal /></Button>{/snippet}</Hint>{/if}
+                    <Hint text="复制当前内容">{#snippet children(hintProps12)}<Button {...mergeProps(hintProps12, { onclick: () => copy(content) })} variant="ghost" size="icon-sm" aria-label="复制当前内容"  disabled={!content || (!bodyPanel && compare)} ><Copy /></Button>{/snippet}</Hint>
                   </div>
                 </div>
                 {#each ["headers", "request", "response-headers", "response"] as tab}
                   <Tabs.Content value={tab}>
                     {#if panel === tab}
                       {#if !bodyPanel && compare}
-                        {#if comparedHeaders.length}<Table.Root><Table.Header><Table.Row><Table.Head>头名称</Table.Head><Table.Head>客户端</Table.Head><Table.Head>上游</Table.Head></Table.Row></Table.Header><Table.Body>{#each comparedHeaders as row}<Table.Row><Table.Cell>{row.name}</Table.Cell><Table.Cell>{row.left}</Table.Cell><Table.Cell>{row.right}</Table.Cell></Table.Row>{/each}</Table.Body></Table.Root>{:else}<p class="records-notice">没有可对比的头部数据。</p>{/if}
-                      {:else if bodyPanel && payload?.bodyState === "expired"}<p class="records-notice">正文已超过 7 天保留期限，摘要与诊断仍可查询。</p>
-                      {:else if !content}<p class="records-notice">{record.state === "active" ? "请求进行中，尚无此项数据。" : "此侧数据未采集或不适用。"}</p>
+                        {#if comparedHeaders.length}<Table.Root><Table.Header><Table.Row><Table.Head>头名称</Table.Head><Table.Head>客户端</Table.Head><Table.Head>上游</Table.Head></Table.Row></Table.Header><Table.Body>{#each comparedHeaders as row}<Table.Row><Table.Cell>{row.name}</Table.Cell><Table.Cell>{row.left}</Table.Cell><Table.Cell>{row.right}</Table.Cell></Table.Row>{/each}</Table.Body></Table.Root>{:else}<Alert.Root variant="info"><Alert.Description>没有可对比的头部数据。</Alert.Description></Alert.Root>{/if}
+                      {:else if bodyPanel && payload?.bodyState === "expired"}<Alert.Root variant="info"><Alert.Description>正文已超过 7 天保留期限，摘要与诊断仍可查询。</Alert.Description></Alert.Root>
+                      {:else if !content}<Alert.Root variant="info"><Alert.Description>{record.state === "active" ? "请求进行中，尚无此项数据。" : "此侧数据未采集或不适用。"}</Alert.Description></Alert.Root>
                       {:else if bodyPanel && view === "conversation" && conversationRows.length}
                         {#each conversationRows as line}<article class="record-message"><strong>{line.role}</strong><pre>{line.text}</pre></article>{/each}
                       {:else}

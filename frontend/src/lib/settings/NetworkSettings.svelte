@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
@@ -140,7 +141,7 @@
       {:else}
         <p class="text-sm text-muted-foreground">当前使用直连。开启后可配置代理服务器和认证信息。</p>
       {/if}
-      {#if error}<p class="mt-4 text-sm text-destructive" role="alert">{error}</p>{/if}
+      {#if error}<Alert.Root variant="inline-error" class="mt-4"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
       {#if desktop && !loaded && error}<Button variant="link" size="xs" class="mt-2 px-0" onclick={() => void load()}>重新读取</Button>{/if}
     </div>
     <div class="flex flex-wrap items-center justify-between gap-4 border-t px-6 py-4">

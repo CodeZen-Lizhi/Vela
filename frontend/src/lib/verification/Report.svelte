@@ -1,4 +1,7 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Empty from "$lib/components/ui/empty";
+  import { Hint } from "$lib/components/ui/tooltip";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import * as Accordion from "$lib/components/ui/accordion";
@@ -126,7 +129,7 @@
                   <small class="report-candidate-id">{candidate.model} · {candidate.family || "家族未知"}</small>
                 </Table.Cell>
                 <Table.Cell class="text-right tabular-nums">{probability(candidate.probability)}</Table.Cell>
-                <Table.Cell class="text-right tabular-nums" title={`完整排名分：${candidate.score}`}>{rankScore(candidate.score)}</Table.Cell>
+                <Hint text={`完整排名分：${candidate.score}`}>{#snippet children(hintProps0)}<Table.Cell {...hintProps0} class="text-right tabular-nums" >{rankScore(candidate.score)}</Table.Cell>{/snippet}</Hint>
               </Table.Row>
             {/each}
           </Table.Body>
@@ -135,7 +138,7 @@
       {#if report.candidates.length > 8}
         <div class="report-expand"><Button variant="ghost" size="sm" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>{expanded ? "收起为前 8 名" : `展开全部 ${report.candidates.length} 个候选`}</Button></div>
       {/if}
-    {:else}<p class="report-empty">本轮没有可用候选，请查看下方诊断与样本。</p>{/if}
+    {:else}<Empty.Root size="compact">本轮没有可用候选，请查看下方诊断与样本。</Empty.Root>{/if}
   </section>
 
   <Separator />
@@ -153,7 +156,7 @@
             <span class="report-sample-title"><span class="report-rank">{String(index + 1).padStart(2, "0")}</span><span>样本 {index + 1}</span><span class="report-sample-count">有效数字 {sample.count} / {sample.expectedCount}</span><Badge variant={sample.state === "failed" || sample.state === "truncated" ? "destructive" : "secondary"}>{states[sample.state] ?? sample.state}</Badge></span>
           </Accordion.Trigger>
           <Accordion.Content>
-            {#if sample.error}<p class="v-error">{sample.error}</p>{/if}
+            {#if sample.error}<Alert.Root variant="inline-error"><Alert.Description>{sample.error}</Alert.Description></Alert.Root>{/if}
             <pre class="report-raw scroll-quiet">{sample.text || "未收到回答"}</pre>
           </Accordion.Content>
         </Accordion.Item>
@@ -162,10 +165,10 @@
         <Accordion.Item value="diagnosis"><Accordion.Trigger>原始诊断</Accordion.Trigger><Accordion.Content><pre class="report-raw scroll-quiet">{report.reason}</pre></Accordion.Content></Accordion.Item>
       {/if}
     </Accordion.Root>
-    {#if !report.samples.length}<p class="report-empty">本轮没有返回样本。</p>{/if}
+    {#if !report.samples.length}<Empty.Root size="compact">本轮没有返回样本。</Empty.Root>{/if}
   </section>
 
-  <aside class="report-notice"><Info class="size-4 shrink-0" aria-hidden="true" /><p>结论仅描述该固定组合在检测时刻的统计相似性。差异只提示进一步检查，不能单凭结果认定渠道造假或模型能力下降。</p></aside>
+  <Alert.Root variant="info"><Alert.Description><Info class="size-4 shrink-0" aria-hidden="true" /><p>结论仅描述该固定组合在检测时刻的统计相似性。差异只提示进一步检查，不能单凭结果认定渠道造假或模型能力下降。</p></Alert.Description></Alert.Root>
 </div>
 
 <style>
@@ -195,12 +198,11 @@
   .report-candidate-id { display:block; margin-top:4px; font-size:11px; color:var(--muted-foreground); overflow-wrap:anywhere; }
   .report-rank { color:var(--muted-foreground); font-size:12px; font-variant-numeric:tabular-nums; }
   .report-expand { display:flex; justify-content:center; margin-top:8px; }
-  .report-empty { padding:20px 0; color:var(--muted-foreground); font-size:12px; }
+
   .report-sample-title { display:flex; flex:1; align-items:center; flex-wrap:wrap; gap:12px; min-width:0; }
   .report-sample-count { margin-left:auto; color:var(--muted-foreground); font-size:12px; font-weight:400; }
   .report-raw { max-height:240px; margin-top:8px; padding:14px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:8px; background:var(--muted); font-size:12px; line-height:1.8; }
-  .report-notice { display:flex; align-items:flex-start; gap:10px; color:var(--muted-foreground); font-size:12px; line-height:1.7; }
-  .report-notice > :global(svg) { margin-top:2px; }
+
   @media (max-width:600px) {
     .report-body { padding:20px; gap:20px; }
     .report-overview { grid-template-columns:1fr; }

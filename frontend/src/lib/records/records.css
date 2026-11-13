@@ -78,15 +78,15 @@
 }
 /* 九列保留现有单元格留白，宽度优先满足数字组与状态标签。 */
 .records-table th:nth-child(1) { width: 9%; }
-.records-table th:nth-child(2) { width: 14%; }
+.records-table th:nth-child(2) { width: 12%; }
 .records-table th:nth-child(3) { width: 10%; }
 .records-table th:nth-child(4) { width: 10%; }
 .records-table th:nth-child(5) { width: 9%; }
 .records-table th:nth-child(6) { width: 7%; }
 .records-table th:nth-child(7) { width: 16%; }
 .records-table th:nth-child(8) { width: 10%; }
-.records-table th:nth-child(9) { width: 15%; }
-.record-column-heading { display: flex; align-items: center; gap: 6px; letter-spacing: normal; text-transform: none; }
+.records-table th:nth-child(9) { width: 17%; }
+.record-column-heading { display: flex; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
 .record-column-heading > span:first-child { white-space: nowrap; }
 .record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
 .records-table th { height: 36px; padding-block: 3px; }
@@ -146,32 +146,7 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.records-notice,
-.records-error {
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.records-error {
-  color: var(--destructive);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-.records-empty {
-  padding: 45px 20px;
-  text-align: center;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.records-empty h3 {
-  color: var(--foreground);
-  margin-bottom: 8px;
-}
+
 .records-time-choice {
   min-width: 0;
 }
@@ -257,13 +232,7 @@
 .record-detail-title-row { justify-content: space-between; }
 .record-detail-title-main { flex: 1; flex-wrap: wrap; }
 .record-detail-title-row > .records-actions { flex-wrap: nowrap; }
-.record-model-chip {
-  background: var(--muted);
-  border-radius: 4px;
-  padding: 2px 6px;
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
+
 .record-detail-meta[data-slot="sheet-description"] {
   display: flex;
   flex-wrap: wrap;
@@ -309,7 +278,6 @@
   border-radius: 10px;
   min-width: 0;
 }
-.record-detail-section [data-slot="accordion-trigger"] { padding-inline: 16px; }
 .record-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
 .record-section-heading small { color: var(--muted-foreground); font-weight: 400; }
 .record-section-body { padding: 14px 16px 0; border-top: 1px solid var(--border); min-width: 0; }

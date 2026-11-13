@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Label } from "$lib/components/ui/label";
+  import * as Alert from "$lib/components/ui/alert";
   import { untrack } from "svelte";
   import { Activity, RotateCcw, ShieldAlert, TrendingUp, Wallet } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
@@ -108,7 +110,7 @@
               {option.description}
             </p>
             {#if option.id === "balance" && draft.balance}
-              <label class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+              <Label variant="content" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
                 >低于
                 <InputGroup.Root class="w-32">
                   <InputGroup.Addon>$</InputGroup.Addon>
@@ -122,7 +124,7 @@
                   />
                 </InputGroup.Root>
                 <span>USD</span>
-              </label>
+              </Label>
             {:else if option.id === "balance"}
               <p class="mt-1 text-[10px] text-muted-foreground">
                 余额阈值将在重新开启余额提醒后生效
@@ -141,7 +143,7 @@
     <p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
       仅控制总览展示，不会开启余额采集、模型验证或健康检查。总览接入后按这里的偏好显示。
     </p>
-    {#if error}<p class="mt-3 text-xs text-destructive" role="alert">{error}</p>{/if}
+    {#if error}<Alert.Root variant="inline-error" class="mt-3"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
     <div class="mt-5 flex flex-wrap items-center justify-end gap-2">
       <Button
         variant="ghost"

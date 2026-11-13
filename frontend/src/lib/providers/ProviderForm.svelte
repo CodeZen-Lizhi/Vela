@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import { tick, untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -41,7 +42,7 @@
 </script>
 <form class="provider-editor" novalidate onsubmit={submit}>
   <div class="provider-editor-body">
-    <fieldset disabled={busy} class="contents">
+    <Field.Set disabled={busy} class="contents">
       <Field.Group class="provider-editor-fields">
         <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-name">供应商名称 <span class="text-destructive">*</span></Field.Label><Field.Content><Input id="provider-name" bind:value={draft.name} maxlength={80} required placeholder="例如：主力中转站" /></Field.Content></Field.Field>
         <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-url">服务地址 <span class="text-destructive">*</span></Field.Label><Field.Content><Input id="provider-url" bind:value={draft.url} required placeholder="https://api.example.com" /><Field.Description>填写站点根地址，自动去除 /v1、/v1beta 后缀。</Field.Description></Field.Content></Field.Field>
@@ -49,7 +50,7 @@
         <ProxyField bind:value={draft.request.proxy} horizontal />
       </Field.Group>
       <Collapsible.Root bind:open={advanced} class="provider-editor-advanced">
-        <Collapsible.Trigger type="button" class="provider-editor-expand" disabled={busy}><span>高级设置</span><span class="provider-editor-expand-hint">超时、尝试与连接</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Collapsible.Trigger>
+        <Collapsible.Trigger disabled={busy}>{#snippet child({ props })}<Button {...props} variant="text" size="disclosure"><span>高级设置</span><span class="provider-editor-expand-hint">超时、尝试与连接</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Button>{/snippet}</Collapsible.Trigger>
         <Collapsible.Content forceMount class="provider-editor-advanced-content">
           <p class="provider-editor-hint">留空使用默认值；总尝试次数包含首次请求。</p>
           <Field.Group class="provider-editor-fields">
@@ -61,8 +62,8 @@
           </Field.Group>
         </Collapsible.Content>
       </Collapsible.Root>
-    </fieldset>
+    </Field.Set>
   </div>
-  {#if error}<p class="provider-error" role="alert">{error}</p>{/if}
+  {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
   <footer class="provider-editor-footer"><Button type="button" variant="outline" disabled={busy} onclick={onclose}>取消</Button><Button type="submit" disabled={busy}>{busy ? "保存中…" : provider ? "保存更改" : "创建供应商"}</Button></footer>
 </form>

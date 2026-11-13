@@ -1,4 +1,10 @@
 <script lang="ts">
+  import { Button } from "$lib/components/ui/button";
+  import { Toaster } from "$lib/components/ui/sonner";
+  import { toast } from "svelte-sonner";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
+  import { Provider as TooltipProvider } from "$lib/components/ui/tooltip";
   import {
     Box,
     Settings2,
@@ -80,14 +86,9 @@
     settingsSections.find((section) => section.id === settingsSection)?.name,
   );
 
-  /** 当前显示的操作反馈文字，空字符串表示不显示；toastTimer 负责到时清除。 */
-  let toast = $state("");
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
-  /** 显示一条非阻塞的操作反馈，3.5 秒后消失；连续操作替换上一条并重新计时。 */
+  /** 全应用共用官方通知组件，连续操作更新同一条反馈，3.5秒后自动关闭。 */
   function notify(message: string): void {
-    toast = message;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = ""), 3500);
+    toast(message, { id: "vela-feedback", duration: 3500 });
   }
 
   /** 点击“设置”进入常规，点击子分类切换面板；停留在设置页期间各分类保持挂载，切换分类不丢草稿。 */
@@ -100,6 +101,7 @@
 <svelte:head
   ><title>Vela · {page === "模型" ? "模型管理" : page}</title></svelte:head
 >
+<TooltipProvider>
 <div class="app-shell" class:sidebar-collapsed={sidebarCollapsed} bind:clientWidth={shellWidth}>
   {#if shellWidth > 0}
   <Resizable.PaneGroup direction="horizontal" keyboardResizeBy={800 / shellWidth} class="app-panels">
@@ -114,35 +116,35 @@
 
     </div>
     <nav aria-label="主导航" class="flex flex-col gap-1">
-      {#each navigation as item}<button
-          class:active={page === item.name}
+      {#each navigation as item}<Hint text={sidebarCollapsed ? item.name : undefined}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => {recordsProvider="";recordsID="";page = item.name;} })}
+          variant="navigation" size="navigation"
           class="nav-item"
           aria-label={item.name}
           aria-current={page === item.name ? "page" : undefined}
-          title={sidebarCollapsed ? item.name : undefined}
+
           disabled={!item.enabled}
-          onclick={() => {recordsProvider="";recordsID="";page = item.name;}}
-          ><item.icon class="size-4" aria-hidden="true" /><span>{item.name}</span></button
-        >{/each}
+
+          ><item.icon class="size-4" aria-hidden="true" /><span>{item.name}</span></Button
+        >{/snippet}</Hint>{/each}
     </nav>
     <div class="settings-nav">
-      <button
+      <Hint text={sidebarCollapsed ? "设置" : undefined}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => openSettings() })}
         class="nav-item w-full"
-        class:active={page === "设置"}
+        variant="navigation" size="navigation"
         aria-label="设置"
-        title={sidebarCollapsed ? "设置" : undefined}
+
         aria-current={page === "设置" ? "page" : undefined}
         aria-expanded={page === "设置" && !sidebarCollapsed}
-        onclick={() => openSettings()}
-        ><Settings2 class="size-4" aria-hidden="true" /><span>设置</span></button
-      >
+
+        ><Settings2 class="size-4" aria-hidden="true" /><span>设置</span></Button
+      >{/snippet}</Hint>
       {#if page === "设置" && !sidebarCollapsed}
         <nav class="settings-subnav" aria-label="设置分类">
           {#each settingsSections as section}
-            <button
-              class:active={settingsSection === section.id}
+            <Button
+              variant="subnavigation" size="subnavigation"
               aria-current={settingsSection === section.id ? "page" : undefined}
-              onclick={() => openSettings(section.id)}>{section.name}</button
+              onclick={() => openSettings(section.id)}>{section.name}</Button
             >
           {/each}
         </nav>
@@ -151,7 +153,7 @@
     <p class="px-3 pt-4 text-xs text-muted-foreground">Vela 0.1.0</p>
   </aside>
   </Resizable.Pane>
-  <Resizable.Handle aria-label="调整侧栏宽度" title="左右拖动调整侧栏宽度，方向键微调" />
+  <Hint text="左右拖动调整侧栏宽度，方向键微调">{#snippet children(hintProps2)}<Resizable.Handle {...hintProps2} aria-label="调整侧栏宽度"  />{/snippet}</Hint>
   <Resizable.Pane>
   <div class="app-workspace">
     <header class="app-titlebar">
@@ -172,4 +174,6 @@
   </Resizable.PaneGroup>
   {/if}
 </div>
-{#if toast}<div class="toast" role="status">{toast}</div>{/if}
+<Toaster position="bottom-center" />
+
+</TooltipProvider>

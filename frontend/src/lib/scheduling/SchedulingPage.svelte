@@ -1,9 +1,12 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import PageHeader from "$lib/components/PageHeader.svelte";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
-    Check,
+    Circle,
+    CircleCheck,
     CircleDollarSign,
     ListOrdered,
     Route,
@@ -102,19 +105,19 @@
 
 <div class="flex flex-col gap-5">
   <PageHeader title="调度" description="选择调度策略并调整供应商优先顺序。" />
-  {#if !desktop}<p class="feedback">
+  {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 调度策略的读取与保存请在 Vela 桌面窗口中进行。
-    </p>{/if}
-  {#if loadError}<div role="alert" class="error-banner">
+    </Alert.Description></Alert.Root>{/if}
+  {#if loadError}<Alert.Root variant="destructive"><Alert.Description>
       调度配置读取失败：{loadError}<Button
         variant="ghost"
         size="sm"
         onclick={() => void load()}>重试</Button
       >
-    </div>{/if}
-  {#if saveError}<p role="alert" class="error-banner">
+    </Alert.Description></Alert.Root>{/if}
+  {#if saveError}<Alert.Root variant="destructive"><Alert.Description>
       调度策略保存失败，仍为原策略：{saveError}
-    </p>{/if}
+    </Alert.Description></Alert.Root>{/if}
 
   <section class="overflow-hidden rounded-xl border bg-card" aria-label="调度策略">
     {#if desktop && !loadError && selected === null}
@@ -122,28 +125,20 @@
         正在读取调度策略…
       </p>
     {:else}
-      <div class="strategy-list">
+      <ToggleGroup.Root type="single" value={selected ?? ""} onValueChange={(next) => { const item = strategies.find((item) => item.value === next); if(item) void choose(item); }} variant="card" size="choice" spacing={3} class="strategy-list" aria-label="调度策略" disabled={!desktop || saved === null}>
         {#each strategies as item (item.value)}
-          <button
-            type="button"
-            class="strategy-option"
-            class:chosen={selected === item.value}
-            aria-pressed={selected === item.value}
-            disabled={!desktop || saved === null}
-            onclick={() => void choose(item)}
-          >
+          <ToggleGroup.Item value={item.value} class="strategy-option">
+
             <span class="strategy-icon"><item.icon class="size-4" /></span>
-            <span class="min-w-0 flex-1">
+            <span class="strategy-copy min-w-0 flex-1">
               <strong>{item.name}</strong>
               <span class="strategy-description">{item.description}</span>
               <small>{item.scenario}</small>
             </span>
-            <span class="strategy-check" aria-hidden="true"
-              >{#if selected === item.value}<Check class="size-3" />{/if}</span
-            >
-          </button>
+            <span class="strategy-check" aria-hidden="true">{#if selected === item.value}<CircleCheck class="size-4 text-primary" />{:else}<Circle class="size-4 text-muted-foreground" />{/if}</span>
+          </ToggleGroup.Item>
         {/each}
-      </div>
+      </ToggleGroup.Root>
     {/if}
   </section>
 
@@ -159,39 +154,14 @@
 </div>
 
 <style>
-  .strategy-list {
+  :global(.strategy-list) {
     display: grid;
+    width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
     padding: 16px;
   }
-  .strategy-option {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    min-width: 0;
-    padding: 16px 14px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--background);
-    text-align: left;
-    cursor: pointer;
-  }
-  .strategy-option:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
-    background: var(--muted);
-  }
-  .strategy-option:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-  .strategy-option.chosen {
-    border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
-    background: var(--accent);
-  }
-  .strategy-option:disabled {
-    cursor: default;
-  }
+
   .strategy-icon {
     display: grid;
     place-content: center;
@@ -202,11 +172,8 @@
     background: var(--secondary);
     color: var(--muted-foreground);
   }
-  .strategy-option.chosen .strategy-icon {
-    background: var(--card);
-    color: var(--primary);
-  }
-  .strategy-option strong {
+
+  :global(.strategy-option) strong {
     display: block;
     font-size: 13px;
     font-weight: 600;
@@ -218,37 +185,24 @@
     font-size: 12px;
     line-height: 1.6;
   }
-  .strategy-option small {
+  :global(.strategy-option) small {
     display: block;
     margin-top: 8px;
     color: var(--muted-foreground);
     font-size: 11px;
     opacity: 0.8;
   }
-  .strategy-check {
-    display: grid;
-    place-content: center;
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-    border: 1px solid var(--input);
-    border-radius: 50%;
-  }
-  .strategy-option.chosen .strategy-check {
-    border-color: var(--primary);
-    background: var(--primary);
-    color: var(--primary-foreground);
-  }
+
   /* 最小桌面窗口仍保留三列，图标与选中标记在上，说明使用完整卡片宽度。 */
   @media (max-width: 1100px) {
-    .strategy-option {
+    :global(.strategy-option) {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: 32px 1fr;
       gap: 10px;
       padding: 14px 12px;
     }
-    .strategy-option > .min-w-0 {
+    :global(.strategy-option > .strategy-copy) {
       grid-column: 1 / -1;
       grid-row: 2;
     }
@@ -259,7 +213,7 @@
     }
   }
   @media (max-width: 600px) {
-    .strategy-list {
+    :global(.strategy-list) {
       grid-template-columns: 1fr;
     }
   }

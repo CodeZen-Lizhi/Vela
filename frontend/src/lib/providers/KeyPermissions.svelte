@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import ModelSelection from "./ModelSelection.svelte";
@@ -33,6 +34,6 @@
       <ModelSelection models={models.map((model) => ({id: model.modelId, name: model.name, modelName: model.modelName}))} selected={permission.modelIds} disabled={busy || !original} emptyText="暂无关联模型" onselect={toggle} onselectall={selectAll} />
     </div>
   {/if}
-  {#if error}<p class="provider-error" role="alert">{error}</p>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={close}>取消</Button><Button disabled={!changed||busy||loading||!original} onclick={save}>{busy ? "保存中…" : "保存更改"}</Button></Dialog.Footer>
+  {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={close}>取消</Button><Button disabled={!changed||busy||loading||!original} onclick={save}>{busy ? "保存中…" : "保存更改"}</Button></Dialog.Footer>
 </Dialog.Content></Dialog.Root>
 <Dialog.Root open={discard} onOpenChange={(value)=>discard=value}><Dialog.Content><Dialog.Header><Dialog.Title>放弃权限修改？</Dialog.Title><Dialog.Description>未保存的权限不会生效。</Dialog.Description></Dialog.Header><Dialog.Footer><Button variant="outline" onclick={()=>discard=false}>继续编辑</Button><Button variant="destructive" onclick={onclose}>放弃修改</Button></Dialog.Footer></Dialog.Content></Dialog.Root>

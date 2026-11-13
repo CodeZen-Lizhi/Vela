@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -34,13 +36,13 @@
   <Field.Set class="method-section">
     <Field.Legend>接入方式</Field.Legend>
     <Field.Description>选择站点实际支持的查询方式。</Field.Description>
-    <div class="methods" aria-label="查询接入方式">
+    <ToggleGroup.Root type="single" value={value.mode} onValueChange={(next) => { if (next) selectMode(next); }} variant="card" size="choice" spacing={2} orientation="vertical" class="methods w-full" aria-label="查询接入方式">
       {#each methods as method}
-        <Button type="button" variant={value.mode === method.value ? "secondary" : "outline"} aria-pressed={value.mode === method.value} onclick={() => selectMode(method.value)}>
+        <ToggleGroup.Item value={method.value}>
           <span><strong>{method.title}</strong><small>{method.description}</small></span>
-        </Button>
+        </ToggleGroup.Item>
       {/each}
-    </div>
+    </ToggleGroup.Root>
   </Field.Set>
   <div class="connection-fields">
     {#if value.mode}
@@ -52,7 +54,7 @@
           {:else if value.mode === "newapi"}
             <Field.Field><Field.Label for={`${id}-user`}>用户 ID</Field.Label><Input id={`${id}-user`} bind:value={value.userId} required /></Field.Field>
             <Field.Field><Field.Label for={`${id}-access`}>系统访问令牌</Field.Label><Input id={`${id}-access`} type="password" autocomplete="new-password" value={value.accessToken === "***" ? "" : value.accessToken} oninput={(event) => value.accessToken = event.currentTarget.value} placeholder={value.accessToken === "***" ? "***（已保存，留空保留）" : "填写系统访问令牌"} /><Field.Description>在 New API 个人设置中生成，不是模型调用 Key。</Field.Description></Field.Field>
-            <details><summary>额度换算</summary><Field.Field class="pt-3"><Field.Label for={`${id}-divisor`}>额度换算除数</Field.Label><Input id={`${id}-divisor`} type="number" min={0.000000001} step="any" required bind:value={value.quotaDivisor} placeholder="500000" /><Field.Description>须为正数，默认 500000。</Field.Description></Field.Field></details>
+            <Collapsible.Root><Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="inline">额度换算</Button>{/snippet}</Collapsible.Trigger><Collapsible.Content><Field.Field class="pt-3"><Field.Label for={`${id}-divisor`}>额度换算除数</Field.Label><Input id={`${id}-divisor`} type="number" min={0.000000001} step="any" required bind:value={value.quotaDivisor} placeholder="500000" /><Field.Description>须为正数，默认 500000。</Field.Description></Field.Field></Collapsible.Content></Collapsible.Root>
           {:else if value.mode === "usage_api" && !forKey}
             <Field.Field><Field.Label for={`${id}-api`}>API Key</Field.Label><Input id={`${id}-api`} type="password" autocomplete="new-password" value={value.apiKey === "***" ? "" : value.apiKey} oninput={(event) => value.apiKey = event.currentTarget.value} placeholder={value.apiKey === "***" ? "***（已保存，留空保留）" : "填写上游 API Key"} /><Field.Description>仅适用于兼容 /v1/usage 的余额接口。</Field.Description></Field.Field>
           {:else if value.mode === "usage_api"}
@@ -80,12 +82,12 @@
 <style>
   .connection-layout { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.4fr); gap: 20px; min-width: 0; }
   .connection-layout :global(.method-section), .connection-fields { min-width: 0; }
-  .methods { display: flex; flex-direction: column; gap: 8px; }
-  .methods :global(button) { height: auto; min-height: 62px; justify-content: flex-start; white-space: normal; text-align: left; }
-  .methods strong, .methods small { display: block; }
-  .methods small { margin-top: 4px; color: var(--muted-foreground); font-size: 12px; font-weight: 400; }
+  :global(.methods) { display: flex; flex-direction: column; gap: 8px; }
+
+  :global(.methods) strong, :global(.methods) small { display: block; }
+  :global(.methods) small { margin-top: 4px; color: var(--muted-foreground); font-size: 12px; font-weight: 400; }
   .connection-fields { padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
   .empty-method { color: var(--muted-foreground); font-size: 13px; line-height: 1.7; }
-  summary { cursor: pointer; font-size: 13px; }
-  @media (max-width: 640px) { .connection-layout { grid-template-columns: minmax(0, 1fr); } .methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  @media (max-width: 640px) { .connection-layout { grid-template-columns: minmax(0, 1fr); } :global(.methods) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import { onMount, untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -53,7 +54,7 @@
   }
 </script>
 <form class="provider-form" onsubmit={submit}>
-  <fieldset disabled={busy} class="contents"><Field.Group>
+  <Field.Set disabled={busy} class="contents"><Field.Group>
     <Field.Field><Field.Label for="key-name">Key 名称 *</Field.Label><Input id="key-name" bind:value={draft.name} required maxlength={100} /></Field.Field>
     <Field.Field><Field.Label for="key-secret">密钥</Field.Label><Input id="key-secret" type="password" autocomplete="new-password" bind:value={draft.secret} placeholder={item?.secretMask || "可暂不设置"} /><Field.Description>{item ? "留空表示不修改当前密钥。" : "密钥加密保存，列表只展示掩码。"}</Field.Description></Field.Field>
     <Field.Field><Field.Label for="key-note">备注</Field.Label><Textarea id="key-note" bind:value={draft.note} rows={2} /></Field.Field>
@@ -62,7 +63,7 @@
       <Field.Field><Field.Label for="key-priority">优先级</Field.Label><Input id="key-priority" type="number" min={0} step={1} bind:value={draft.priority} required /><Field.Description>数字越小越优先。</Field.Description></Field.Field>
     </Field.Group>
     <Collapsible.Root bind:open={advanced}>
-      <Collapsible.Trigger class="provider-advanced">高级设置 <span>RPM {rpm ?? "不限"} · 并发 {concurrency ?? "不限"}</span></Collapsible.Trigger>
+      <Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="disclosure">高级设置 <span>RPM {rpm ?? "不限"} · 并发 {concurrency ?? "不限"}</span></Button>{/snippet}</Collapsible.Trigger>
       <Collapsible.Content><Field.Group class="pt-4"><Field.Group class="provider-fields-grid">
         <Field.Field><Field.Label for="key-rpm">RPM 限制</Field.Label><Input id="key-rpm" type="number" min={1} max={10000} step={1} bind:value={rpm} placeholder="不限制" /></Field.Field>
         <Field.Field><Field.Label for="key-concurrency">并发上限</Field.Label><Input id="key-concurrency" type="number" min={0} step={1} bind:value={concurrency} placeholder="不限制" /></Field.Field>
@@ -70,8 +71,8 @@
         <Field.Field><Field.Label for="key-probe">熔断探测间隔上限（分钟）</Field.Label><Input id="key-probe" type="number" min={1} max={32} step={1} bind:value={probe} /></Field.Field>
       </Field.Group><ProxyField bind:value={draft.proxy} forKey /></Field.Group></Collapsible.Content>
     </Collapsible.Root>
-    {#if queryLoading}<p class="text-xs text-muted-foreground">正在读取查询配置…</p>{:else if queryError}<p class="provider-error" role="alert">{queryError}</p>{:else}<KeyQueryFields bind:draft={queryDraft} {queryState} disabled={busy}/>{/if}
-  </Field.Group></fieldset>
-  {#if error}<p class="provider-error" role="alert">{error}</p>{/if}
+    {#if queryLoading}<p class="text-xs text-muted-foreground">正在读取查询配置…</p>{:else if queryError}<Alert.Root variant="inline-error"><Alert.Description>{queryError}</Alert.Description></Alert.Root>{:else}<KeyQueryFields bind:draft={queryDraft} {queryState} disabled={busy}/>{/if}
+  </Field.Group></Field.Set>
+  {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
   <footer class="provider-form-footer"><Button variant="outline" disabled={busy} onclick={onclose}>取消</Button><Button type="submit" disabled={busy || queryLoading || !!queryError}>{busy ? "保存中…" : item ? "保存更改" : "添加 Key"}</Button></footer>
 </form>

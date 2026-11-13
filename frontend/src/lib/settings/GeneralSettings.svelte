@@ -1,10 +1,13 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import * as Select from "$lib/components/ui/select";
   import { Switch } from "$lib/components/ui/switch";
-  import { Button } from "$lib/components/ui/button";
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import { VelaService, type GeneralSettings } from "$lib/generated/mygo";
   import { errorMessage } from "./sections";
 
+  /** 外观选项的稳定取值与界面名称，共享分段控件只提交有效选项。 */
+  const appearances = [{value:"light",label:"浅色"},{value:"dark",label:"深色"},{value:"system",label:"跟随系统"}];
   /** 常规设置逐行排列，每次选择立即保存并在桌面宿主生效；失败时保留原设置。 */
   let {
     saved = $bindable(),
@@ -72,17 +75,12 @@
 <section class="settings-card" aria-label="常规设置">
   <div class="setting-row">
     <span id="appearance-label">外观</span>
-    <div class="flex items-center gap-1 rounded-lg bg-secondary p-1" role="group" aria-labelledby="appearance-label">
-      {#each [["light", "浅色"], ["dark", "深色"], ["system", "跟随系统"]] as [value, label]}
-        <Button
-          variant={saved.appearance === value ? "outline" : "ghost"}
-          size="sm"
-          aria-pressed={saved.appearance === value}
-          disabled={!desktop || busy}
-          onclick={() => void update({ appearance: value })}>{label}</Button
-        >
+    <ToggleGroup.Root type="single" value={saved.appearance} variant="segmented" size="sm" spacing={1} disabled={!desktop || busy} aria-labelledby="appearance-label"
+      onValueChange={(next) => { if(next) void update({ appearance: next }); }}>
+      {#each appearances as item}
+        <ToggleGroup.Item value={item.value}>{item.label}</ToggleGroup.Item>
       {/each}
-    </div>
+    </ToggleGroup.Root>
   </div>
   <div class="setting-row">
     <span>语言</span>
@@ -175,4 +173,4 @@
     </Select.Root>
   </div>
 </section>
-{#if error}<p class="error-banner mt-4" role="alert">{error}</p>{/if}
+{#if error}<Alert.Root variant="destructive" class="mt-4"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}

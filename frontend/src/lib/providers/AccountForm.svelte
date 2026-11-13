@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -92,13 +94,13 @@
 <form class="account-form" onsubmit={save} aria-busy={loading || saving}>
   {#if loading}<p class="status" role="status">正在读取账户配置…</p>{/if}
   {#if account}
-    <fieldset disabled={loading || saving} class="form-fields"><Field.Group>
+    <Field.Set disabled={loading || saving} class="min-w-0"><Field.Group>
       <QueryConnection bind:value={draft.config} />
-      <details class="account-options"><summary>配额与签到 <span>月配额：{draft.monthlyQuota || "不限"}</span></summary><Field.Group class="pt-4">
+      <Collapsible.Root class="account-options"><Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="inline">配额与签到 <span class="text-muted-foreground">月配额：{draft.monthlyQuota || "不限"}</span></Button>{/snippet}</Collapsible.Trigger><Collapsible.Content><Field.Group class="pt-4">
         <Field.Field><Field.Label for={`${id}-quota`}>本地月配额（美元）</Field.Label><Input id={`${id}-quota`} type="number" min={0} step="any" bind:value={draft.monthlyQuota} required /><Field.Description>0 表示不限；与上游余额及订阅额度分别保存。</Field.Description></Field.Field>
         {#if draft.config.mode === "newapi"}<Field.Field orientation="horizontal"><Field.Label for={`${id}-checkin`}>余额查询时顺带签到</Field.Label><Switch id={`${id}-checkin`} bind:checked={draft.checkin} disabled={saving} /></Field.Field><Field.Description>默认关闭，签到失败不阻断余额查询。</Field.Description>{/if}
-      </Field.Group></details>
-    </Field.Group></fieldset>
+      </Field.Group></Collapsible.Content></Collapsible.Root>
+    </Field.Group></Field.Set>
     <section class="query-result" aria-label="最近账户查询结果">
       <h3>最近查询结果</h3>
       <dl><div><dt>余额</dt><dd>{account.balance.amount === null ? "未知" : `${account.balance.amount} ${account.balance.currency || "USD"}`}</dd></div>
@@ -112,20 +114,20 @@
     <p class="status">定时刷新统一在“设置 → 账户”中配置。</p>
   {/if}
   {#if feedback}<p class="status" role="status">{feedback}</p>{/if}
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
   <footer><Button type="button" variant="outline" disabled={loading || saving} onclick={close}>{feedback ? "完成" : "取消"}</Button>{#if !account && !loading}<Button type="button" variant="outline" onclick={() => void load()}>重新读取</Button>{:else}<Button type="submit" disabled={loading || saving || !account}>{saving ? "保存并查询中…" : "保存更改"}</Button>{/if}</footer>
 </form>
 
 <style>
   .account-form { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-  .form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
-  .account-options { padding-top: 14px; border-top: 1px solid var(--border); }
-  summary { cursor: pointer; font-size: 13px; } summary span { margin-left: 12px; color: var(--muted-foreground); }
+
+  :global(.account-options) { padding-top: 14px; border-top: 1px solid var(--border); }
+
   .query-result { padding: 14px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
   h3 { margin-bottom: 12px; font-size: 13px; font-weight: 600; }
   dl { display: flex; flex-wrap: wrap; gap: 16px; } dt { font-size: 12px; color: var(--muted-foreground); } dd { margin: 3px 0 0; font-size: 14px; }
   .query-state { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; font-size: 12px; overflow-wrap: anywhere; }
   .query-state strong { font-weight: 500; } .query-state small, .status { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
-  .failed, .error { color: var(--destructive); } .error { font-size: 13px; overflow-wrap: anywhere; }
+  .failed { color: var(--destructive); }
   footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--border); }
 </style>

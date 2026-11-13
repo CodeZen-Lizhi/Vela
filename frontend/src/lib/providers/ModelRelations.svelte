@@ -1,4 +1,8 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Empty from "$lib/components/ui/empty";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { Plus, Copy, Pencil, Trash2, ChevronRight, X, Activity } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -124,7 +128,7 @@
       {#if mappingTab}<Button size="icon-xs" variant="ghost" aria-label={`${expanded.includes(model.modelId) ? "收起" : "展开"} ${model.name} 的映射`} aria-expanded={expanded.includes(model.modelId)} onclick={() => expanded = expanded.includes(model.modelId) ? expanded.filter((id) => id !== model.modelId) : [...expanded, model.modelId]}><ChevronRight class={expanded.includes(model.modelId) ? "rotate-90" : ""} /></Button>{/if}
       <div class="min-w-0 flex-1"><p class="text-xs font-medium">{model.name}</p><div class="flex items-center gap-1"><code>{model.modelName}</code>{#if !mappingTab}<Button size="icon-xs" variant="ghost" aria-label={`复制 ${model.modelName}`} onclick={() => copy(model.modelName)}><Copy /></Button>{/if}</div></div>
       {#if mappingTab}<span class="text-xs text-muted-foreground">{model.mappings.length} 个映射</span><Button size="icon-xs" variant="ghost" aria-label={`编辑 ${model.name} 映射`} onclick={() => editMappings(model)}><Pencil /></Button><Button size="icon-xs" variant="ghost" disabled={!model.mappings.length} aria-label={`删除 ${model.name} 映射`} onclick={() => { deleting = model; error = ""; }}><Trash2 /></Button>
-      {:else}{@const testResult = testResults.find((item) => item.modelId === model.modelId)}<span class={`shrink-0 text-[11px] ${testResult?.state === "success" ? "text-primary" : testResult?.state === "failed" ? "text-destructive" : "text-muted-foreground"}`} title={testResult ? new Date(testResult.completedAt).toLocaleString("zh-CN", {hour12:false}) : testResultsError || undefined}>{testStatus(model.modelId)}</span><Button variant="ghost" size="icon-xs" disabled={busy} title="模型连通测试" aria-label={`测试 ${model.name} 连通性`} onclick={() => testing = model}><Activity /></Button><Switch checked={model.enabled} disabled={busy} aria-label={`${model.enabled ? "停用" : "启用"}模型 ${model.name}`} onCheckedChange={(value) => setEnabled(model, value)} /><Button variant="ghost" size="icon-xs" disabled={busy} title="解除模型关联" aria-label={`解除 ${model.name} 的关联`} onclick={() => { unlinking = model; error = ""; }}><Trash2 /></Button>{/if}
+      {:else}{@const testResult = testResults.find((item) => item.modelId === model.modelId)}<Hint text={testResult ? new Date(testResult.completedAt).toLocaleString("zh-CN", {hour12:false}) : testResultsError || undefined}>{#snippet children(hintProps0)}<span {...hintProps0} class={`shrink-0 text-[11px] ${testResult?.state === "success" ? "text-primary" : testResult?.state === "failed" ? "text-destructive" : "text-muted-foreground"}`} >{testStatus(model.modelId)}</span>{/snippet}</Hint><Hint text="模型连通测试">{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => testing = model })} variant="ghost" size="icon-xs" disabled={busy}  aria-label={`测试 ${model.name} 连通性`} ><Activity /></Button>{/snippet}</Hint><Switch checked={model.enabled} disabled={busy} aria-label={`${model.enabled ? "停用" : "启用"}模型 ${model.name}`} onCheckedChange={(value) => setEnabled(model, value)} /><Hint text="解除模型关联">{#snippet children(hintProps2)}<Button {...mergeProps(hintProps2, { onclick: () => { unlinking = model; error = ""; } })} variant="ghost" size="icon-xs" disabled={busy}  aria-label={`解除 ${model.name} 的关联`} ><Trash2 /></Button>{/snippet}</Hint>{/if}
     </div>
     {#if mappingTab && expanded.includes(model.modelId)}
       <div class="border-t bg-muted/30 px-4 py-3">
@@ -132,13 +136,13 @@
         {#if !model.mappings.length}<p class="py-2 text-xs text-muted-foreground">默认请求名：{model.modelName}</p>{/if}
       </div>
     {/if}
-  {:else}<div class="provider-empty">尚未关联模型。请先在模型页创建统一模型，再在此关联。</div>{/each}
+  {:else}<Empty.Root>尚未关联模型。请先在模型页创建统一模型，再在此关联。</Empty.Root>{/each}
 </div>
 <Dialog.Root open={dialog !== ""} onOpenChange={(value) => { if (!value) close(); }}>
   <Dialog.Content class="provider-form-dialog" showCloseButton={!busy}>
     <Dialog.Header><Dialog.Title>{dialog === "associate" ? "关联模型" : "管理模型映射"}</Dialog.Title><Dialog.Description>{dialog === "associate" ? "勾选表示关联，取消勾选将清理对应映射和指定 Key 权限。" : "维护上游请求名，拖动调整优先级，统一保存后生效。"}</Dialog.Description></Dialog.Header>
     <div class={dialog === "associate" ? "provider-editor-body" : "min-h-0 overflow-auto"}>
-      {#if dialog === "mapping"}<div class="provider-tools mb-4"><Input aria-label="搜索模型映射" bind:value={query} placeholder="搜索模型名称、ID或请求名" />
+      {#if dialog === "mapping"}<div class="provider-tools provider-mapping-filters mb-4"><Input aria-label="搜索模型映射" bind:value={query} placeholder="搜索模型名称、ID或请求名" />
         <Choice bind:value={mappingScope} label="映射筛选" options={[{value:"all",label:"全部模型"},{value:"mapped",label:"已映射"},{value:"unmapped",label:"未映射"},{value:"modified",label:"已修改"}]} />
       </div>{/if}
       {#if dialog === "associate"}
@@ -152,18 +156,18 @@
           </section>
         {:else}<p class="py-6 text-center text-xs text-muted-foreground">没有符合条件的模型。</p>{/each}
       {/if}
-      {#if error}<p class="provider-error" role="alert">{error}</p>{/if}
+      {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
     </div>
     <Dialog.Footer><Button variant="outline" disabled={busy} onclick={close}>取消</Button><Button disabled={!changed || busy} onclick={save}>{busy ? "保存中…" : "保存更改"}</Button></Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
 <Dialog.Root open={discard} onOpenChange={(value) => discard = value}><Dialog.Content><Dialog.Header><Dialog.Title>放弃未保存的修改？</Dialog.Title><Dialog.Description>当前草稿尚未保存，放弃后原有配置保持不变。</Dialog.Description></Dialog.Header><Dialog.Footer><Button variant="outline" onclick={() => discard = false}>继续编辑</Button><Button variant="destructive" onclick={() => {discard=false;dialog="";}}>放弃修改</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
-<Dialog.Root open={deleting !== null} onOpenChange={(value) => {if (!busy && !value) deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除模型映射？</Dialog.Title><Dialog.Description>将删除 {deleting?.mappings.map((mapping) => mapping.requestName).join("、")}，并恢复默认请求名，保留模型关联。</Dialog.Description></Dialog.Header>{#if error}<p class="provider-error" role="alert">{error}</p>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={() => deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={deleteMappings}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
+<Dialog.Root open={deleting !== null} onOpenChange={(value) => {if (!busy && !value) deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除模型映射？</Dialog.Title><Dialog.Description>将删除 {deleting?.mappings.map((mapping) => mapping.requestName).join("、")}，并恢复默认请求名，保留模型关联。</Dialog.Description></Dialog.Header>{#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={() => deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={deleteMappings}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
 
 <Dialog.Root open={unlinking !== null} onOpenChange={(value) => {if (!busy && !value) unlinking = null;}}>
   <Dialog.Content showCloseButton={!busy} interactOutsideBehavior={busy ? "ignore" : "close"} escapeKeydownBehavior={busy ? "ignore" : "close"}>
     <Dialog.Header><Dialog.Title>解除模型关联？</Dialog.Title><Dialog.Description>将解除“{unlinking?.name}”与当前供应商的关联，并清理对应映射和指定 Key 权限。统一模型本身保留。</Dialog.Description></Dialog.Header>
-    {#if error}<p class="provider-error" role="alert">{error}</p>{/if}
+    {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
     <Dialog.Footer><Button variant="outline" disabled={busy} onclick={() => unlinking = null}>取消</Button><Button variant="destructive" disabled={busy} onclick={unlinkModel}>{busy ? "解除中…" : "确认解除"}</Button></Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

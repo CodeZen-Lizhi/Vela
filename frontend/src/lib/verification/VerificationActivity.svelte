@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Hint } from "$lib/components/ui/tooltip";
   import { LoaderCircle, Square } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import type { VerificationProgress } from "$lib/generated/mygo";
@@ -23,7 +24,7 @@
   <div class="activity-copy" role="status" aria-atomic="true">
     <div class="activity-heading">
       <strong>{progress.mode === "single" ? "正在复测" : "正在执行检测计划"}</strong>
-      <span class="activity-target" title={`${progress.target.providerName} · ${progress.target.modelName} · ${progress.target.keyName}`}>{progress.target.providerName} · {progress.target.modelName} · {progress.target.keyName}</span>
+      <Hint text={`${progress.target.providerName} · ${progress.target.modelName} · ${progress.target.keyName}`}>{#snippet children(hintProps0)}<span {...hintProps0} class="activity-target" >{progress.target.providerName} · {progress.target.modelName} · {progress.target.keyName}</span>{/snippet}</Hint>
     </div>
     <p>全局一次运行一轮检测 · 停止后已发出的请求仍可能产生费用</p>
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
   import type { Attempt, RecordsRecord } from "$lib/generated/mygo";
   import { Button } from "$lib/components/ui/button";
   import { ArrowRight } from "@lucide/svelte";
@@ -57,7 +58,7 @@
       <section class="record-path-node" aria-label="请求结果"><small>请求结果</small><strong>{label(states, record.state)}</strong><span>总耗时 {duration(record.durationMillis)}</span></section>
     </div>
   </div>
-  {#if !record.attempts.length}<p class="records-notice">请求未发送上游，没有上游 HTTP 响应。</p>{/if}
+  {#if !record.attempts.length}<Alert.Root variant="info"><Alert.Description>请求未发送上游，没有上游 HTTP 响应。</Alert.Description></Alert.Root>{/if}
   {#if current}
     <section class="record-attempt-inspector" aria-label={`尝试 ${current.number} 详情`}>
       <dl class="record-context-grid">

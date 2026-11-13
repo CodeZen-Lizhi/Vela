@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { onDestroy, tick } from "svelte";
   import { flip } from "svelte/animate";
   import { prefersReducedMotion } from "svelte/motion";
@@ -168,12 +170,12 @@
       按住任一行上下拖动，或聚焦后按上下方向键调整，第 01 位最优先。
     </p>
   </header>
-  {#if saveError}<p role="alert" class="error-banner">供应商顺序保存失败，已恢复原顺序：{saveError}</p>{/if}
+  {#if saveError}<Alert.Root variant="destructive"><Alert.Description>供应商顺序保存失败，已恢复原顺序：{saveError}</Alert.Description></Alert.Root>{/if}
   <div class="order-list" bind:this={list} role="list" aria-label="供应商优先顺序" onlostpointercapture={cancel}>
     {#each ordered as item, index (item.provider.id)}
       <div role="listitem" class="order-slot" style:height={drag?.id === item.provider.id ? `${drag.height}px` : undefined}
         animate:flip={{ duration: prefersReducedMotion.current || drag?.id === item.provider.id ? 0 : 160 }}>
-        <Button variant="ghost"
+        <Button variant="row" size="row"
           class="order-row"
           data-order-id={item.provider.id}
           data-inactive={!item.provider.enabled}
@@ -188,11 +190,11 @@
           <span class="provider-mark" aria-hidden="true">{item.provider.name.slice(0, 1)}</span>
           <span class="order-copy">
             <strong>{item.provider.name}</strong>
-            <span class="health" data-state={item.health.state} title={item.health.reason || undefined}>
+            <Hint text={item.health.reason || undefined}>{#snippet children(hintProps0)}<span {...hintProps0} class="health" data-state={item.health.state} >
               <Badge variant={item.health.state === "abnormal" ? "destructive" : "secondary"}>
                 {healthLabels[item.health.state]}{item.health.percent === null ? "" : ` ${item.health.percent}%`}
               </Badge>
-            </span>
+            </span>{/snippet}</Hint>
             <Badge variant={item.provider.enabled ? "outline" : "secondary"}>{item.provider.enabled ? "启用" : "停用"}</Badge>
           </span>
         </Button>
@@ -213,26 +215,12 @@
   .order-list { position: relative; }
   .order-slot { border-bottom: 1px solid var(--border); }
   .order-slot:last-child { border-bottom: 0; }
-  .order-list :global(.order-row) {
-    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
-    width: 100%; height: auto; min-height: 58px; min-width: 0; padding: 12px 18px;
-    border: 0; border-radius: 0; background: var(--card); text-align: left;
-    white-space: normal; cursor: grab; touch-action: none; transition: background-color 140ms ease;
-  }
-  .order-list :global(.order-row:hover), .order-list :global(.order-row:focus-visible) { background: var(--muted); }
-  .order-list :global(.order-row:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
-  .order-list :global(.order-row:active) { transform: none; }
-  .order-list :global(.order-row[data-dragging="true"]) {
-    cursor: grabbing; background: var(--accent); border-radius: 8px;
-    box-shadow: 0 10px 28px -12px var(--foreground);
-  }
-  .order-list :global(.order-row[data-inactive="true"]) { opacity: .62; }
-  .order-list :global(.order-row[aria-disabled="true"]) { cursor: wait; }
+  .order-list :global(.order-row) { cursor:grab; touch-action:none; }
+  .order-list :global(.order-row[data-dragging="true"]) { cursor:grabbing; }
   .order-index { flex-shrink: 0; width: 22px; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
   .provider-mark { display: grid; place-content: center; flex-shrink: 0; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: var(--primary); font-family: Georgia, serif; }
   .order-copy { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; }
   .order-copy strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
   .health { display: inline-flex; }
-  @media (max-width: 620px) { .order-list :global(.order-row) { padding: 11px 12px; gap: 8px; } }
   @media (prefers-reduced-motion: reduce) { .order-list :global(.order-row) { transition: none; } }
 </style>

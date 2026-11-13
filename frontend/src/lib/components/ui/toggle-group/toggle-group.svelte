@@ -69,6 +69,9 @@ get along, so we shut typescript up by casting `value` to `never`.
 	style={`--gap: ${spacing}`}
 	class={cn(
 		"data-[spacing=0]:data-[variant=outline]:rounded-none group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] data-vertical:flex-col data-vertical:items-stretch",
+		variant === "card" && "items-stretch",
+		orientation === "vertical" && "flex-col items-stretch",
+		variant === "segmented" && "rounded-lg border border-border bg-muted p-0.5",
 		className
 	)}
 	{...restProps}

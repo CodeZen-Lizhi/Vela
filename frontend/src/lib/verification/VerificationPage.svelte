@@ -1,4 +1,9 @@
 <script lang="ts">
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Empty from "$lib/components/ui/empty";
+  import { Progress } from "$lib/components/ui/progress";
+  import { mergeProps } from "bits-ui";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import {
@@ -314,13 +319,13 @@
         >
     {/snippet}
   </PageHeader>
-  {#if !desktop}<p class="feedback">
+  {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 计划、检测及报告请在 Vela
       桌面窗口中使用；此处不生成演示结果。
-    </p>{/if}
-  {#if error}<div class="v-error" role="alert">
+    </Alert.Description></Alert.Root>{/if}
+  {#if error}<Alert.Root variant="inline-error"><Alert.Description>
       {error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button>
-    </div>{/if}
+    </Alert.Description></Alert.Root>{/if}
   <Tabs.Root bind:value={tab} class="v-surface list-surface" aria-label="模型验证工作台">
     <div class="v-toolbar">
         <Tabs.List aria-label="模型验证视图">
@@ -357,15 +362,15 @@
     {#if running && snapshot}
       <VerificationActivity progress={snapshot.progress} {busy} onstop={stop} />
     {/if}
-    {#if snapshot?.progress.error}<p role="alert" class="v-error">
+    {#if snapshot?.progress.error}<Alert.Root variant="inline-error"><Alert.Description>
         任务结束：{snapshot.progress.error}
-      </p>{/if}
+      </Alert.Description></Alert.Root>{/if}
     <Tabs.Content value={tab} class="list-scroll" aria-label={tab === "results" ? "验证结果列表内容" : "检测计划列表内容"}>
-    {#if loading}<div class="v-empty" role="status">
+    {#if loading}<Empty.Root role="status">
         正在读取本地验证数据…
-      </div>{:else if desktop && !snapshot}<div class="v-empty">
+      </Empty.Root>{:else if desktop && !snapshot}<Empty.Root>
         验证数据尚未读取成功，请重试。
-      </div>{:else if tab === "results"}
+      </Empty.Root>{:else if tab === "results"}
       <Table.Root class="v-table"
         ><Table.Header
           ><Table.Row
@@ -382,7 +387,7 @@
                 ><div class="v-identity">
                   <span class="v-avatar"
                     >{report.target.providerName.slice(0, 1)}</span
-                  ><strong title={report.target.providerName}>{report.target.providerName}</strong>
+                  ><Hint text={report.target.providerName}>{#snippet children(hintProps0)}<strong {...hintProps0} >{report.target.providerName}</strong>{/snippet}</Hint>
                 </div></Table.Cell
               ><Table.Cell
                 ><strong>{report.target.modelName}</strong><small
@@ -392,7 +397,7 @@
                 ></Table.Cell
               ><Table.Cell
                 ><div class="v-identity">
-                  <KeyRound class="size-3" /><span class="v-key-name" title={report.target.keyName}>{report.target.keyName}</span>
+                  <KeyRound class="size-3" /><Hint text={report.target.keyName}>{#snippet children(hintProps1)}<span {...hintProps1} class="v-key-name" >{report.target.keyName}</span>{/snippet}</Hint>
                 </div>
                 {#if reason}<small class="text-destructive">{reason}</small
                   >{/if}</Table.Cell
@@ -416,34 +421,33 @@
                 ></Table.Cell
               ><Table.Cell>{time(report.time)}</Table.Cell><Table.Cell data-align="control"
                 ><div class="v-actions">
-                  <Button
+                  <Hint text={reason || "固定目标复测会产生上游消耗"}>{#snippet children(hintProps2)}<Button {...mergeProps(hintProps2, { onclick: () => start(report.target.providerId, report.id) })}
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`复测 ${report.target.modelName}`}
-                    title={reason || "固定目标复测会产生上游消耗"}
+
                     disabled={!desktop || running || busy || !!reason}
-                    onclick={() => start(report.target.providerId, report.id)}
+
                     ><Play /></Button
-                  ><Button
+                  >{/snippet}</Hint><Hint text="验证详情">{#snippet children(hintProps3)}<Button {...mergeProps(hintProps3, { onclick: () => (reportID = report.id) })}
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`查看 ${report.target.modelName} 验证详情`}
-                    title="验证详情"
-                    onclick={() => (reportID = report.id)}
+
                     ><Eye /></Button
-                  >
+                  >{/snippet}</Hint>
                 </div></Table.Cell
               ></Table.Row
             >{/each}</Table.Body
         ></Table.Root
       >
-      {#if !visible.length}<div class="v-empty">
-          <FlaskConical class="size-6" /><strong
+      {#if !visible.length}<Empty.Root>
+          <FlaskConical class="size-6" /><Empty.Title
             >{scopedReports.length
               ? "没有匹配的验证结果"
-              : "还没有对应的验证结果"}</strong
+              : "还没有对应的验证结果"}</Empty.Title
           >
-          <p>创建计划并执行一轮，结果会按固定组合独立记录。</p>
+          <Empty.Description>创建计划并执行一轮，结果会按固定组合独立记录。</Empty.Description>
           {#if query || status !== "all" || providerId}<Button
               variant="outline"
               onclick={() => {
@@ -454,7 +458,7 @@
             >{:else}<Button variant="outline" onclick={() => (tab = "plans")}
               >查看检测计划</Button
             >{/if}
-        </div>{/if}
+        </Empty.Root>{/if}
     {:else}<div class="v-plans">
         {#each scopedPlans as plan (plan.providerId)}{@const covered =
             coverage(plan)}{@const name =
@@ -471,7 +475,7 @@
               <div class="v-identity">
                 <span class="v-avatar">{name.slice(0, 1)}</span>
                 <div>
-                  <strong title={name}>{name}</strong><small
+                  <Hint text={name}>{#snippet children(hintProps4)}<strong {...hintProps4} >{name}</strong>{/snippet}</Hint><small
                     >{plan.enabled
                       ? `自动运行 · 每 ${plan.hours} 小时`
                       : "仅手动检测"}</small
@@ -496,11 +500,11 @@
                   >{covered.done} / {covered.total}</strong
                 >
               </div>
-              <progress
+              <Progress
                 aria-label={`${name} 组合覆盖`}
                 value={covered.done}
                 max={Math.max(covered.total, 1)}
-              ></progress>
+               />
             </div>
             <section class="v-bindings">
               <div>
@@ -509,9 +513,9 @@
                 >
               </div>
               {#each summaries(plan) as summary}<div>
-                  <strong>{summary.model}</strong><small title={summary.keys}
+                  <strong>{summary.model}</strong><Hint text={summary.keys}>{#snippet children(hintProps5)}<small {...hintProps5}
                     >{summary.keys}</small
-                  ><span>思考{summary.effort}</span>
+                  >{/snippet}</Hint><span>思考{summary.effort}</span>
                 </div>{/each}
             </section>
             <footer>
@@ -523,27 +527,24 @@
                   variant="outline"
                   size="sm"
                   onclick={() => openPlan(plan)}>编辑范围</Button
-                ><Button
+                ><Hint text="检测会产生上游消耗">{#snippet children(hintProps6)}<Button {...mergeProps(hintProps6, { onclick: () => start(plan.providerId) })}
                   size="sm"
                   disabled={!desktop || busy || running || !covered.total}
-                  title="检测会产生上游消耗"
-                  onclick={() => start(plan.providerId)}
+
                   ><Play data-icon="inline-start" />立即检测</Button
-                >
+                >{/snippet}</Hint>
               </div>
             </footer>
-          </article>{/each}{#if !scopedPlans.length}<div
-            class="v-empty v-plan-empty"
-          >
-            <FlaskConical class="size-6" /><strong>还没有检测计划</strong>
-            <p>先为供应商选择要验证的模型、Key、协议与思考强度。</p>
+          </article>{/each}{#if !scopedPlans.length}<Empty.Root class="col-span-full">
+            <FlaskConical class="size-6" /><Empty.Title>还没有检测计划</Empty.Title>
+            <Empty.Description>先为供应商选择要验证的模型、Key、协议与思考强度。</Empty.Description>
             <Button
               variant="outline"
               disabled={!desktop || !snapshot || !providers.length}
               onclick={() => openPlan()}
               ><Plus data-icon="inline-start" />创建检测计划</Button
             >
-          </div>{/if}
+          </Empty.Root>{/if}
       </div>{/if}
     </Tabs.Content>
     {#if tab === "results"}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Hint } from "$lib/components/ui/tooltip";
   import * as Select from "$lib/components/ui/select";
   /** 列头与顶部使用同一个 shadcn-svelte 菜单；共享 openID 保证一次只打开一个。 */
   let {
@@ -37,15 +38,15 @@
     onOpenChange={(open) => (openID = open ? id : "")}
     {disabled}
   >
-    <Select.Trigger
+    <Hint text={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}>{#snippet children(hintProps0)}<Select.Trigger {...hintProps0}
       variant={column ? "column" : "default"}
       data-filter-active={selected}
-      title={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}
+
       aria-label={`${title}筛选`}
       ><span class="min-w-0 truncate"
         >{title}{!column && values.length ? ` · ${values.length}` : ""}</span
       ></Select.Trigger
-    >
+    >{/snippet}</Hint>
     <Select.Content align="start"
       ><Select.Group
         >{#each options as item}<Select.Item
@@ -63,15 +64,15 @@
     onOpenChange={(open) => (openID = open ? id : "")}
     {disabled}
   >
-    <Select.Trigger
+    <Hint text={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}>{#snippet children(hintProps1)}<Select.Trigger {...hintProps1}
       variant={column ? "column" : "default"}
       data-filter-active={selected}
-      title={column ? (selected ? `${title}：${selectionLabel}` : `筛选${title}`) : undefined}
+
       aria-label={`${title}筛选`}
       ><span class="min-w-0 truncate"
         >{column || !value ? title : selectionLabel}</span
       ></Select.Trigger
-    >
+    >{/snippet}</Hint>
     <Select.Content align="start"
       ><Select.Group
         ><Select.Item value="" label={`全部${title}`}>全部{title}</Select.Item

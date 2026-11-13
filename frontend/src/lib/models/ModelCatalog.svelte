@@ -1,4 +1,8 @@
 <script lang="ts">
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as Empty from "$lib/components/ui/empty";
+  import { Hint } from "$lib/components/ui/tooltip";
   import { LayoutGrid, Search } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Select from "$lib/components/ui/select";
@@ -128,29 +132,25 @@
       ></Select.Root
     >
   </div>
-  {#if error}<p role="alert" class="error-banner">{error}</p>{/if}
-  {#if loading}<div role="status" class="catalog-empty">正在加载在线目录…</div>
-  {:else if !catalog.length}<div class="catalog-empty">
-      <p>在线目录尚未加载</p>
+  {#if error}<Alert.Root variant="destructive"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
+  {#if loading}<Empty.Root role="status">正在加载在线目录…</Empty.Root>
+  {:else if !catalog.length}<Empty.Root>
+      <Empty.Description>在线目录尚未加载</Empty.Description>
       <Button variant="outline" onclick={onretry}>重新加载目录</Button>
-    </div>
+    </Empty.Root>
   {:else}
-    {#if vendors.length}<nav class="provider-nav" aria-label="按官方厂商筛选">
+    {#if vendors.length}<ToggleGroup.Root type="single" value={query.trim() ? "" : current} onValueChange={(next) => { if(next) pick(next); }} size="sm" spacing={1} class="provider-nav" aria-label="按官方厂商筛选">
         {#each [{ id: "all", label: "全部", logo: "", count: vendors.reduce((sum, vendor) => sum + vendor.count, 0) }, ...vendors] as vendor (vendor.id)}
-          {@const active = !query.trim() && current === vendor.id}
-          <Button
-            variant={active ? "secondary" : "ghost"}
-            aria-pressed={active}
-            onclick={() => pick(vendor.id)}
+          <ToggleGroup.Item value={vendor.id}
             >{#if vendor.logo}<span
                 class="provider-logo"
                 style:--provider-logo={`url("${vendor.logo}")`}
                 aria-hidden="true"
               ></span>{:else}<LayoutGrid aria-hidden="true" />{/if}<span
-              >{vendor.label}</span><small>{vendor.count}</small></Button
+              >{vendor.label}</span><small>{vendor.count}</small></ToggleGroup.Item
           >
         {/each}
-      </nav>{/if}
+      </ToggleGroup.Root>{/if}
     <div class="result-caption">
       <span
         >{query.trim()
@@ -163,7 +163,7 @@
       {#each matches.slice(0, 80) as entry (key(entry))}
         <Button
           variant="outline"
-          class="catalog-option"
+          size="catalog" class="catalog-option"
           disabled={busy || !!entry.problem}
           aria-label={`选择 ${entry.name}，来源 ${entry.providerName}`}
           onclick={() => onselect(entry)}
@@ -180,7 +180,7 @@
                 >{entry.providerName} · {kinds[entry.kind]} · 上下文 {entry.context
                   ? `${entry.context.toLocaleString()} Token`
                   : "未知"}</span
-              ><code title={entry.modelId}>{entry.modelId}</code>
+              ><Hint text={entry.modelId}>{#snippet children(hintProps0)}<code {...hintProps0} >{entry.modelId}</code>{/snippet}</Hint>
             </div>
             {#if entry.official}<Badge variant="secondary">官方</Badge>{/if}
           </div>
@@ -193,9 +193,9 @@
             />{/if}
         </Button>
       {/each}
-      {#if !matches.length}<div class="catalog-empty">
-          <strong>没有匹配的模型</strong><span>尝试其他关键词、厂商或类型。</span>
-        </div>{/if}
+      {#if !matches.length}<Empty.Root>
+          <Empty.Title>没有匹配的模型</Empty.Title><span>尝试其他关键词、厂商或类型。</span>
+        </Empty.Root>{/if}
       {#if matches.length > 80}<p class="catalog-more">
           显示前 80 项，请输入关键词缩小范围。
         </p>{/if}
@@ -216,24 +216,22 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    width: 100%;
+    /* 与原型一致：筛选组保持紧凑，搜索框不随宽屏弹窗无限拉长。 */
+    width: min(490px, 100%);
     flex-shrink: 0;
   }
-  .provider-nav {
-    --secondary: var(--accent);
-    --secondary-foreground: var(--primary);
+  .catalog-filters > :global([data-slot="input-group"]) {
+    flex: 1;
+    min-width: 0;
+  }
+  :global(.provider-nav) {
     display: flex;
     flex-wrap: wrap;
     gap: 6px 4px;
     flex-shrink: 0;
   }
-  .provider-nav :global(button) {
-    gap: 8px;
-    padding: 0 10px;
-    font-size: 13px;
-    height: 36px;
-  }
-  .provider-nav span {
+
+  :global(.provider-nav) span {
     white-space: nowrap;
   }
   /* 单色品牌图标跟随文字颜色，选中态与深色外观无需额外下载资源。 */
@@ -245,7 +243,7 @@
     mask: var(--provider-logo) center / contain no-repeat;
     -webkit-mask: var(--provider-logo) center / contain no-repeat;
   }
-  .provider-nav small {
+  :global(.provider-nav) small {
     color: var(--muted-foreground);
     font-size: 11px;
   }
@@ -268,18 +266,7 @@
     overflow-y: auto;
     padding: 2px 2px 24px;
   }
-  .catalog-grid :global(.catalog-option) {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 10px;
-    white-space: normal;
-    padding: 13px;
-    height: auto;
-    min-width: 0;
-    text-align: left;
-  }
+
   .catalog-option-head {
     display: flex;
     align-items: center;
@@ -330,17 +317,7 @@
   .catalog-grid :global(.price-traits) {
     gap: 4px;
   }
-  .catalog-empty {
-    flex: 1;
-    min-height: 200px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 12px;
-    color: var(--muted-foreground);
-    grid-column: 1 / -1;
-  }
+
   .catalog-more {
     grid-column: 1 / -1;
     font-size: 11px;
