@@ -208,6 +208,7 @@ func main() {
 		syncTray()
 	})
 	mygo.App.OnWindowAllClosed(lastWindowClosed)
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows {
 			openMainWindow()

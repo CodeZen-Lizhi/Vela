@@ -23,8 +23,8 @@
   import SchedulingPage from "$lib/scheduling/SchedulingPage.svelte";
   import SettingsPage from "$lib/settings/SettingsPage.svelte";
   import { settingsSections, type SettingsSection } from "$lib/settings/sections";
-  /** 当前显示的顶级页面，取导航项名称或“设置”。 */
-  let page = $state("模型");
+  /** 当前会话的顶级页面；真正启动应用时默认进入供应商。 */
+  let page = $state("供应商");
  /** 供应商最近调用携带的一次性记录入口。 */
  let recordsProvider=$state(""),recordsID=$state("");
  /** 进入记录页时保留目标身份，普通导航清除定向范围。 */

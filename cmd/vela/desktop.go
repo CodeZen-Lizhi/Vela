@@ -18,6 +18,9 @@ var (
 	gatewayServer *gateway.Server
 )
 
+// quitting 区分真正退出与关闭到后台，仅在主线程读写。
+var quitting bool
+
 // themeSource 把保存的浅色、深色或跟随系统选项映射为宿主外观，页面通过 prefers-color-scheme 跟随。
 func themeSource(appearance string) mygo.ThemeSource {
 	if appearance == "system" {
@@ -38,9 +41,9 @@ func applyGeneral(value settings.GeneralSettings) {
 	})
 }
 
-// createMainWindow 使用紧凑隐藏标题栏，保留系统窗口按钮，避免 Inset 模式额外占用顶部空间。
+// createMainWindow 创建主窗口；关闭到后台时保留 WebView，使当前页面、筛选与草稿不丢失。
 func createMainWindow() *mygo.Window {
-	return mygo.NewWindow(mygo.WindowOptions{
+	window := mygo.NewWindow(mygo.WindowOptions{
 		Title:           "Vela",
 		Width:           1180,
 		Height:          760,
@@ -53,6 +56,15 @@ func createMainWindow() *mygo.Window {
 		StateKey:             "main",
 		URL:                  "/",
 	})
+	window.OnClose(func(event *mygo.CloseEvent) {
+		if quitting || general.CloseAction == "quit" {
+			return
+		}
+		event.PreventDefault()
+		window.Hide()
+		lastWindowClosed()
+	})
+	return window
 }
 
 // openMainWindow 恢复 Dock 图标并把主窗口带回前台；窗口已关闭时重新创建。
@@ -62,6 +74,9 @@ func openMainWindow() {
 		mainWindow = createMainWindow()
 	}
 	mygo.App.Show()
+	if mainWindow.IsMinimized() {
+		mainWindow.Restore()
+	}
 	mainWindow.Show()
 	mainWindow.Focus()
 	mygo.App.Focus()
