@@ -147,7 +147,7 @@
     <div class="flex flex-wrap items-center justify-between gap-4 border-t px-6 py-4">
       <p class="text-xs text-muted-foreground">仅影响跟随全局代理的连接</p>
       <div class="flex gap-2">
-        {#if changed}<Button variant="outline" size="sm" disabled={busy} onclick={cancel}>取消</Button>{/if}
+        <Button variant="outline" size="sm" disabled={!changed || busy} onclick={cancel}>取消</Button>
         <Button type="submit" size="sm" disabled={!desktop || !loaded || !changed || busy}>{busy ? "正在保存…" : "保存设置"}</Button>
       </div>
     </div>

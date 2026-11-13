@@ -11,9 +11,11 @@
   const path = $derived(buckets.map((bucket, index) => `${index ? "L" : "M"}${(index + 0.5) / buckets.length * 900},${210 - bucket.total[metric] / maximum * 200}`).join(" "));
   /** 横轴最多显示七个主刻度，避免日期重叠。 */
   const tickEvery = $derived(Math.max(1, Math.ceil(buckets.length / 7)));
+  /** 纵轴为所有指标的最长刻度预留相同宽度，费用口径与指标切换不挤动绘图区。 */
+  const axisWidth = $derived(Math.max(8, ...buckets.flatMap(bucket => [money(bucket.total.standardCost * 1.15).length, money(bucket.total.cost * 1.15).length, compact(bucket.total.tokens * 1.15).length, compact(bucket.total.requests * 1.15).length])));
 </script>
 
-<div class="overview-trend" aria-label="用量趋势图">
+<div class="overview-trend" aria-label="用量趋势图" style:--overview-axis-width={`${axisWidth}ch`}>
   <div class="overview-axis-y">{#each [1, 0.5, 0] as ratio}<span>{metric === "standardCost" || metric === "cost" ? money(maximum * ratio) : compact(maximum * ratio)}</span>{/each}</div>
   <div class="overview-plot">
     <svg viewBox="0 0 900 220" preserveAspectRatio="none" role="img" aria-label={buckets.map(bucket => `${bucket.detail} ${bucket.name}，${formatMetric(bucket.total, metric)}`).join("；")}>
@@ -27,7 +29,7 @@
 
 <style>
   .overview-trend{display:flex;height:272px;gap:12px;padding:12px 24px 24px 12px}
-  .overview-axis-y{display:flex;flex-direction:column;justify-content:space-between;min-width:48px;padding-bottom:33px;text-align:right;font-size:10px;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+  .overview-axis-y{display:flex;flex-direction:column;justify-content:space-between;width:var(--overview-axis-width);flex-shrink:0;padding-bottom:33px;text-align:right;white-space:nowrap;font-size:10px;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
   .overview-plot{position:relative;flex:1;min-width:0;padding-bottom:25px}
   svg{width:100%;height:100%;overflow:visible}
   .overview-gridline{stroke:var(--border);stroke-dasharray:2 6;vector-effect:non-scaling-stroke}

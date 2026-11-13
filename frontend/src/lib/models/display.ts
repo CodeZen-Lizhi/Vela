@@ -1,3 +1,5 @@
+import { formatUSD as money } from "../currency.js";
+export { money };
 import type { Pricing, Rate } from "$lib/generated/mygo";
 
 /** 类型名称供列表、筛选和详情共用。 */
@@ -64,10 +66,6 @@ export function unitLabel(unit: string): string {
       } as Record<string, string>
     )[unit] ?? unit
   );
-}
-/** 单价保留实际小数，不把未知值格式化为零。 */
-export function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 8 })}`;
 }
 /** 列表只展示当前类型主价，其余规则在详情中展开。 */
 export function summary(p: Pricing): string {

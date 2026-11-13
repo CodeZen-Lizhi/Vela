@@ -1,6 +1,8 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
   import type { Attempt, RecordsRecord } from "$lib/generated/mygo";
+  import * as Card from "$lib/components/ui/card";
+  import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { ArrowRight } from "@lucide/svelte";
   import { date, duration, label, states } from "./display";
@@ -31,12 +33,12 @@
 </script>
 
 <section class="record-execution" aria-label="实际执行路径">
-  <h3>执行路径</h3>
+  <header class="record-execution-heading"><div><h3>真实执行路径</h3><p>按实际发送顺序展示供应商和 Key 尝试</p></div><Badge variant="neutral">{record.attempts.length} 次尝试</Badge></header>
   <!-- 横向路径保留键盘焦点，方向键可查看窗口外的后续执行轮次。 -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="record-path-scroll" role="region" aria-label="横向执行路径" tabindex="0">
     <div class="record-path-stage">
-      <section class="record-path-node" aria-label="请求入口"><small>请求入口</small><strong>{record.model || "未知模型"}</strong><code>{record.attempts[0]?.path || "未记录请求路径"}</code></section>
+      <Card.Root class="record-path-node" aria-label="请求入口"><small>请求入口</small><strong>{record.model || "未知模型"}</strong><code>{record.attempts[0]?.path || "未记录请求路径"}</code></Card.Root>
       <ArrowRight aria-hidden="true" class="record-path-arrow" />
       {#each groups as group, index}
         {#if index}<ArrowRight aria-hidden="true" class="record-path-arrow" />{/if}
@@ -44,8 +46,8 @@
           <h4><span>{index + 1}</span>{group.name}</h4>
           <div class="record-attempt-stack">
             {#each group.attempts as entry}
-              <Button variant={inspected === entry.index ? "secondary" : "outline"} size="content" class="record-attempt" aria-expanded={inspected === entry.index} aria-label={`查看尝试 ${entry.item.number} ${entry.item.keyName || "未知 Key"}`} onclick={() => { attempt = String(entry.index); inspected = inspected === entry.index ? null : entry.index; }}>
-                <span class="record-attempt-head"><strong>{entry.item.status ? `HTTP ${entry.item.status}` : "未收到响应"}</strong><small>#{entry.item.number}</small></span>
+              <Button variant="attempt" data-selected={inspected === entry.index} data-result={entry.item.status >= 200 && entry.item.status < 400 ? "success" : "failed"} size="content" class="record-attempt" aria-expanded={inspected === entry.index} aria-label={`查看尝试 ${entry.item.number} ${entry.item.keyName || "未知 Key"}`} onclick={() => { attempt = String(entry.index); inspected = inspected === entry.index ? null : entry.index; }}>
+                <span class="record-attempt-head"><Badge variant={entry.item.status >= 200 && entry.item.status < 400 ? "positive" : "negative"}>{entry.item.status ? `HTTP ${entry.item.status}` : "未收到响应"}</Badge><small>#{entry.item.number}</small></span>
                 <span>Key · {entry.item.keyName || "未知 Key"}</span>
                 <small>{duration(entry.item.durationMillis)}{entry.item.polling ? " · 状态轮询" : ""}</small>
                 {#if entry.item.error}<small class="text-destructive">{entry.item.error}</small>{/if}
@@ -55,7 +57,7 @@
         </section>
       {/each}
       <ArrowRight aria-hidden="true" class="record-path-arrow" />
-      <section class="record-path-node" aria-label="请求结果"><small>请求结果</small><strong>{label(states, record.state)}</strong><span>总耗时 {duration(record.durationMillis)}</span></section>
+      <Card.Root class="record-path-node" aria-label="请求结果"><small>请求结果</small><Badge variant={record.state === "success" ? "positive" : record.state === "failed" ? "negative" : record.state === "local" ? "warning" : "processing"}>{label(states, record.state)}</Badge><span>总耗时 {duration(record.durationMillis)}</span></Card.Root>
     </div>
   </div>
   {#if !record.attempts.length}<Alert.Root variant="info"><Alert.Description>请求未发送上游，没有上游 HTTP 响应。</Alert.Description></Alert.Root>{/if}

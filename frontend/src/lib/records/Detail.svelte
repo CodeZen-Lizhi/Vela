@@ -5,13 +5,14 @@
   import { tick } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
+  import * as Card from "$lib/components/ui/card";
   import * as Sheet from "$lib/components/ui/sheet";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import * as Table from "$lib/components/ui/table";
   import * as Tabs from "$lib/components/ui/tabs";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import Choice from "$lib/providers/Choice.svelte";
-  import { Copy, RefreshCw, X, Terminal, ChevronsUpDown } from "@lucide/svelte";
+  import { Copy, RefreshCw, X, Terminal } from "@lucide/svelte";
   import { errorMessage } from "$lib/settings/sections";
   import { rateNames, rateUnit, unitLabel } from "$lib/models/display";
   import DetailSection from "./DetailSection.svelte";
@@ -52,8 +53,8 @@
     expanded = $state(true);
   /** 返回原列表行的身份独立于熔断追溯身份。 */
   let originID = "";
-  /** 更多数据默认收起，路径检查器可主动展开到所选尝试响应。 */
-  let rawOpen = $state(false);
+  /** 四个页签沿原型组织详情，默认先查看真实执行链路。 */
+  let section = $state("execution");
   /** 与列表共用逐帧时钟语义，按真实起点累计，不推断完成状态。 */
   const clock = elapsedClock(() => record?.state === "active");
   let generation = 0;
@@ -113,7 +114,7 @@
     view = "json";
     compare = false;
     expanded = true;
-    rawOpen = false;
+    section = "execution";
     originID = requestID;
     viewedID = requestID;
     void load(requestID);
@@ -131,7 +132,7 @@
     record = null;
     error = "";
     attempt = "0";
-    rawOpen = false;
+    section = "execution";
     viewedID = requestID;
     void load(requestID);
   }
@@ -146,9 +147,9 @@
     panel = "response";
     side = "provider";
     compare = false;
-    rawOpen = true;
+    section = "payload";
     await tick();
-    document.querySelector(".record-raw-section")?.scrollIntoView({ block: "nearest" });
+    document.querySelector(".record-detail-tabs")?.scrollIntoView({ block: "nearest" });
   }
   /** 复制只处理已脱敏可见文本，不发送网络调用。 */
   async function copy(value: string): Promise<void> {
@@ -270,10 +271,10 @@
           <Sheet.Title>请求详情</Sheet.Title>
           {#if record}
             <Hint overflowOnly text={record.model}>{#snippet children(hintProps0)}{#if record}<Badge {...hintProps0} variant="neutral" class="max-w-full truncate">{record.model || "未知模型"}</Badge>{/if}{/snippet}</Hint>
-            {#if record.effort}<Badge variant="secondary">{record.effort}</Badge>{/if}
-            {#if record.tier && record.tier !== "standard"}<Badge variant="secondary">{record.tier}</Badge>{/if}
-            <Badge variant={record.state === "failed" ? "destructive" : "default"}>{label(states, record.state)}{lastStatus ? ` · ${lastStatus}` : ""}</Badge>
-            <Badge variant="outline">{record.transport === "websocket" ? "WebSocket" : record.stream ? "HTTP 流式" : "HTTP 标准"}</Badge>
+            {#if record.effort}<Badge variant="parameter">{record.effort}</Badge>{/if}
+            {#if record.tier && record.tier !== "standard"}<Badge variant="parameter">{record.tier}</Badge>{/if}
+            <Badge variant={record.state === "failed" ? "negative" : record.state === "success" ? "positive" : record.state === "local" ? "warning" : "processing"}>{label(states, record.state)}{lastStatus ? ` · ${lastStatus}` : ""}</Badge>
+            <Badge variant={record.stream || record.transport === "websocket" ? "transport" : "metadata"}>{record.transport === "websocket" ? "WebSocket" : record.stream ? "HTTP 流式" : "HTTP 标准"}</Badge>
           {/if}
         </div>
         <div class="records-actions">
@@ -282,7 +283,7 @@
         </div>
       </div>
       <Sheet.Description class="record-detail-meta">
-        <Hint text={`ID: ${record?.id ?? viewedID}`}>{#snippet children(props)}<span {...props}>ID: {record?.id ?? viewedID}</span>{/snippet}</Hint>
+        <Hint text={`ID: ${record?.id ?? viewedID}`}>{#snippet children(props)}<span {...props} class="truncate">ID: {record?.id ?? viewedID}</span>{/snippet}</Hint>
         {#if record}<span>{date(record.startedAt, "day")} {date(record.startedAt)}</span><span>{protocol(record.protocol)}</span>{/if}
       </Sheet.Description>
     </header>
@@ -291,16 +292,22 @@
       {#if loading && !record}<p role="status">正在读取请求详情…</p>{/if}
       {#if record}
         <section class="record-detail-metrics" aria-label="费用与性能概览">
-          <div><strong>{money(record.cost)}</strong><span>总费用 · 本地估算</span></div>
-          <div><strong>{duration(elapsed)}</strong><span>总耗时</span></div>
-          <div>{#if record}<strong>{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong>{/if}<span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span></div>
-          <div>{#if record}<strong>{record.outputRate == null ? "—" : `${compact(record.outputRate)} tps`}</strong>{/if}<span>输出速度</span></div>
-          <div><strong>{duration(record.firstByteMillis)}</strong><span>首字耗时</span></div>
+          <Card.Root size="sm"><Card.Content><span>总费用</span><strong class="text-parameter">{money(record.cost)}</strong><small>本地估算 · 价格快照</small></Card.Content></Card.Root>
+          <Card.Root size="sm"><Card.Content><span>总耗时</span><strong>{duration(elapsed)}</strong><small>{record.state === "active" ? "实时累计" : "端到端"}</small></Card.Content></Card.Root>
+          <Card.Root size="sm"><Card.Content><span>{record.usage?.unit ? "计费数量" : "输出 Token"}</span><strong>{record.usage?.unit ? `${number(record.usage.quantity)} ${record.usage.unit === "image" ? "张" : "秒"}` : compact(record.usage?.output)}</strong><small>{record.usage?.unit ? "实际计费量" : "上游返回用量"}</small></Card.Content></Card.Root>
+          <Card.Root size="sm"><Card.Content><span>输出速度</span><strong>{record.outputRate == null ? "—" : `${compact(record.outputRate)} TPS`}</strong><small>有效输出时长</small></Card.Content></Card.Root>
+          <Card.Root size="sm"><Card.Content><span>首字耗时</span><strong>{duration(record.firstByteMillis)}</strong><small>端到端首字</small></Card.Content></Card.Root>
         </section>
         {#if record.error}<Alert.Root variant="destructive"><Alert.Description>{record.error}</Alert.Description></Alert.Root>{/if}
         {#if !record.usage}<p class="record-detail-note">{record.state === "active" ? "请求进行中，用量与估算费用尚未结算。" : record.state === "local" ? "请求未发上游，无上游用量。" : "上游未提供可验证用量，未知值不显示为零。"}</p>{/if}
         {#if record.circuitSourceId}<Alert.Root variant="info"><Alert.Description>本地熔断 · 触发请求 <Button variant="link" size="inline" onclick={() => openSource(record!.circuitSourceId)}>{record.circuitSourceId}</Button></Alert.Description></Alert.Root>{/if}
 
+        <Tabs.Root bind:value={section} onValueChange={value => { if (value === "headers") panel = "headers"; else if (value === "payload") panel = "request"; }} class="record-detail-tabs">
+          <Tabs.List variant="line" aria-label="请求详情分区" class="w-full justify-start">
+            <Tabs.Trigger value="execution">执行链路</Tabs.Trigger><Tabs.Trigger value="payload">请求与响应</Tabs.Trigger><Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="billing">计费与上下文</Tabs.Trigger>
+          </Tabs.List>
+          <Tabs.Content value="execution">{#key record.id}<ExecutionPath {record} bind:attempt onresponse={showResponse} />{/key}</Tabs.Content>
+          <Tabs.Content value="billing" class="record-detail-billing">
         <DetailSection title="计费明细" description="价格、Token 与媒体费用">
           <p class="record-detail-note">按请求开始时价格快照和实际用量估算，非上游已对账扣款。</p>
           <dl class="record-context-grid">
@@ -334,15 +341,13 @@
           </dl>
         </DetailSection>
 
-        {#key record.id}<ExecutionPath {record} bind:attempt onresponse={showResponse} />{/key}
-
-        <Collapsible.Root bind:open={rawOpen} class="record-detail-section record-raw-section">
-          <Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="ghost" size="disclosure" class="record-raw-trigger">更多数据<ChevronsUpDown /></Button>{/snippet}</Collapsible.Trigger>
-          <Collapsible.Content>
-            <div class="record-section-body">
+          </Tabs.Content>
+          {#if section === "payload" || section === "headers"}
+          <Tabs.Content value={section}>
+            <div class="record-raw-section">
               <Tabs.Root bind:value={panel}>
                 <Tabs.List variant="line" aria-label="原始请求与响应" class="record-payload-tabs">
-                  <Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="request">请求正文</Tabs.Trigger><Tabs.Trigger value="response-headers">响应头</Tabs.Trigger><Tabs.Trigger value="response">响应正文</Tabs.Trigger>
+                  {#if section === "headers"}<Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="response-headers">响应头</Tabs.Trigger>{:else}<Tabs.Trigger value="request">请求正文</Tabs.Trigger><Tabs.Trigger value="response">响应正文</Tabs.Trigger>{/if}
                 </Tabs.List>
                 <div class="record-payload-toolbar">
                   {#if record.attempts.length}<Choice bind:value={attempt} label="实际尝试" options={record.attempts.map((item, index) => ({ value: String(index), label: `${item.number}. ${item.providerName} / ${item.keyName} · HTTP ${item.status || "—"}` }))} />{/if}
@@ -350,8 +355,11 @@
                     <ToggleGroup.Root type="single" value={side} onValueChange={(next) => { if (next) side = next; }} aria-label="数据来源" size="sm" spacing={1}>
                       <ToggleGroup.Item value="client" aria-label="客户端数据">客户端</ToggleGroup.Item><ToggleGroup.Item value="provider" aria-label="上游数据">上游</ToggleGroup.Item>
                     </ToggleGroup.Root>
-                    {#if bodyPanel}<ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root>{:else}<Button variant={compare ? "secondary" : "ghost"} size="sm" aria-pressed={compare} onclick={() => (compare = !compare)}>对比上下游</Button>{/if}
-                    {#if panel === "request" || panel === "headers"}<Button onclick={() => copy(curl())} variant="ghost" size="icon-sm" aria-label="复制 cURL"  disabled={!curl()} ><Terminal /></Button>{/if}
+                    <div class="record-payload-view">
+                      <div class:invisible={!bodyPanel} inert={!bodyPanel} aria-hidden={!bodyPanel}><ToggleGroup.Root type="single" value={view} onValueChange={(next) => { if (next) view = next; }} aria-label="正文视图" size="sm" spacing={1}><ToggleGroup.Item value="json">JSON</ToggleGroup.Item><ToggleGroup.Item value="conversation">对话</ToggleGroup.Item></ToggleGroup.Root></div>
+                      <Button class={bodyPanel ? "invisible" : undefined} variant={compare ? "secondary" : "ghost"} size="sm" aria-pressed={compare} aria-hidden={bodyPanel} disabled={bodyPanel} onclick={() => (compare = !compare)}>对比上下游</Button>
+                    </div>
+                    <Button class={panel === "response" || panel === "response-headers" ? "invisible" : undefined} onclick={() => copy(curl())} variant="ghost" size="icon-sm" aria-label="复制 cURL" aria-hidden={panel === "response" || panel === "response-headers"} disabled={panel === "response" || panel === "response-headers" || !curl()} ><Terminal /></Button>
                     <Button onclick={() => copy(content)} variant="ghost" size="icon-sm" aria-label="复制当前内容"  disabled={!content || (!bodyPanel && compare)} ><Copy /></Button>
                   </div>
                 </div>
@@ -374,8 +382,9 @@
                 {/each}
               </Tabs.Root>
             </div>
-          </Collapsible.Content>
-        </Collapsible.Root>
+          </Tabs.Content>
+          {/if}
+        </Tabs.Root>
       {/if}
     </div>
   </Sheet.Content>

@@ -6,8 +6,8 @@
 <script lang="ts">
   import { Hint } from "$lib/components/ui/tooltip";
   import { parseDate, type DateValue } from "@internationalized/date";
-  import { CalendarDays, ChevronDown } from "@lucide/svelte";
-  import { Button } from "$lib/components/ui/button";
+  import { CalendarDays } from "@lucide/svelte";
+  import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import * as Popover from "$lib/components/ui/popover";
   import { RangeCalendar } from "$lib/components/ui/range-calendar";
 
@@ -29,7 +29,7 @@
     /** 可选最早日，格式为 YYYY-MM-DD。 */ min: string;
     /** 可选最晚日，格式为 YYYY-MM-DD。 */ max: string;
     /** 统计快照所属时区，仅用于说明。 */ timezone: string;
-    /** 快照尚未加载时禁止打开选择器。 */ disabled?: boolean;
+    /** 快照尚未加载时禁止切换范围。 */ disabled?: boolean;
     /** 选择快捷范围后通知页面切换口径。 */ onPresetChange: (range: Exclude<OverviewRange, "custom">) => void;
     /** 两个端点都选中后通知页面应用自定义日期。 */ onDateChange: (start: string, end: string) => void;
   } = $props();
@@ -37,11 +37,11 @@
   /** 快捷范围沿用总览既有业务口径，不因控件形态变化而扩展。 */
   const presets: Array<{ value: Exclude<OverviewRange, "custom">; label: string }> = [
     { value: "today", label: "今天" },
-    { value: "week", label: "近 7 天" },
-    { value: "month", label: "近 30 天" },
+    { value: "week", label: "7 天" },
+    { value: "month", label: "30 天" },
     { value: "all", label: "全部" },
   ];
-  /** 弹出层开关由触发器、快捷范围和完整端点选择共同控制。 */
+  /** 自定义入口打开日历，完整端点选择后关闭。 */
   let open = $state(false);
   /** 日历允许先落一个端点；只有两端齐全时才把范围交给页面。 */
   let calendarValue = $state<{ start: DateValue | undefined; end: DateValue | undefined }>({
@@ -54,6 +54,9 @@
     if (open) return;
     calendarValue = { start: parseDate(start), end: parseDate(end) };
   });
+
+  /** 双向同步分段控件状态，日历关闭后仍选中已应用的自定义范围。 */
+  let selectedRange = $derived<OverviewRange>(open ? "custom" : range);
 
   const selectedLabel = $derived(
     range === "custom" ? formatDateRange(start, end, max) : presets.find(item => item.value === range)?.label ?? "选择时间",
@@ -87,57 +90,51 @@
   }
 </script>
 
-<Popover.Root bind:open>
-  <Popover.Trigger>
-    {#snippet child({ props })}
-      <Button
-        {...props}
-        variant="outline"
-        size="sm"
-        class="max-w-52 justify-start"
-        {disabled}
-        aria-label={`选择统计时间范围，当前为${selectedLabel}`}
-      >
-        <CalendarDays data-icon="inline-start" aria-hidden="true" />
-        <Hint text={selectedLabel}>{#snippet children(hintProps)}<span {...hintProps} class="truncate">{selectedLabel}</span>{/snippet}</Hint>
-        <ChevronDown data-icon="inline-end" class="text-muted-foreground" aria-hidden="true" />
-      </Button>
-    {/snippet}
-  </Popover.Trigger>
-  <Popover.Content align="end" sideOffset={8} class="w-[18rem] max-w-[calc(100vw-2rem)] gap-2 p-0">
-    <Popover.Header class="px-3 pt-3">
-      <Popover.Title class="text-foreground text-sm font-semibold tracking-normal normal-case">选择时间范围</Popover.Title>
-      <Popover.Description class="text-xs">先选第一天，再选最后一天</Popover.Description>
-    </Popover.Header>
-    <div class="flex flex-wrap gap-1.5 px-3" role="group" aria-label="快捷时间范围">
-      {#each presets as preset}
-        <Button
-          variant={range === preset.value ? "secondary" : "ghost"}
-          size="xs"
-          class="min-w-0 flex-1 px-2"
-          aria-pressed={range === preset.value}
-          onclick={() => selectPreset(preset.value)}
-        >
-          {preset.label}
-        </Button>
-      {/each}
-    </div>
-    <div class="bg-border mx-3 h-px"></div>
-    <RangeCalendar
-      class="w-full p-2 [--cell-size:1.75rem]"
-      value={calendarValue}
-      onValueChange={selectDates}
-      minValue={parseDate(min)}
-      maxValue={parseDate(max)}
-      locale="zh-CN"
-      weekdayFormat="narrow"
-      weekStartsOn={1}
-      fixedWeeks
-      calendarLabel="统计日期范围"
-    />
-    <footer class="border-border flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-[10px] text-muted-foreground">
-      <span>{formatDateRange(start, end, max)}</span>
-      <Hint text={timezone}>{#snippet children(hintProps)}<span {...hintProps} class="truncate">{timezone}</span>{/snippet}</Hint>
-    </footer>
-  </Popover.Content>
-</Popover.Root>
+<ToggleGroup.Root
+  type="single"
+  variant="segmented"
+  size="sm"
+  spacing={1}
+  bind:value={selectedRange}
+  onValueChange={value => { if (value && value !== "custom") selectPreset(value as Exclude<OverviewRange, "custom">); }}
+  {disabled}
+  class="max-w-full flex-wrap"
+  aria-label="统计时间范围"
+>
+  {#each presets as preset}
+    <ToggleGroup.Item value={preset.value}>{preset.label}</ToggleGroup.Item>
+  {/each}
+  <Popover.Root bind:open>
+    <Popover.Trigger>
+      {#snippet child({ props })}
+        <!-- Popover 的开关状态不应覆盖分段选项的选中状态。 -->
+        <ToggleGroup.Item {...props} data-state={selectedRange === "custom" ? "on" : "off"} value="custom" aria-label={`自定义时间范围，当前为${selectedLabel}`}>
+          <CalendarDays data-icon="inline-start" aria-hidden="true" />
+          自定义
+        </ToggleGroup.Item>
+      {/snippet}
+    </Popover.Trigger>
+    <Popover.Content align="end" sideOffset={8} class="w-[18rem] max-w-[calc(100vw-2rem)] gap-2 p-0">
+      <Popover.Header class="px-3 pt-3">
+        <Popover.Title class="text-foreground text-sm font-semibold tracking-normal normal-case">选择时间范围</Popover.Title>
+        <Popover.Description class="text-xs">先选第一天，再选最后一天</Popover.Description>
+      </Popover.Header>
+      <RangeCalendar
+        class="w-full p-2 [--cell-size:1.75rem]"
+        value={calendarValue}
+        onValueChange={selectDates}
+        minValue={parseDate(min)}
+        maxValue={parseDate(max)}
+        locale="zh-CN"
+        weekdayFormat="narrow"
+        weekStartsOn={1}
+        fixedWeeks
+        calendarLabel="统计日期范围"
+      />
+      <footer class="border-border flex min-w-0 items-center justify-between gap-3 border-t px-3 py-2 text-[10px] text-muted-foreground">
+        <span>{formatDateRange(start, end, max)}</span>
+        <Hint text={timezone}>{#snippet children(hintProps)}<span {...hintProps} class="truncate">{timezone}</span>{/snippet}</Hint>
+      </footer>
+    </Popover.Content>
+  </Popover.Root>
+</ToggleGroup.Root>

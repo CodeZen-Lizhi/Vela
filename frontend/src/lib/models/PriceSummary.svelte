@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Badge } from "$lib/components/ui/badge";
   import type { Pricing, Rate } from "$lib/generated/mygo";
-  import { rateNames, unitLabel } from "./display";
+  import { money, rateNames, unitLabel } from "./display";
   /** 模型行展示标准主价，缓存和分时等完整规则保留在详情中。 */
   let {
     pricing,
@@ -41,10 +41,10 @@
       )
       .slice(0, 2);
   });
-  /** 美元价格至少保留两位，小额缓存价格保留有效小数。 */
+  /** 美元价格统一保留两位小数，缺失或非有限值仍提示未填写。 */
   function formatPrice(value: number | undefined): string {
     if (value === undefined || !Number.isFinite(value)) return "未填写";
-    return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`;
+    return money(value);
   }
 </script>
 

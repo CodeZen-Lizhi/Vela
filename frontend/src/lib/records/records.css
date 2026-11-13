@@ -219,8 +219,8 @@
 
 /* 旧版详情使用右侧全高抽屉，标题固定，正文独立滚动。 */
 .record-detail[data-slot="sheet-content"] {
-  width: min(800px, 90vw);
-  max-width: min(800px, 90vw);
+  width: min(1000px, 94vw);
+  max-width: min(1000px, 94vw);
   min-width: 0;
   overflow: hidden;
 }
@@ -245,6 +245,7 @@
 }
 .record-detail-title-row { justify-content: space-between; }
 .record-detail-title-main { flex: 1; flex-wrap: wrap; }
+.record-detail-title-main [data-slot="sheet-title"] { font-size:21px; letter-spacing:-.45px; margin-right:4px; }
 .record-detail-title-row > .records-actions { flex-wrap: nowrap; }
 
 .record-detail-meta[data-slot="sheet-description"] {
@@ -277,15 +278,14 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
-.record-detail-metrics > div {
-  border: 1px solid var(--border);
-  background: var(--muted);
-  border-radius: 8px;
-  padding: 12px 10px;
-  min-width: 0;
-}
-.record-detail-metrics strong { display: block; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.record-detail-metrics span { display: block; margin-top: 5px; font-size: 11px; color: var(--muted-foreground); }
+.record-detail-metrics > [data-slot="card"] { min-width:0; padding-block:12px; gap:0; }
+.record-detail-metrics [data-slot="card-content"] { padding-inline:12px; }
+.record-detail-metrics strong { display:block; margin:6px 0 5px; font-size:20px; line-height:1.2; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.record-detail-metrics span,.record-detail-metrics small { display:block; font-size:11px; color:var(--muted-foreground); }
+.record-detail-tabs { min-width:0; }
+.record-detail-tabs > [data-slot="tabs-list"] { flex-wrap:wrap; height:auto; }
+.record-detail-billing { display:flex; flex-direction:column; gap:14px; }
+.record-detail-billing [data-slot="table-container"] { margin-top:14px; }
 .record-detail-note { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
 .record-detail-section {
   border: 1px solid var(--border);
@@ -301,26 +301,31 @@
 .record-context-grid dt { color: var(--muted-foreground); }
 .record-context-grid dd { margin-top: 4px; min-width: 0; overflow-wrap: anywhere; }
 .record-execution { min-width: 0; }
-.record-execution h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.record-execution h3 { font-size:14px; font-weight:600; margin:0; }
+.record-execution-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:6px 0 18px; }
+.record-execution-heading p { font-size:11px; color:var(--muted-foreground); margin-top:5px; }
 .record-path-scroll { overflow-x: auto; min-width: 0; padding-block: 2px 12px; }
 .record-path-scroll:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.record-path-stage { display: flex; gap: 10px; align-items: center; width: max-content; min-width: 100%; }
-.record-path-node { flex: 0 0 150px; max-width: 180px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--card); font-size: 12px; }
+.record-path-stage { display: flex; gap: 14px; align-items: center; width: max-content; min-width: 100%; }
+.record-path-node { flex:0 0 140px; max-width:160px; gap:10px; padding:16px; font-size:12px; }
 .record-path-node small, .record-attempt small { font-size: 11px; }
 .record-path-node small, .record-attempt small:not(.text-destructive) { color: var(--muted-foreground); }
 .record-path-node code { overflow-wrap: anywhere; white-space: normal; }
 .record-path-arrow { width: 16px; height: 16px; flex-shrink: 0; color: var(--muted-foreground); }
-.record-provider-round { flex: 0 0 220px; min-width: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.record-provider-round h4 { padding: 10px 12px; font-size: 12px; font-weight: 600; background: var(--muted); display: flex; align-items: center; gap: 8px; }
+.record-provider-round { flex:0 0 225px; min-width:0; }
+.record-provider-round h4 { padding: 10px 12px; font-size: 12px; font-weight: 600; background: transparent; display: flex; align-items: center; gap: 8px; }
 .record-provider-round h4 span { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.record-attempt-stack { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.record-attempt-stack { display:flex; flex-direction:column; gap:12px; padding-top:8px; }
 .record-attempt { display: flex; flex-direction: column; align-items: stretch; text-align: left; width: 100%; }
 .record-attempt-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .record-attempt-inspector { padding: 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; display: flex; flex-direction: column; gap: 10px; }
 .record-execution > .record-detail-section { margin-top: 12px; }
-.record-payload-tabs { max-width: 100%; flex-wrap: wrap; }
+.record-payload-tabs { width: 10rem; max-width: 100%; flex-wrap: wrap; }
 .record-payload-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-block: 12px; }
 .record-payload-toolbar > button { max-width: 100%; }
+/* 头部对比与正文视图共用同一网格槽，切换时复制操作不随控件宽度和显隐移动。 */
+.record-payload-view { display: grid; }
+.record-payload-view > * { grid-area: 1 / 1; justify-self: stretch; }
 .record-detail pre { margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow-y: auto; font-size: 11px; line-height: 1.7; background: var(--muted); padding: 14px; border-radius: 8px; min-width: 0; }
 .record-detail td { white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
 .record-detail td small { display: block; color: var(--muted-foreground); }
@@ -330,4 +335,14 @@
 @media (max-width: 900px) {
   .record-detail-header { padding: 14px 18px; }
   .record-detail-body { padding: 16px 18px; }
+}
+
+/* 详情在窄窗将关键指标重排，内容滚动不带动固定头部。 */
+@media(max-width:700px){
+ .record-detail-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .record-detail-metrics>[data-slot="card"]:last-child{grid-column:1/-1}
+ .record-detail-metrics strong{font-size:18px}
+ .record-detail-meta{font-size:11px}
+ .record-context-grid{grid-template-columns:1fr}
+ .record-detail-tabs>[data-slot="tabs-list"]{gap:16px}
 }

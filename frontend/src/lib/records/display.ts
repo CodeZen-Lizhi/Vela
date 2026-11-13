@@ -94,10 +94,7 @@ export function compact(value: number | null | undefined): string {
     maximumFractionDigits: 2,
   }).format(value);
 }
-/** 美元估算金额显示六位小数；未知值不补零。 */
-export function money(value: number | null | undefined): string {
-  return value == null ? "—" : `$${value.toFixed(6)}`;
-}
+export { formatUSD as money } from "../currency.js";
 /** 毫秒展示保持计时精度并缩短列表宽度。 */
 export function duration(value: number | null | undefined): string {
   return value == null

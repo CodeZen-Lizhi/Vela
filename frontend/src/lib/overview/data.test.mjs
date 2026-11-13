@@ -11,8 +11,12 @@ test("逻辑请求与Key尝试严格分开，零倍率费用可独立展示", ()
   assert.equal(groupRows(rows, "key").length, 2);
   assert.equal(summarize(rows.filter(row => !row.keyId)).tokens, 120);
   assert.equal(formatMetric(metrics, "cost"), "$0.00");
-  assert.equal(formatMetric(metrics, "standardCost"), "$0.0003");
-  assert.equal(formatMetric({ ...metrics, unknownStandard: 1 }, "standardCost"), "≥ $0.0003");
+  assert.equal(formatMetric({ ...metrics, standardCost: 47.435, cost: 38.594 }, "standardCost"), "$47.44");
+  assert.equal(formatMetric({ ...metrics, cost: 38.594 }, "cost"), "$38.59");
+  assert.equal(formatMetric(metrics, "standardCost"), "$0.00");
+  assert.equal(formatMetric({ ...metrics, unknownStandard: 1 }, "standardCost"), "$0.00");
+  assert.equal(formatMetric({ ...metrics, unknownUsage: 1 }, "tokens"), "120");
+  assert.equal(formatMetric({ ...metrics, cost: 0.0002, unknownCost: 1 }, "cost"), "$0.00");
 });
 
 /** 日期采用统计时区；已清理日统计不伪造零点小时峰值。 */

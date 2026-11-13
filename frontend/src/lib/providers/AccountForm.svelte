@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatUSD } from "../currency.js";
   import * as Alert from "$lib/components/ui/alert";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { onMount } from "svelte";
@@ -103,10 +104,10 @@
     </Field.Group></Field.Set>
     <section class="query-result" aria-label="最近账户查询结果">
       <h3>最近查询结果</h3>
-      <dl><div><dt>余额</dt><dd>{account.balance.amount === null ? "未知" : `${account.balance.amount} ${account.balance.currency || "USD"}`}</dd></div>
-        {#if account.balance.cash !== null}<div><dt>现金</dt><dd>{account.balance.cash} {account.balance.currency}</dd></div>{/if}
+      <dl><div><dt>余额</dt><dd>{account.balance.amount === null ? "未知" : account.balance.currency.toUpperCase() === "USD" || !account.balance.currency ? formatUSD(account.balance.amount) : `${account.balance.amount} ${account.balance.currency}`}</dd></div>
+        {#if account.balance.cash !== null}<div><dt>现金</dt><dd>{account.balance.currency.toUpperCase() === "USD" ? formatUSD(account.balance.cash) : `${account.balance.cash} ${account.balance.currency}`}</dd></div>{/if}
         {#if account.balance.points !== null}<div><dt>积分</dt><dd>{account.balance.points}</dd></div>{/if}
-        {#if account.balance.used !== null}<div><dt>上游已用</dt><dd>{account.balance.used} {account.balance.currency}</dd></div>{/if}
+        {#if account.balance.used !== null}<div><dt>上游已用</dt><dd>{account.balance.currency.toUpperCase() === "USD" ? formatUSD(account.balance.used) : `${account.balance.used} ${account.balance.currency}`}</dd></div>{/if}
       </dl>
       {#if account.config.mode === "sub2api" && account.balance.subscription}<SubscriptionSummary value={account.balance.subscription}/>{/if}
       {#each statuses as item}<div class="query-state" class:failed={item.status.state === "failed"}><strong>{item.label}：{item.status.state === "success" ? "成功" : item.status.state === "failed" ? "失败" : "尚未查询"}</strong>{#if item.status.error}<p>{item.status.error}</p>{/if}{#if item.status.lastSuccess && !item.status.lastSuccess.startsWith("0001-")}<small>最后成功：{new Date(item.status.lastSuccess).toLocaleString()}</small>{/if}</div>{/each}

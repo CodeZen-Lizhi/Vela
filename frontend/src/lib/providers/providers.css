@@ -16,7 +16,7 @@
 .provider-name { flex:0 1 auto; min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 
 .provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
-.provider-balance { display:inline-flex; align-items:baseline; gap:2px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.provider-balance { display:inline-flex; align-items:baseline; gap:0; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .provider-balance.is-empty { color:var(--muted-foreground); font-weight:400; }
 .provider-currency-symbol { color:var(--primary); font-size:12px; font-weight:650; }
 .provider-key-summary { display:flex; align-items:center; gap:8px; width:100%; max-width:220px; min-width:0; }

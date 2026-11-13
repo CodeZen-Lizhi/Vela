@@ -338,7 +338,8 @@
           options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
         />
       </div>
-      {#if tab === "results"}<div class="v-result-filters">
+      <!-- 保留结果筛选行的占位；计划页签不展示也不能聚焦这些控件。 -->
+      <div class="v-result-filters" class:invisible={tab !== "results"} inert={tab !== "results"} aria-hidden={tab !== "results"}>
           <InputGroup.Root class="v-search"
             ><InputGroup.Input
               bind:value={query}
@@ -356,7 +357,7 @@
               })),
             ]}
           />
-        </div>{/if}
+        </div>
     </div>
     {#if running && snapshot}
       <VerificationActivity progress={snapshot.progress} {busy} onstop={stop} />
@@ -543,12 +544,10 @@
           </Empty.Root>{/if}
       </div>{/if}
     </Tabs.Content>
-    {#if tab === "results"}
-      <footer class="v-surface-footer">
+      <footer class="v-surface-footer" class:invisible={tab !== "results"} aria-hidden={tab !== "results"}>
         <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span>检测会产生上游消耗；结果不是身份认证。</span
         >
       </footer>
-    {/if}
   </Tabs.Root>
 </section>
 <Dialog.Root

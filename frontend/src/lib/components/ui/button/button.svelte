@@ -16,10 +16,12 @@
 				subnavigation: "justify-start text-muted-foreground hover:text-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground aria-[current=page]:font-semibold",
 				/** 可拖动供应商整行入口使用统一布局和拖动状态。 */
 				row: "justify-start rounded-none border-0 bg-card text-left hover:bg-muted focus-visible:bg-muted active:translate-y-0 data-[dragging=true]:rounded-lg data-[dragging=true]:bg-accent data-[dragging=true]:shadow-lg data-[inactive=true]:opacity-60 aria-disabled:cursor-wait",
+                /** 请求尝试卡按 HTTP 结果使用语义边框，选中时保留统一主题反馈。 */
+                attempt: "border-border bg-card hover:bg-muted data-[result=success]:border-positive/30 data-[result=failed]:border-destructive/30 data-[selected=true]:ring-1 data-[selected=true]:ring-primary/40 data-[selected=true]:bg-accent",
 				/** 实时开关以主题色与呼吸灯强调运行状态。 */
 				live: "border-primary/30 bg-background text-primary hover:bg-accent",
-				/** Token构成胶囊复用按钮的键盘焦点与提示触发，颜色来自内部统计分段。 */
-                token: "gap-0 overflow-hidden rounded-full border-0 bg-muted active:translate-y-0",
+				/** 数值详情入口保持正文色，悬停与展开时使用主题强调色。 */
+                metric: "text-foreground hover:text-primary aria-expanded:text-primary active:translate-y-0",
                 /** 趋势图的透明命中区保留鼠标反馈与键盘焦点。 */
                 plot: "rounded-sm border-0 bg-transparent hover:bg-primary/10 focus-visible:bg-primary/10 active:translate-y-0",
                 /** 年度热力图颜色仅表达真实数据强度，未记录日期降低对比。 */
@@ -45,8 +47,6 @@
 				content: "h-auto gap-2 px-3 py-2 whitespace-normal",
 				// table-inline 用于表格文字入口，不占额外列宽，保留主题与焦点反馈。
 				"table-inline": "h-auto gap-1 p-0 text-xs",
-				/** 总览明细Token胶囊固定72×8，与参考原型一致。 */
-                token: "h-2 w-[72px] min-w-[72px] gap-0 p-0",
                 /** 图表命中区跟随绘图区布局，不引入控件固定尺寸。 */
                 plot: "h-full min-w-0 flex-1 p-0",
                 /** 年历以13px方格保持与认可原型一致的信息密度。 */

@@ -1,3 +1,5 @@
+import { formatUSD } from "../currency.js";
+export { formatUSD as money } from "../currency.js";
 import type { OverviewMetrics, OverviewRow } from "../generated/mygo";
 
 /** 统计维度使用稳定身份分组，名称只用于展示。 */
@@ -46,17 +48,12 @@ export function compact(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
 }
 
-/** 金额显示足够的小数以保留日常调用的小额消耗。 */
-export function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < 0.01 ? 6 : 4 })}`;
-}
-
-/** 部分已知数值带下界标记；全部未知时显示破折号。 */
+/** 显示已知合计，不添加下界符号；全部未知显示破折号，美元金额统一保留两位小数。 */
 export function formatMetric(total: OverviewMetrics, metric: Metric): string {
   const unknown = metric === "standardCost" ? total.unknownStandard : metric === "cost" ? total.unknownCost : metric === "tokens" ? total.unknownUsage : 0;
   if (total.requests > 0 && unknown >= total.requests && total[metric] === 0) return "—";
   const value = total[metric];
-  return `${unknown ? "≥ " : ""}${metric === "cost" || metric === "standardCost" ? money(value) : compact(value)}`;
+  return metric === "cost" || metric === "standardCost" ? formatUSD(value) : compact(value);
 }
 
 /** 缺少历史状态时不声称完整成功率；进行中请求不在已结算统计内。 */

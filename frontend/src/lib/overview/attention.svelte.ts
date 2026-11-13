@@ -1,3 +1,4 @@
+import { formatUSD } from "../currency.js";
 import { VelaService, type AttentionSettings, type ProviderKey } from "$lib/generated/mygo";
 import { isMyGo } from "mygo-runtime";
 import { errorMessage } from "$lib/settings/sections";
@@ -80,7 +81,7 @@ export async function refreshAttention(): Promise<void> {
     const balance = account.balance;
     // 美元阈值不能直接比较人民币或积分，保持原币种事实。
     if (balance.amount !== null && balance.currency === "USD" && balance.amount < settings.attention.balanceThreshold) {
-      items.push({ id: `balance:${provider.id}`, kind: "balance", path: provider.name, title: "供应商余额不足", detail: `余额 $${balance.amount.toFixed(2)} · 低于 $${settings.attention.balanceThreshold}` });
+      items.push({ id: `balance:${provider.id}`, kind: "balance", path: provider.name, title: "供应商余额不足", detail: `余额 ${formatUSD(balance.amount)} · 低于 ${formatUSD(settings.attention.balanceThreshold)}` });
     }
     if (summary.health.state !== "normal") {
       const state = { degraded: "降级", abnormal: "异常", unavailable: "不可用" }[summary.health.state];

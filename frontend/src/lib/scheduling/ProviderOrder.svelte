@@ -39,7 +39,7 @@
     pointerId: number;
     /** 拖动开始前的完整顺序。 */
     before: ProviderOverview[];
-    /** 行在窗口中的初始左、上坐标与宽高，单位为像素。 */
+    /** 浮动行初始坐标与宽度，height 是含底边框的外层占位高度，单位为像素。 */
     left: number; top: number; width: number; height: number;
     /** 起始及当前指针纵坐标，单位为窗口像素。 */
     startY: number; y: number;
@@ -101,7 +101,7 @@
     void persist(before, id);
   }
 
-  /** 按住整行开始拖动，捕获指针并将实际行浮起；占位行仍参与列表布局。 */
+  /** 按住整行捕获指针并浮起实际行；占位包含外层底边框，避免按下时列表缩短。 */
   function start(event: PointerEvent, id: string): void {
     if (event.button !== 0 || !event.isPrimary || saving || drag) return;
     event.preventDefault();
@@ -109,7 +109,7 @@
     row.focus({ preventScroll: true });
     const rect = row.getBoundingClientRect();
     drag = { id, pointerId: event.pointerId, before: [...ordered],
-      left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+      left: rect.left, top: rect.top, width: rect.width, height: row.parentElement!.getBoundingClientRect().height,
       startY: event.clientY, y: event.clientY };
     list.setPointerCapture(event.pointerId);
   }

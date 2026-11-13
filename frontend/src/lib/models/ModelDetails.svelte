@@ -7,6 +7,7 @@
   import PriceSummary from "./PriceSummary.svelte";
   import {
     dateLabel,
+    money,
     kinds,
     modelInitial,
     rateNames,
@@ -19,11 +20,6 @@
   const pricing = $derived(model.pricing);
   /** 生效星期使用与后端相同的周日到周六顺序。 */
   const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-
-  /** 与价格概览保持两位美元小数，小额单价保留有效精度。 */
-  function money(value: number): string {
-    return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`;
-  }
 
   /** Token 上限使用紧凑单位，未知值由调用处明确展示。 */
   function tokens(value: number): string {
