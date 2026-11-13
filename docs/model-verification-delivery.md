@@ -46,3 +46,12 @@
 
 - 计划卡移除“固定组合”“模型线路”和“组合覆盖”的抽象计数，改为显示当前检测状态、最近执行时间和具体检测目标的模型、Key、请求协议、思考强度及单条状态；更多线路通过“编辑范围”查看，不再在卡片内增加滚动。
 - Ego 实际组件与隔离快照核对检测中、尚未检测、已有结果和目标不可执行四种状态；1200px 卡片内无横向溢出，600px 状态区与操作按钮按单列换行，页面无横向溢出，运行时错误为 0。Svelte 检查 0 错误、0 警告。
+
+## 计划卡精简为最近执行与链路数（2026-11-13）
+
+- 用户根据截图中“检测内容”列表确认，检测计划卡不再展示模型、Key、请求协议、思考强度或单条状态，只显示供应商、自动运行配置、启停、最近执行时间和已配置链路数；全局检测任务条继续显示运行中的真实目标与样本进度。
+- 需求同步至 [模型验证需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/model-verification.md) 的 MV-R01、MV-R03、MV-A16、MV-A24。
+- Chromium 运行实际 `VerificationPage` 组件并使用固定只读快照核对：1200px 三列、820px 两列；三张计划卡均只出现“最近执行”和“已配置链路”，分别显示未执行/2 条、最近执行/1 条、最近执行/5 条；页面不含“检测内容”、模型、Key、协议、思考强度或单条状态，820px 页面无横向溢出，Vite 错误覆盖层不存在。证据位于 `.cache/verification-plan-preview/preview-1200-light-final.png` 与 `.cache/verification-plan-preview/preview-820-light-final.png`。
+- `svelte-check` 0 错误、0 警告；前端生产构建通过，仅保留既有单 JS 分块大于 500kB 提示。浏览器使用固定 MyGo 响应替身，未重新执行真实检测或原生 WebView 组合验收。
+- 根据用户对计划页工具栏“筛选器独占第二行、左侧大量留白”的反馈，检测计划页签改为单行工具栏：页签在左，供应商筛选和创建操作靠右。Chromium 运行实际组件，1200px 与 820px 均为单行，工具栏高度分别为 61px、65px，页面无横向溢出；验证结果页签仍保留搜索、结论和供应商筛选，Vite 错误覆盖层不存在。证据位于 `.cache/verification-plan-preview/preview-toolbar-1200.png` 与 `.cache/verification-plan-preview/preview-toolbar-820.png`。
+- 根据用户对计划卡内部空带和页面下方整块白区的最新反馈，计划卡取消指标与操作栏之间的重复分隔和大间隙，改为 10px 紧凑间距；计划网格固定为三列、两列、一列断点并禁止卡片随行高拉伸，灰色计划画布填满剩余数据区，计划页签不再挂载只服务结果页的隐藏底栏。Chromium 1440×1000 实测卡片按内容保持 190px 左右高度、灰色画布延伸到列表表面底部、页面无横向溢出且无错误覆盖层；证据位于 `.cache/verification-plan-preview/preview-compact-1440-polished.png`。

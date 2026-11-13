@@ -38,8 +38,6 @@
     conclusions,
     effort,
     probability,
-    protocols,
-    sameLine,
     time,
     unavailable,
   } from "./display";
@@ -249,9 +247,9 @@
       busy = false;
     }
   }
-  /** 当前计划有效线路与已完成可用结果构成覆盖数；失败或取消不计成功覆盖。 */
-  function coverage(plan: VerificationPlan): { total: number; done: number } {
-    const valid = plan.lines.filter((line) =>
+  /** 当前计划仍可映射到有效目标时返回线路数，仅用于控制立即检测入口。 */
+  function executableLines(plan: VerificationPlan): number {
+    return plan.lines.filter((line) =>
       snapshot?.targets.some(
         (target) =>
           target.providerId === plan.providerId &&
@@ -259,129 +257,7 @@
           target.keyId === line.keyId &&
           !target.reason,
       ),
-    );
-    return {
-      total: valid.length,
-      done: valid.filter((line) =>
-        snapshot?.reports.some(
-          (report) =>
-            report.target.providerId === plan.providerId &&
-            sameLine(line, report.target) &&
-            report.state === "complete" &&
-            report.conclusion !== "insufficient" &&
-            !unavailable(report, snapshot?.targets ?? []),
-        ),
-      ).length,
-    };
-  }
-  /** 检测目标状态直接区分已有可用结果、等待检测和不可执行。 */
-  type PlanLineState = "covered" | "pending" | "blocked" | "running";
-  /** 单条线路摘要保留定位所需的模型、Key、协议和强度，不在卡内只展示抽象计数。 */
-  type PlanLineSummary = {
-    model: string;
-    key: string;
-    protocol: string;
-    effort: string;
-    state: PlanLineState;
-    reason: string;
-  };
-  const lineStates = {
-    covered: { label: "已有结果", variant: "positive" },
-    pending: { label: "待检测", variant: "warning" },
-    blocked: { label: "不可执行", variant: "negative" },
-    running: { label: "检测中", variant: "processing" },
-  } as const;
-  /** 判断单条线路当前是否有可用结果；兼容关系失效时保留真实原因。 */
-  function lineState(
-    plan: VerificationPlan,
-    line: VerificationPlan["lines"][number],
-  ): { state: PlanLineState; reason: string } {
-    const target = snapshot?.targets.find(
-      (item) =>
-        item.providerId === plan.providerId &&
-        item.modelId === line.modelId &&
-        item.keyId === line.keyId,
-    );
-    if (!target) return { state: "blocked", reason: "模型或 Key 已不可用" };
-    if (target.reason) return { state: "blocked", reason: target.reason };
-    if (
-      running &&
-      snapshot?.progress.target.providerId === plan.providerId &&
-      sameLine(line, snapshot.progress.target)
-    )
-      return { state: "running", reason: "" };
-    const report = snapshot?.reports.find(
-      (item) =>
-        item.target.providerId === plan.providerId &&
-        sameLine(line, item.target),
-    );
-    if (
-      report &&
-      !unavailable(report, snapshot?.targets ?? []) &&
-      report.state === "complete" &&
-      report.conclusion !== "insufficient"
-    )
-      return { state: "covered", reason: "" };
-    return { state: "pending", reason: "" };
-  }
-  /** 卡片最多直接展示两条线路，其余通过编辑范围查看，避免方卡内出现滚动区。 */
-  function summaries(plan: VerificationPlan): PlanLineSummary[] {
-    return plan.lines.slice(0, 2).map((line) => {
-      const target = snapshot?.targets.find(
-        (item) =>
-          item.providerId === plan.providerId &&
-          item.modelId === line.modelId &&
-          item.keyId === line.keyId,
-      );
-      return {
-        model: target?.modelName || line.modelId,
-        key: target?.keyName || line.keyId,
-        protocol:
-          protocols.find((item) => item.value === line.protocol)?.label ||
-          line.protocol,
-        effort: effort(line.effort),
-        ...lineState(plan, line),
-      };
-    });
-  }
-  /** 计划级状态用可读文案表达整体进度，不把抽象组合比例作为主要信息。 */
-  function planState(
-    covered: { total: number; done: number },
-    providerId: string,
-  ): {
-    label: string;
-    variant: "negative" | "warning" | "info" | "positive" | "processing";
-    detail: string;
-  } {
-    if (running && snapshot?.progress.target.providerId === providerId)
-      return {
-        label: "检测中",
-        variant: "processing",
-        detail: "正在采集本轮样本并等待检测结果",
-      };
-    if (!covered.total)
-      return {
-        label: "不可执行",
-        variant: "negative",
-        detail: "当前没有可执行的检测目标",
-      };
-    if (!covered.done)
-      return {
-        label: "尚未检测",
-        variant: "warning",
-        detail: "等待首次检测",
-      };
-    if (covered.done < covered.total)
-      return {
-        label: "部分完成",
-        variant: "info",
-        detail: "仍有检测目标需要补充结果",
-      };
-    return {
-      label: "检测完成",
-      variant: "positive",
-      detail: "全部目标已有可用结果",
-    };
+    ).length;
   }
 </script>
 
@@ -400,43 +276,53 @@
           <Tabs.Trigger value="results">验证结果 <span>{scopedReports.length}</span></Tabs.Trigger>
           <Tabs.Trigger value="plans">检测计划 <span>{scopedPlans.length}</span></Tabs.Trigger>
         </Tabs.List>
-        <Button
-          class="v-create-plan"
-          size="sm"
-          disabled={!desktop || !snapshot || !providers.length}
-          onclick={() => openPlan()}
-          ><Plus data-icon="inline-start" />{providerId &&
-          snapshot?.plans.some((plan) => plan.providerId === providerId)
-            ? "编辑当前计划"
-            : "创建检测计划"}</Button
-        >
-      <div class="v-filters">
-        <!-- 结果筛选只属于验证结果页签；计划页签不展示也不能聚焦这些控件。 -->
-        <div class="v-result-filters" inert={tab !== "results"} aria-hidden={tab !== "results"}>
-          <InputGroup.Root class="v-search"
-            ><InputGroup.Input
-              bind:value={query}
-              aria-label="搜索验证结果"
-              placeholder="搜索模型、Key、供应商或思考强度"
-            /><InputGroup.Addon><Search /></InputGroup.Addon></InputGroup.Root
-          ><Choice
-            bind:value={status}
-            label="验证结论"
-            options={[
-              { value: "all", label: "全部状态" },
-              ...Object.entries(conclusions).map(([value, label]) => ({
-                value,
-                label,
-              })),
-            ]}
+        <div class="v-toolbar-actions">
+          <!-- 计划页签把供应商筛选和创建操作收在同一侧，避免筛选独占空行。 -->
+          {#if tab === "plans"}<Choice
+            bind:value={providerId}
+            label="验证供应商"
+            options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
+          />{/if}
+          <Button
+            class="v-create-plan"
+            size="sm"
+            disabled={!desktop || !snapshot || !providers.length}
+            onclick={() => openPlan()}
+            ><Plus data-icon="inline-start" />{providerId &&
+            snapshot?.plans.some((plan) => plan.providerId === providerId)
+              ? "编辑当前计划"
+              : "创建检测计划"}</Button
+          >
+        </div>
+      {#if tab === "results"}
+        <div class="v-filters">
+          <!-- 搜索与结论筛选只属于验证结果页签；两个页签都保留供应商范围筛选。 -->
+          <div class="v-result-filters">
+            <InputGroup.Root class="v-search"
+              ><InputGroup.Input
+                bind:value={query}
+                aria-label="搜索验证结果"
+                placeholder="搜索模型、Key、供应商或思考强度"
+              /><InputGroup.Addon><Search /></InputGroup.Addon></InputGroup.Root
+            ><Choice
+              bind:value={status}
+              label="验证结论"
+              options={[
+                { value: "all", label: "全部状态" },
+                ...Object.entries(conclusions).map(([value, label]) => ({
+                  value,
+                  label,
+                })),
+              ]}
+            />
+          </div>
+          <Choice
+            bind:value={providerId}
+            label="验证供应商"
+            options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
           />
         </div>
-        <Choice
-          bind:value={providerId}
-          label="验证供应商"
-          options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
-        />
-      </div>
+      {/if}
     </div>
     {#if running && snapshot}
       <VerificationActivity progress={snapshot.progress} {busy} onstop={stop} />
@@ -532,14 +418,14 @@
             >{/if}
         </Empty.Root>{/if}
     {:else}<div class="v-plans">
-        {#each scopedPlans as plan (plan.providerId)}{@const covered =
-            coverage(plan)}{@const name =
+        {#each scopedPlans as plan (plan.providerId)}{@const executable =
+            executableLines(plan)}{@const name =
             providerOptions.find((item) => item.value === plan.providerId)
               ?.label ||
             snapshot?.targets.find(
               (target) => target.providerId === plan.providerId,
             )?.providerName ||
-            plan.providerId}{@const state = planState(covered, plan.providerId)}
+            plan.providerId}
           <article class="v-plan">
             <header>
               <div class="v-identity">
@@ -559,45 +445,16 @@
                 onCheckedChange={(enabled) => toggle(plan, enabled)}
               />
             </header>
-            <section class="v-plan-summary" aria-label={`${name} 检测状态`}>
-              <div class="v-plan-state">
-                <Badge variant={state.variant}>{state.label}</Badge>
-                <span>{state.detail}</span>
+            <dl class="v-plan-facts">
+              <div>
+                <dt>最近执行</dt>
+                <dd class:is-empty={!plan.lastAt}>{time(plan.lastAt)}</dd>
               </div>
-              <div class="v-plan-last-run">
-                <span>最近执行</span><strong>{time(plan.lastAt)}</strong>
+              <div>
+                <dt>已配置链路</dt>
+                <dd><strong>{plan.lines.length}</strong><span>条</span></dd>
               </div>
-            </section>
-            <section class="v-bindings">
-              <div class="v-bindings-heading">
-                <strong>检测内容</strong>
-              </div>
-              {#each summaries(plan) as summary, index}<div class="v-target">
-                  <span class="v-target-index"
-                    >{String(index + 1).padStart(2, "0")}</span
-                  >
-                  <div class="v-target-copy">
-                    <div class="v-target-heading">
-                      <strong>{summary.model}</strong>
-                      <Badge variant={lineStates[summary.state].variant}
-                        >{lineStates[summary.state].label}</Badge
-                      >
-                    </div>
-                    <Hint overflowOnly text={summary.key}>{#snippet children(hintProps5)}<small {...hintProps5}
-                      >{summary.key}</small
-                    >{/snippet}</Hint>
-                    <div class="v-target-meta">
-                      <span>{summary.protocol}</span><span>思考{summary.effort}</span>
-                    </div>
-                    {#if summary.reason}<small class="v-target-reason"
-                        >{summary.reason}</small
-                      >{/if}
-                  </div>
-                </div>{/each}
-              {#if plan.lines.length > 2}<small class="v-target-more"
-                  >更多线路请通过“编辑范围”查看</small
-                >{/if}
-            </section>
+            </dl>
             <footer>
               <small>检测会产生上游费用</small>
               <div class="v-actions">
@@ -607,7 +464,7 @@
                   onclick={() => openPlan(plan)}>编辑范围</Button
                 ><Button onclick={() => start(plan.providerId)}
                   size="sm"
-                  disabled={!desktop || busy || running || !covered.total}
+                  disabled={!desktop || busy || running || !executable}
 
                   ><Play data-icon="inline-start" />立即检测</Button
                 >
@@ -625,10 +482,12 @@
           </Empty.Root>{/if}
       </div>{/if}
     </Tabs.Content>
-      <footer class="v-surface-footer" class:invisible={tab !== "results"} aria-hidden={tab !== "results"}>
-        <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span>检测会产生上游消耗；结果不是身份认证。</span
-        >
-      </footer>
+      {#if tab === "results"}
+        <footer class="v-surface-footer">
+          <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span>检测会产生上游消耗；结果不是身份认证。</span
+          >
+        </footer>
+      {/if}
   </Tabs.Root>
 </section>
 <Dialog.Root
