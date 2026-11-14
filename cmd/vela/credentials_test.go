@@ -93,8 +93,8 @@ func TestCredentialsServiceRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 1 || keys[0].Proxy.Mode != providers.ProxyProvider {
-		t.Fatal("Key 加密代理重读失败")
+	if len(keys) != 1 || keys[0].Proxy.Mode != providers.ProxyGlobal {
+		t.Fatal("Key 旧 provider 代理应迁移为 global，并在加密重启后保持")
 	}
 	data, err := json.Marshal(keys)
 	if err != nil || strings.Contains(string(data), "test-upstream-secret-123456") {
