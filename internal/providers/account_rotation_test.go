@@ -197,7 +197,7 @@ func TestAccountRotationCanceledSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.endQuery()
-	h, err := a.connection(ctx, c, ProxyChoice{Mode: ProxyDirect}, ProxyChoice{Mode: ProxyDirect})
+	h, err := a.connection(ctx, c, ProxyChoice{Mode: ProxyDirect})
 	if err != nil {
 		t.Fatal(err)
 	}

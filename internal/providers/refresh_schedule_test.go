@@ -39,7 +39,7 @@ func TestIndependentRefreshCycles(t *testing.T) {
 	defer server.Close()
 	a, p := combinedFixture(t, server.URL)
 	ctx := context.Background()
-	if _, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture"}}); err != nil {
+	if _, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture"}}); err != nil {
 		t.Fatal(err)
 	}
 	k, err := a.store.CreateKey(ctx, p.ID, keyDraft("manual-name", "fixture-key", 1))

@@ -71,7 +71,7 @@ func TestAccountUsagePersistence(t *testing.T) {
 		t.Fatal(e)
 	}
 	draft := ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-sensitive-token"}}
-	result, e := a.SaveProviderAccount(ctx, p.ID, draft)
+	result, e := saveAndRefreshProviderAccount(a, ctx, p.ID, draft)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -80,7 +80,7 @@ func TestAccountUsagePersistence(t *testing.T) {
 	}
 	fail.Store(true)
 	draft.Config.APIKey = ""
-	result, e = a.SaveProviderAccount(ctx, p.ID, draft)
+	result, e = saveAndRefreshProviderAccount(a, ctx, p.ID, draft)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -132,7 +132,7 @@ func TestAccountCustomIsolation(t *testing.T) {
 	defer server.Close()
 	a, p, k, other := accountFixture(t, server.URL)
 	config := QueryConfig{Mode: "custom", Method: "POST", URL: server.URL, Headers: `{"X-Secret":"header-fixture"}`, Body: `{"token":"body-fixture"}`, BalancePath: "data.balance"}
-	account, e := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: config})
+	account, e := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: config})
 	if e != nil || account.Balance.Amount == nil || *account.Balance.Amount != 5 {
 		t.Fatalf("balance: %+v %v", account, e)
 	}
@@ -211,7 +211,7 @@ func TestAccountSub2APIRotation(t *testing.T) {
 	}))
 	defer server.Close()
 	a, p, k, _ := accountFixture(t, server.URL)
-	if _, e := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "sub2api", RefreshToken: "original-fixture"}}); e != nil {
+	if _, e := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "sub2api", RefreshToken: "original-fixture"}}); e != nil {
 		t.Fatal(e)
 	}
 	q, e := a.SaveProviderKeyQuery(ctx, k.ID, ProviderKeyQueryDraft{ReuseProvider: true, NameSource: "upstream_group", MultiplierSource: "upstream"})
@@ -279,7 +279,7 @@ func TestAccountNewAPI(t *testing.T) {
 	defer server.Close()
 	a, p, k, _ := accountFixture(t, server.URL)
 	d := ProviderAccountDraft{Config: QueryConfig{Mode: "newapi", UserID: "42", AccessToken: "system-fixture"}}
-	account, e := a.SaveProviderAccount(ctx, p.ID, d)
+	account, e := saveAndRefreshProviderAccount(a, ctx, p.ID, d)
 	if e != nil || account.Balance.Amount == nil || *account.Balance.Amount != 5 || *account.Balance.Used != 1 || checkins.Load() != 0 {
 		t.Fatalf("conversion %+v %v", account, e)
 	}
@@ -297,7 +297,7 @@ func TestAccountNewAPI(t *testing.T) {
 		t.Fatalf("auto %+v %v", q, e)
 	}
 	d.Checkin = true
-	account, e = a.SaveProviderAccount(ctx, p.ID, d)
+	account, e = saveAndRefreshProviderAccount(a, ctx, p.ID, d)
 	if e != nil || account.Balance.Status.State != "success" || account.Balance.Checkin.State != "failed" || checkins.Load() != 1 {
 		t.Fatalf("checkin %+v %v", account, e)
 	}
@@ -383,7 +383,7 @@ func TestAccountMasterKeyLoss(t *testing.T) {
 		t.Fatal(e)
 	}
 	draft := ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-original"}}
-	if _, e = a.SaveProviderAccount(ctx, p.ID, draft); e != nil {
+	if _, e = saveAndRefreshProviderAccount(a, ctx, p.ID, draft); e != nil {
 		t.Fatal(e)
 	}
 	var before []byte
@@ -401,7 +401,7 @@ func TestAccountMasterKeyLoss(t *testing.T) {
 	if _, e = a.ProviderAccount(ctx, p.ID); e == nil {
 		t.Fatal("missing master key accepted")
 	}
-	if _, e = a.SaveProviderAccount(ctx, p.ID, draft); e == nil {
+	if _, e = saveAndRefreshProviderAccount(a, ctx, p.ID, draft); e == nil {
 		t.Fatal("lost credential replaced")
 	}
 	if _, e = s.CreateKey(ctx, p.ID, keyDraft("cannot-seal", "fixture-new-secret", 1)); e == nil {
@@ -438,7 +438,7 @@ func TestAccountProxyChoice(t *testing.T) {
 	if _, e := a.store.Update(ctx, p.ID, d); e != nil {
 		t.Fatal(e)
 	}
-	account, e := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "balance-only"}})
+	account, e := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "balance-only"}})
 	if e != nil || account.Balance.Amount == nil || *account.Balance.Amount != 7 || proxied.Load() != 1 || direct.Load() != 0 {
 		t.Fatalf("proxy balance %+v %v", account, e)
 	}
@@ -510,7 +510,7 @@ func TestAccountStaleConnectionRotation(t *testing.T) {
 	}))
 	defer server.Close()
 	a, p, _, _ := accountFixture(t, server.URL)
-	if _, e := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "sub2api", RefreshToken: "initial"}}); e != nil {
+	if _, e := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "sub2api", RefreshToken: "initial"}}); e != nil {
 		t.Fatal(e)
 	}
 	block.Store(true)
@@ -521,7 +521,7 @@ func TestAccountStaleConnectionRotation(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("no auth request")
 	}
-	// 写入与公开保存相同的加密/世代路径，跳过随后会排队的主动同步以精确观察旧请求。
+	// 直接写入加密配置和指定世代、清空旧余额，以精确观察旧请求能否写回。
 	a.store.mu.Lock()
 	e := a.writeAccount(ctx, "provider_accounts", p.ID, QueryConfig{Mode: "sub2api", BaseURL: server.URL, RefreshToken: "new-user-token"}, ProviderAccount{ProviderID: p.ID}, "changed-generation")
 	a.store.mu.Unlock()
@@ -553,12 +553,12 @@ func TestAccountCustomGET(t *testing.T) {
 	defer server.Close()
 	a, p, _, _ := accountFixture(t, server.URL)
 	d := ProviderAccountDraft{Config: QueryConfig{Mode: "custom", Method: "GET", URL: server.URL + "?token=query-secret", BalancePath: "data.balance", Body: `{"ignored":true}`}}
-	result, err := a.SaveProviderAccount(context.Background(), p.ID, d)
+	result, err := saveAndRefreshProviderAccount(a, context.Background(), p.ID, d)
 	if err != nil || !accepted.Load() || strings.Contains(result.Config.URL, "query-secret") || result.Balance.Amount == nil || *result.Balance.Amount != 0 {
 		t.Fatalf("GET %+v %v", result, err)
 	}
 	d.Config = result.Config
-	result, err = a.SaveProviderAccount(context.Background(), p.ID, d)
+	result, err = saveAndRefreshProviderAccount(a, context.Background(), p.ID, d)
 	if err != nil || !accepted.Load() || result.Balance.Status.State != "success" {
 		t.Fatalf("masked GET %+v %v", result, err)
 	}
@@ -601,7 +601,7 @@ func TestAccountRefreshSkipsDeletedObjects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = a.SaveProviderAccount(ctx, survivor.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-survivor"}}); err != nil {
+			if _, err = saveAndRefreshProviderAccount(a, ctx, survivor.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-survivor"}}); err != nil {
 				t.Fatal(err)
 			}
 			balances.Store(0)

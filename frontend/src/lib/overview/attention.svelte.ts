@@ -1,5 +1,5 @@
 import { formatUSD } from "../currency.js";
-import { VelaService, type AttentionSettings, type ProviderKey } from "$lib/generated/mygo";
+import { events, VelaService, type AttentionSettings, type ProviderKey } from "$lib/generated/mygo";
 import { isMyGo } from "mygo-runtime";
 import { errorMessage } from "$lib/settings/sections";
 import { time as verificationTime } from "$lib/verification/display";
@@ -140,23 +140,29 @@ export function applyAttentionPreferences(preferences: AttentionSettings): void 
 /** 应用生命周期内持续读本地状态；隐藏时停读，恢复立即重读，离开页面不会丢基线。 */
 export function observeAttention(): () => void {
   if (!isMyGo()) return () => {};
-  let stopped = false, running = false;
+  let stopped = false, running = false, pending = false;
   let timer: ReturnType<typeof setTimeout>;
   let storageValid = true;
   try { restore(); } catch (cause) { storageValid = false; attention.error = `无法读取倍率提醒记录：${errorMessage(cause)}`; }
   /** 串行轮询，销毁或隐藏时不继续安排查询。 */
   const poll = async (): Promise<void> => {
-    if (stopped || running || document.hidden || !storageValid) return;
+    if (stopped || document.hidden || !storageValid) return;
+    if (running) { pending = true; return; }
     running = true;
     try { await refreshAttention(); } catch (cause) { attention.error = `关注事项更新失败：${errorMessage(cause)}`; }
     finally {
       running = false;
-      if (!stopped) timer = setTimeout(() => void poll(), attention.seconds * 1000);
+      if (!stopped) {
+        if (pending) { pending = false; void poll(); }
+        else timer = setTimeout(() => void poll(), attention.seconds * 1000);
+      }
     }
   };
   /** 页面恢复可见时取消旧计时并重读，避免重叠请求。 */
   const visible = (): void => { if (!document.hidden) { clearTimeout(timer); void poll(); } };
   document.addEventListener("visibilitychange", visible);
+    const unsubscribeVisible = events.windowVisible.on(visible);
+    const unsubscribeAccounts = events.providerAccountsRefreshed.on(visible);
   void poll();
-  return () => { stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
+  return () => { unsubscribeVisible(); unsubscribeAccounts(); stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
 }

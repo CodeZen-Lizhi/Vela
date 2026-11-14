@@ -48,7 +48,7 @@ func assertProxyPrivate(t *testing.T, data []byte) {
 	}
 }
 
-// TestLocalProxyMigration 验证明文及已加密文档旧custom和Key global统一迁为继承，移除URL、保留未知字段并可重启。
+// TestLocalProxyMigration 验证明文及已加密文档旧 custom 和 Key provider 统一迁为全局，移除URL、保留未知字段并可重启。
 func TestLocalProxyMigration(t *testing.T) {
 	for _, encrypted := range []bool{false, true} {
 		t.Run(fmt.Sprint(encrypted), func(t *testing.T) {
@@ -120,8 +120,9 @@ func TestLocalProxyMigration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			keyDocuments := map[string]string{}
 			for i, k := range keys {
-				want := ProxyProvider
+				want := ProxyGlobal
 				if k.Name == "direct" {
 					want = ProxyDirect
 				}
@@ -129,6 +130,7 @@ func TestLocalProxyMigration(t *testing.T) {
 					t.Fatal("Key模式迁移错误")
 				}
 				raw := proxyDocument(t, s, "provider_keys", k.ID)
+				keyDocuments[k.ID] = raw
 				var kd map[string]any
 				if err = s.decodeDocument([]byte(raw), &kd); err != nil {
 					t.Fatal(err)
@@ -147,6 +149,11 @@ func TestLocalProxyMigration(t *testing.T) {
 			}
 			if err = s.removeLocalProxies(ctx); err != nil || proxyDocument(t, s, "providers", p.ID) != first {
 				t.Fatal("重复迁移不幂等", err)
+			}
+			for id, raw := range keyDocuments {
+				if proxyDocument(t, s, "provider_keys", id) != raw {
+					t.Fatal("Key 重复迁移不幂等")
+				}
 			}
 			if _, err = s.Snapshot(ctx); err != nil {
 				t.Fatal(err)
@@ -186,7 +193,7 @@ func TestLocalProxyMigrationRollback(t *testing.T) {
 	}
 }
 
-// TestLocalProxyModesRejectObsolete 验证写入边界只接受两种模式，不恢复旧custom或Key global。
+// TestLocalProxyModesRejectObsolete 验证写入边界只接受两种模式，拒绝旧 custom 和空模式，Key 兼容 provider。
 func TestLocalProxyModesRejectObsolete(t *testing.T) {
 	ctx := context.Background()
 	a, p := combinedFixture(t, "http://127.0.0.1:1")
@@ -196,7 +203,7 @@ func TestLocalProxyModesRejectObsolete(t *testing.T) {
 		_, err := a.store.Create(ctx, d)
 		expectError(t, err, "网络代理")
 	}
-	for _, mode := range []ProxyMode{"custom", ProxyGlobal, ""} {
+	for _, mode := range []ProxyMode{"custom", ""} {
 		d := keyDraft("invalid", "", 1)
 		d.Proxy.Mode = mode
 		_, err := a.store.CreateKey(ctx, p.ID, d)
@@ -235,7 +242,7 @@ func TestGlobalProxyAccountInheritance(t *testing.T) {
 		}
 		return true, global, nil
 	}
-	account, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "balance-only"}})
+	account, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "balance-only"}})
 	if err != nil || account.Balance.Status.State != "success" || proxyHits.Load() != 1 {
 		t.Fatal("余额未继承全局认证代理", err)
 	}
@@ -258,10 +265,21 @@ func TestGlobalProxyAccountInheritance(t *testing.T) {
 	if _, err = a.store.Update(ctx, p.ID, d); err != nil {
 		t.Fatal(err)
 	}
-	account, err = a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api"}})
-	// 保存余额配置还会同步复用它的 Key，两项都必须直连且不读取全局认证。
+	account, err = saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api"}})
+	// 保存后显式刷新余额及复用它的 Key，两项都必须直连且不读取全局认证。
 	if err != nil || account.Balance.Status.State != "success" || globalReads.Load() != reads || directHits.Load() != 3 {
 		t.Fatal("供应商直连读取全局凭据", err)
+	}
+	// 供应商直连不影响 Key global；旧 provider 输入保存后也必须归一为 global。
+	rejectGlobal.Store(false)
+	kd.Proxy.Mode = ProxyProvider
+	result, err = a.SaveKey(ctx, p.ID, k.ID, kd, q)
+	if err != nil || result.MultiplierStatus.State != "success" || proxyHits.Load() != 3 {
+		t.Fatal("Key 旧 provider 输入未独立跟随全局", err)
+	}
+	keys, err := a.store.Keys(ctx, p.ID)
+	if err != nil || keys[0].Proxy.Mode != ProxyGlobal {
+		t.Fatal("Key 旧 provider 输入未保存为 global", err)
 	}
 	page, err := json.Marshal(account)
 	if err != nil {

@@ -535,7 +535,7 @@ func TestExecutionGlobalProxyAndDirect(t *testing.T) {
 			client.CloseIdleConnections()
 		}
 	})
-	candidate := scheduling.Candidate{Provider: providers.Provider{Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyGlobal}}}, Key: providers.ProviderKey{Proxy: providers.ProxyChoice{Mode: providers.ProxyProvider}}}
+	candidate := scheduling.Candidate{Provider: providers.Provider{Request: providers.RequestPolicy{Proxy: providers.ProxyChoice{Mode: providers.ProxyDirect}}}, Key: providers.ProviderKey{Proxy: providers.ProxyChoice{Mode: providers.ProxyGlobal}}}
 	request := func(c scheduling.Candidate, want string) {
 		t.Helper()
 		client, err := execution.clientFor(ctx, c)
@@ -552,6 +552,10 @@ func TestExecutionGlobalProxyAndDirect(t *testing.T) {
 			t.Fatal("实际调度代理出口不匹配", err)
 		}
 	}
+	request(candidate, "proxied")
+	candidate.Key.Proxy.Mode = providers.ProxyProvider
+	request(candidate, "proxied")
+	candidate.Key.Proxy.Mode = ""
 	request(candidate, "proxied")
 	var document string
 	if err = catalog.DB().QueryRow("SELECT document FROM settings WHERE name='proxy'").Scan(&document); err != nil || strings.Contains(document, "global-password") {
@@ -575,8 +579,10 @@ func TestExecutionGlobalProxyAndDirect(t *testing.T) {
 	request(candidate, "direct")
 	candidate.Key.Proxy.Mode = providers.ProxyProvider
 	candidate.Provider.Request.Proxy.Mode = providers.ProxyDirect
-	request(candidate, "direct")
-	if proxied.Load() != 1 || direct.Load() != 3 {
+	if _, err = execution.clientFor(ctx, candidate); err == nil {
+		t.Fatal("旧 provider 模式继承了供应商直连")
+	}
+	if proxied.Load() != 3 || direct.Load() != 2 {
 		t.Fatal("继承或直连请求数量错误")
 	}
 }

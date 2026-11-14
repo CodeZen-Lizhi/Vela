@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS provider_key_queries (
 
 // Accounts 管理余额与 Key 信息查询；网络在 Store 锁外，串行查询防止令牌轮换与重复触发相互覆盖。
 type Accounts struct {
+	// validations 在 store.mu 保护下为每个供应商保留一份临时结果及已生效的凭据轮换；关闭只使余额结果失效。
+	validations map[string]accountValidation
+
 	// store 复用数据库、写锁和凭据库；globalProxy 每次请求读取当前全局出口。
 	store       *Store
 	globalProxy func(context.Context) (bool, string, error)
@@ -296,65 +299,6 @@ func (a *Accounts) ProviderAccount(ctx context.Context, id string) (ProviderAcco
 	}
 	r.Config = c.masked()
 	return r, nil
-}
-
-// SaveProviderAccount 先持久化账户，随后查询余额及复用此连接的上游来源 Key；查询失败不撤销保存。
-func (a *Accounts) SaveProviderAccount(ctx context.Context, id string, d ProviderAccountDraft) (ProviderAccount, error) {
-	err := func() error {
-		a.store.mu.Lock()
-		defer a.store.mu.Unlock()
-		p, e := a.provider(ctx, id)
-		if e != nil {
-			return e
-		}
-		old, raw, _, e := a.accountConfig(ctx, "provider_accounts", id)
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return e
-		}
-		c, e := normalizeQuery(d.Config, old, p.URL, false)
-		if e != nil {
-			return e
-		}
-		if !finite(d.MonthlyQuota) || d.MonthlyQuota < 0 {
-			return errors.New("月配额必须是有限非负金额")
-		}
-		r := ProviderAccount{ProviderID: id, Balance: AccountBalance{Status: QueryStatus{State: "unknown"}, SubscriptionStatus: QueryStatus{State: "unknown"}, Checkin: QueryStatus{State: "unknown"}}}
-		if raw != "" {
-			if e = json.Unmarshal([]byte(raw), &r); e != nil {
-				return e
-			}
-		}
-		r.Config = QueryConfig{}
-		r.MonthlyQuota = d.MonthlyQuota
-		r.Checkin = d.Checkin
-		return a.writeAccount(ctx, "provider_accounts", id, c, r, rand.Text())
-	}()
-	if err != nil {
-		return ProviderAccount{}, err
-	}
-	if err := a.beginQuery(ctx); err != nil {
-		return ProviderAccount{}, err
-	}
-	defer a.endQuery()
-	if err = a.refreshBalance(ctx, id); err != nil {
-		return ProviderAccount{}, err
-	}
-	rows, err := a.store.keyRows(ctx, id)
-	if err != nil {
-		return ProviderAccount{}, err
-	}
-	for _, row := range rows {
-		q, e := a.ProviderKeyQuery(ctx, row.id)
-		if e != nil {
-			return ProviderAccount{}, e
-		}
-		if q.ReuseProvider {
-			if e = a.refreshKey(ctx, row.id); e != nil {
-				return ProviderAccount{}, e
-			}
-		}
-	}
-	return a.ProviderAccount(ctx, id)
 }
 
 // ProviderKeyQuery 读取本地来源；尚未保存时默认复用供应商、名称和倍率手动。

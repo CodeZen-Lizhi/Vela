@@ -27,7 +27,7 @@
   /** 所有退出入口统一确认未保存改动。 */
   function close(): void {if(busy)return;if(changed)discard=true;else onclose();}
 </script>
-<Dialog.Root open onOpenChange={(value)=>{if(!value)close();}}><Dialog.Content class="provider-form-dialog" showCloseButton={!busy}><Dialog.Header><Dialog.Title>模型权限 · {item.name}</Dialog.Title><Dialog.Description>勾选后仅允许使用所选模型；不勾选则允许全部。</Dialog.Description></Dialog.Header>
+<Dialog.Root open onOpenChange={(value)=>{if(!value)close();}}><Dialog.Content class="provider-form-dialog" showCloseButton={!busy}><Dialog.Header><Dialog.Title>模型权限 · {item.name}</Dialog.Title><Dialog.Description>未选择模型时允许全部；选择后，仅允许所选模型。</Dialog.Description></Dialog.Header>
   {#if loading}<p class="text-sm text-muted-foreground">正在读取权限…</p>{:else}
     <div class="provider-editor-body">
       {#if removedSelection&&!changed}<p class="mb-3 text-xs text-muted-foreground">之前选择的模型已被移除，这把 Key 暂时不能使用任何模型。请重新选择允许使用的模型。</p>{/if}

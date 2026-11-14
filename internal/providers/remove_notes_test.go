@@ -50,7 +50,7 @@ func TestRemoveProviderNotesRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Key 文档不属于此次迁移，连同备注一起逐字节保留。
-			keyData, err := s.encodeDocument(map[string]any{"name": "Key", "note": "保留Key备注", "proxy": map[string]string{"mode": "provider"}})
+			keyData, err := s.encodeDocument(map[string]any{"name": "Key", "note": "保留Key备注", "proxy": map[string]string{"mode": "global"}})
 			if err != nil {
 				t.Fatal(err)
 			}

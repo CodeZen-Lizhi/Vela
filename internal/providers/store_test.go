@@ -473,7 +473,7 @@ func TestKeyLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	overview := snapshot.Providers[0]
-	if overview.Provider.ID != provider.ID || overview.KeyCount != 3 || overview.PreferredKey == nil || overview.PreferredKey.Name != "主力改名" {
+	if overview.Provider.ID != provider.ID || overview.KeyCount != 3 || overview.PreferredKey == nil || overview.PreferredKey.Name != "主力改名" || overview.PreferredKey.ID != main.ID {
 		t.Fatalf("概览 = %+v", overview)
 	}
 	if overview.Health.State != ProviderHealthNormal || overview.Health.Percent == nil || *overview.Health.Percent != 100 {

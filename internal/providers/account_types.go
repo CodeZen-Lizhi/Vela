@@ -66,6 +66,8 @@ type ProviderAccount struct {
 
 // ProviderAccountDraft 只允许修改账户配置，不接收客户端余额结果。
 type ProviderAccountDraft struct {
+	// ValidationID 引用当前草稿的临时结果；仅成功验证可应用余额，空时只保存配置。
+	ValidationID string `json:"validationId"`
 	// Config、MonthlyQuota、Checkin 与 ProviderAccount 同名字段含义一致。
 	Config       QueryConfig `json:"config"`
 	MonthlyQuota float64     `json:"monthlyQuota"`
@@ -110,4 +112,12 @@ type ProviderAccountRefresh struct {
 	// Accounts 与 Keys 仅包含本次指定范围的对象。
 	Accounts []ProviderAccount  `json:"accounts"`
 	Keys     []ProviderKeyQuery `json:"keys"`
+}
+
+// ProviderAccountValidation 只返回余额验证结果及不透明引用，不向页面回传认证信息。
+type ProviderAccountValidation struct {
+	// ID 为临时查询引用；仅成功结果可应用余额，保存、取消或再次验证后失效。
+	ID string `json:"id"`
+	// Balance 为本次草稿查询结果，不代表已写入正式账户。
+	Balance AccountBalance `json:"balance"`
 }

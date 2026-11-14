@@ -13,7 +13,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Switch } from "$lib/components/ui/switch";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { VelaService, type Provider, type ProviderDefaults, type ProviderKey, type ProviderKeyDraft, type ProviderModel, type ProviderKeyQuery, type ProviderKeyQueryDraft, type ProviderModelPermissions } from "$lib/generated/mygo";
+  import { events, VelaService, type Provider, type ProviderDefaults, type ProviderKey, type ProviderKeyDraft, type ProviderModel, type ProviderKeyQuery, type ProviderKeyQueryDraft, type ProviderModelPermissions } from "$lib/generated/mygo";
   import Choice from "./Choice.svelte";
   import KeyForm from "./KeyForm.svelte";
   import ModelRelations from "./ModelRelations.svelte";
@@ -75,12 +75,26 @@
     catch(cause){testResultsError=cause instanceof Error?cause.message:String(cause);}
   }
   onMount(()=>{
-    let stopped=false;
+    let stopped=false, running=false, pending=false;
     let pollTimer:ReturnType<typeof setTimeout>;
     const clockTimer=setInterval(()=>{now=Date.now();},1000);
-    const poll=async()=>{await load();if(!stopped)pollTimer=setTimeout(()=>{void poll();},refreshSeconds*1000);};
+    /** 恢复与查询完成事件共用串行重读；在途事件在本轮后补读，避免遗漏新结果。 */
+    const poll=async()=>{
+      if(stopped)return;
+      if(running){pending=true;return;}
+      clearTimeout(pollTimer);running=true;
+      try{await load();}finally{
+        running=false;
+        if(!stopped){if(pending){pending=false;void poll();}else pollTimer=setTimeout(()=>{void poll();},refreshSeconds*1000);}
+      }
+    };
     void poll();
-    return()=>{stopped=true;clearTimeout(pollTimer);clearInterval(clockTimer);};
+    /** 已打开的详情与列表同时重读，不重建抽屉或覆盖编辑草稿。 */
+    const restored=()=>{if(document.visibilityState==="visible")void poll();};
+    document.addEventListener("visibilitychange",restored);
+    const unsubscribeVisible=events.windowVisible.on(restored);
+    const unsubscribeAccounts=events.providerAccountsRefreshed.on(restored);
+    return()=>{unsubscribeVisible();unsubscribeAccounts();stopped=true;clearTimeout(pollTimer);clearInterval(clockTimer);document.removeEventListener("visibilitychange",restored);};
   });
   /** 子功能保存后刷新抽屉与列表摘要，不切换当前页签。 */
   async function updated():Promise<void>{await load();await onupdated();}
@@ -148,16 +162,17 @@
   {#if error&&!editorOpen&&!deleting}<Alert.Root variant="inline-error"><Alert.Description>{error}<Button size="sm" variant="ghost" onclick={load}>重试</Button></Alert.Description></Alert.Root>{/if}
   {#if loading}<p class="text-xs text-muted-foreground">正在读取供应商配置…</p>{:else if tab==="keys"}
     <div class="provider-section-heading"><div class="provider-tools provider-key-filters"><Input class="max-w-56" aria-label="搜索 Key" placeholder="搜索 Key 名称" bind:value={query}/><div class="provider-key-status"><Choice bind:value={status} label="Key 状态" options={[{value:"all",label:"全部状态"},{value:"enabled",label:"已启用"},{value:"disabled",label:"已停用"},{value:"cooling",label:"冷却中"}]}/></div></div><Button variant="outline" size="sm" onclick={()=>{selected=null;keyEditorError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加 Key</Button></div>
-    <div class="provider-surface"><Table.Root class="provider-table provider-key-table"><colgroup><col style="width:21%"/><col style="width:27%"/><col style="width:13%"/><col style="width:12%"/><col style="width:27%"/></colgroup><Table.Header><Table.Row><Table.Head>Key</Table.Head><Table.Head data-align="control">倍率</Table.Head><Table.Head>模型权限</Table.Head><Table.Head data-align="control">健康度</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as key(key.id)}{@const queryState=queries[key.id]}{@const tone=healthTone(key.healthScore)}{@const healthLabel=tone==="normal"?"正常":tone==="degraded"?"警示":"异常"}{@const detail=healthDetail(key)}<Table.Row data-disabled={!key.enabled}>
+    <div class="provider-surface"><Table.Root class="provider-table provider-key-table"><colgroup><col style="width:21%"/><col style="width:11%"/><col style="width:18%"/><col style="width:11%"/><col style="width:12%"/><col style="width:27%"/></colgroup><Table.Header><Table.Row><Table.Head>Key</Table.Head><Table.Head data-align="control">倍率</Table.Head><Table.Head data-align="control">倍率来源</Table.Head><Table.Head data-align="control">模型权限</Table.Head><Table.Head data-align="control">健康度</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as key(key.id)}{@const queryState=queries[key.id]}{@const modelPermission=permissions[key.id]}{@const tone=healthTone(key.healthScore)}{@const healthLabel=tone==="normal"?"正常":tone==="degraded"?"警示":"异常"}{@const detail=healthDetail(key)}<Table.Row data-disabled={!key.enabled}>
       <Table.Cell class="provider-main" data-label="Key"><div class="provider-key-identity"><Hint text={key.name}>{#snippet children(props)}<span {...props}>{key.name}</span>{/snippet}</Hint>{#if key.hasSecret}<Button onclick={()=>copy(key)} size="icon-xs" variant="ghost"  aria-label={`复制 ${key.name} 完整密钥`} ><Copy/></Button>{/if}</div><code class="mt-1 block text-[11px] text-muted-foreground">{key.secretMask||"未设置"}</code></Table.Cell>
-      <Table.Cell data-label="倍率" data-align="control"><div class="provider-multiplier"><InlineMultiplier value={key.multiplier} editable={queryState?.multiplierSource==="manual"} disabled={busy} label={key.name} onsave={(value)=>saveMultiplier(key,value)}/>{#if queryState}<MultiplierSource value={queryState.multiplierSource} label={`${key.name} 倍率来源`} disabled={busy} onchange={(source)=>setMultiplierSource(key,source)}/>{:else}<span class="text-[10px] text-muted-foreground">来源未读取</span>{/if}</div><small  class="provider-multiplier-error" >{#if queryState?.multiplierSource==="upstream"&&queryState.multiplierStatus.state==="failed"}同步失败 · 保留当前值{/if}</small></Table.Cell>
-      <Table.Cell data-label="模型权限">{key.allModels?"全部模型":`已选 ${permissions[key.id]?.modelIds.length??0} 个`}</Table.Cell>
-      <Table.Cell data-label="健康度" data-align="control" data-health={tone}><Progress value={key.healthScore} max={10} class="provider-health-bar" aria-label={`${key.name} 健康度${healthLabel}，${key.healthScore.toFixed(1)}/10${detail?`，${detail}`:""}`} /><small class="provider-health-value block text-[10px] text-muted-foreground">{key.healthScore.toFixed(1)}/10</small><small class="provider-health-state">{detail}</small></Table.Cell>
+      <Table.Cell data-label="倍率" data-align="control"><InlineMultiplier value={key.multiplier} editable={queryState?.multiplierSource==="manual"} disabled={busy} label={key.name} onsave={(value)=>saveMultiplier(key,value)}/><small class="provider-multiplier-error" aria-hidden="true"></small></Table.Cell>
+      <Table.Cell data-label="倍率来源" data-align="control"><div class="flex min-h-8 items-center justify-center">{#if queryState}<MultiplierSource value={queryState.multiplierSource} label={`${key.name} 倍率来源`} disabled={busy} onchange={(source)=>setMultiplierSource(key,source)}/>{:else}<span class="text-[10px] text-muted-foreground">来源未读取</span>{/if}</div><small  class="provider-multiplier-error" >{#if queryState?.multiplierSource==="upstream"&&queryState.multiplierStatus.state==="failed"}同步失败 · 保留当前值{/if}</small></Table.Cell>
+      <Table.Cell data-label="模型权限" data-align="control">{key.allModels?models.length:modelPermission?models.filter((model)=>modelPermission.modelIds.includes(model.modelId)).length:"—"}/{models.length}</Table.Cell>
+      <Table.Cell data-label="健康度" data-align="control" data-health={tone}><Progress value={key.healthScore} max={10} class="provider-health-bar" aria-label={`${key.name} 健康度${healthLabel}，${Number(key.healthScore.toFixed(1))}/10${detail?`，${detail}`:""}`} /><small class="provider-health-value block text-[10px] text-muted-foreground">{Number(key.healthScore.toFixed(1))}/10</small><small class="provider-health-state">{detail}</small></Table.Cell>
       <Table.Cell data-label="操作" data-align="control"><div class="provider-actions provider-key-actions"><Button onclick={()=>resetHealth(key)} disabled={busy||key.healthScore>=10} size="row-action" variant="ghost" aria-label={`恢复 ${key.name} 健康度`}><RotateCcw/></Button><Button onclick={()=>permissionKey=key} size="row-action" variant="ghost"  aria-label={`${key.name} 模型权限`} ><ShieldCheck/></Button><Button onclick={()=>{selected=key;keyEditorError="";editorOpen=true;}} size="row-action" variant="ghost"  aria-label={`编辑 Key ${key.name}`} ><Pencil/></Button><Switch checked={key.enabled} disabled={busy} aria-label={`${key.enabled?"停用":"启用"} Key ${key.name}`} onCheckedChange={(value)=>setEnabled(key,value)}/><Button onclick={()=>{deleting=key;error="";}} size="row-action" variant="ghost"  aria-label={`删除 Key ${key.name}`} ><Trash2/></Button></div></Table.Cell>
     </Table.Row>{/each}</Table.Body></Table.Root>{#if !filtered.length}<Empty.Root>{keys.length?"没有符合条件的 Key":"尚无 Key，添加第一把 Key 开始配置。"}{#if keys.length}<Button variant="outline" size="sm" onclick={()=>{query="";status="all";}}>清空筛选</Button>{/if}</Empty.Root>{/if}</div>
   {:else}<ModelRelations providerID={provider.id} {models} {testResults} {testResultsError} mappingTab={tab==="mappings"} reload={updated} {notify}/>{/if}
 </Tabs.Content></div></Tabs.Root>
-<Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy){editorOpen=value;if(!value)keyEditorError="";}}}><Dialog.Content class="provider-form-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{selected?"编辑 Key":"添加 Key"}</Dialog.Title><Dialog.Description>{provider.name} · 配置调用凭证、倍率与调度规则；模型权限在列表中维护。</Dialog.Description></Dialog.Header>{#if editorOpen}<KeyForm item={selected} {defaults} {nextPriority} {busy} error={keyEditorError} onsave={saveKey} onclose={()=>{editorOpen=false;keyEditorError="";}}/>{/if}</Dialog.Content></Dialog.Root>
+<Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy){editorOpen=value;if(!value)keyEditorError="";}}}><Dialog.Content class="provider-form-dialog provider-key-editor-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{selected?"编辑 Key":"添加 Key"}</Dialog.Title><Dialog.Description>{provider.name} · 配置调用凭证、倍率与调度规则；模型权限在列表中维护。</Dialog.Description></Dialog.Header>{#if editorOpen}<KeyForm item={selected} {defaults} {nextPriority} {busy} error={keyEditorError} onsave={saveKey} onclose={()=>{editorOpen=false;keyEditorError="";}}/>{/if}</Dialog.Content></Dialog.Root>
 {#if permissionKey}<KeyPermissions item={permissionKey} {models} onclose={()=>permissionKey=null} onsaved={updated}/>{/if}
 
 <Dialog.Root open={deleting!==null} onOpenChange={(value)=>{if(!busy&&!value)deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除 Key？</Dialog.Title><Dialog.Description>确认删除“{deleting?.name}”？密钥、模型权限和查询配置将一并删除，此操作不能撤销。</Dialog.Description></Dialog.Header>{#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={deleteKey}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>

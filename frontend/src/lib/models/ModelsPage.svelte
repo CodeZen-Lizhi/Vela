@@ -28,12 +28,15 @@
   import ModelCatalog from "./ModelCatalog.svelte";
   import ModelEditor from "./ModelEditor.svelte";
   import {
+    events,
     VelaService,
     type Model,
     type CatalogEntry,
     type Pricing,
   } from "$lib/generated/mygo";
   import { kinds, dateLabel, modelInitial } from "./display";
+  /** 手动同步结果复用应用外壳的通知，后台检查不弹通知。 */
+  let { notify }: { notify: (message: string) => void } = $props();
   let models = $state<Model[]>([]),
     catalog = $state<CatalogEntry[]>([]);
   let query = $state(""),
@@ -80,12 +83,6 @@
           .toLowerCase()
           .includes(query.toLowerCase()),
     ),
-  );
-  const lastSync = $derived(
-    models
-      .map((m) => m.syncedAt)
-      .sort()
-      .at(-1) ?? "",
   );
 
   /** 统一错误显示，保留失败时的列表和表单草稿。 */
@@ -158,7 +155,7 @@
       busy = false;
     }
   }
-  /** 手动强制同步不受自动更新设置限制，保留现有候选与表单直到取得新结果。 */
+  /** 手动同步立即检查上游并应用来源价格，完成或失败均反馈；保留本地修改及失败原因。 */
   async function sync(): Promise<void> {
     busy = true;
     error = "";
@@ -166,9 +163,15 @@
       const result = await VelaService.syncModelPrices();
       await refreshCatalogState();
       await load();
-      if (result.failures.length) error = `部分模型未更新：${result.failures.join("；")}`;
+      if (result.failures.length) {
+        error = `部分模型未更新：${result.failures.join("；")}`;
+        notify(`价格同步部分失败：${result.updated} 个模型同步成功，${result.failures.length} 个失败，原因见页面提示`);
+      } else {
+        notify("价格同步成功，已检查上游并同步来源价格，本地修改已保留");
+      }
     } catch (e) {
-      error = message(e);
+      error = `价格同步失败：${message(e)}`;
+      notify(error);
     } finally {
       busy = false;
     }
@@ -338,7 +341,9 @@
       if (document.visibilityState === "visible") void refreshCatalogState(true);
     };
     document.addEventListener("visibilitychange", onVisible);
+    const unsubscribeVisible = events.windowVisible.on(onVisible);
     return () => {
+      unsubscribeVisible();
       disposed = true;
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
@@ -512,10 +517,10 @@
       >{/if}
     </div>
     <div class="list-footer border-t px-4 py-3 text-xs text-muted-foreground">
-      来源 {catalogStatus?.source || "basellm"} · 最近同步 {dateLabel(catalogStatus?.updatedAt || lastSync)}
+      来源 {catalogStatus?.source || "basellm"} · 目录更新 {dateLabel(catalogStatus?.updatedAt ?? "")}
       {#if pollError}<p role="status" class="mt-1">读取更新状态失败：{pollError}</p>{/if}
       {#if catalogStatus?.refreshing}<span role="status"> · 正在检查更新…</span>{/if}
-      {#if catalogStatus?.checkedAt}<span> · 最近检查 {dateLabel(catalogStatus.checkedAt)}</span>{/if}
+      {#if catalogStatus?.checkedAt}<span> · 最近成功检查 {dateLabel(catalogStatus.checkedAt)}</span>{/if}
       {#if catalogStatus?.error}<p role="status" class="mt-1">更新失败：{catalogStatus.error}，已保留本地数据。</p>{/if}
       {#if catalogStatus?.failures?.length}<p role="status" class="mt-1">部分模型未更新：{catalogStatus.failures.join("；")}</p>{/if}
     </div>

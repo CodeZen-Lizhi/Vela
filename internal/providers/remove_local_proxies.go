@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 )
 
-// removeLocalProxies 原子清理旧局部代理：供应商 custom 改 global，Key custom/global 改 provider，并删除所有局部 url。
+// removeLocalProxies 原子清理旧局部代理：供应商 custom 改 global，Key custom/provider 改 global，并删除所有局部 url。
 // 明文和整文档加密均走既有编解码；保留代理对象、请求策略及文档中的其他未知字段，不解密已废弃的局部 URL。
 func (s *Store) removeLocalProxies(ctx context.Context) error {
 	s.mu.Lock()
@@ -50,11 +50,8 @@ func (s *Store) removeLocalProxies(ctx context.Context) error {
 			}
 			_, changed := proxy["url"]
 			delete(proxy, "url")
-			if mode == "custom" || (table == "provider_keys" && mode == "global") {
+			if mode == "custom" || (table == "provider_keys" && mode == "provider") {
 				next := ProxyGlobal
-				if table == "provider_keys" {
-					next = ProxyProvider
-				}
 				proxy["mode"], err = json.Marshal(next)
 				if err != nil {
 					break

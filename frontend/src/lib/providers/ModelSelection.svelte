@@ -29,13 +29,23 @@
     /** 全选或取消全部勾选，由调用方维护草稿。 */
     onselectall: (checked: boolean) => void;
   } = $props();
+  /** 仅统计当前列表中的勾选，历史上已移除的模型不影响全选状态。 */
+  const selectedCount = $derived(models.filter((model) => selected.includes(model.id)).length);
+  /** 全选与部分选择分别对应勾选和横杠状态。 */
+  const allSelected = $derived(models.length > 0 && selectedCount === models.length);
+  /** 只有当前列表的一部分模型被勾选时展示半选状态。 */
+  const partiallySelected = $derived(selectedCount > 0 && !allSelected);
 </script>
 
-<div class="mb-3 flex gap-2">
-  <Button variant="ghost" size="sm" disabled={disabled || !models.length} onclick={() => onselectall(true)}>全选</Button>
-  <Button variant="ghost" size="sm" disabled={disabled || !models.length} onclick={() => onselectall(false)}>取消全选</Button>
-</div>
 <div class="provider-selection">
+  <div class="provider-selection-toolbar">
+    <Label variant="content" class="flex items-center gap-3">
+      <Checkbox disabled={disabled || !models.length} checked={allSelected} indeterminate={partiallySelected} onCheckedChange={(checked) => onselectall(checked === true)} />
+      <span>全选模型</span>
+    </Label>
+    <span class="text-xs text-muted-foreground" aria-live="polite">已选 {selectedCount} / {models.length}</span>
+    <Button variant="ghost" size="xs" disabled={disabled || !models.length} onclick={() => onselectall(false)}>清空选择</Button>
+  </div>
   {#each models as model (model.id)}
     <Label variant="content" class="provider-check-row">
       <Checkbox disabled={disabled} checked={selected.includes(model.id)} onCheckedChange={(value) => onselect(model.id, value === true)} />
@@ -44,3 +54,8 @@
     </Label>
   {:else}<p class="p-5 text-xs text-muted-foreground">{emptyText}</p>{/each}
 </div>
+
+<style>
+  .provider-selection-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; padding:9px 15px; border-bottom:1px solid var(--border); background:var(--muted); }
+  .provider-selection-toolbar :global(button[data-slot=button]) { margin-left:auto; }
+</style>

@@ -20,7 +20,7 @@ func TestAccountRunRecoversFromErrors(t *testing.T) {
 	a, p, _, _ := accountFixture(t, server.URL)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-run"}}); err != nil {
+	if _, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-run"}}); err != nil {
 		t.Fatal(err)
 	}
 	requests.Store(0)

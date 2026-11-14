@@ -15,8 +15,9 @@
   import { Switch } from "$lib/components/ui/switch";
   import * as InputGroup from "$lib/components/ui/input-group";
   import * as Dialog from "$lib/components/ui/dialog";
-  import { VelaService, type ProviderOverview, type Provider, type ProviderDefaults, type ProviderDraft, type ProviderModel, type ProviderAccount, type VerificationSnapshot } from "$lib/generated/mygo";
+  import { events, VelaService, type ProviderOverview, type Provider, type ProviderDefaults, type ProviderDraft, type ProviderModel, type ProviderAccount, type VerificationSnapshot, type ProviderKeyQuery } from "$lib/generated/mygo";
   import Choice from "./Choice.svelte";
+  import QueryStatusHint from "./QueryStatusHint.svelte";
   import ProviderForm from "./ProviderForm.svelte";
   import ProviderDetails from "./ProviderDetails.svelte";
   import AccountForm from "./AccountForm.svelte";
@@ -27,7 +28,8 @@
   let accounts=$state<Record<string,ProviderAccount>>({}), relations=$state<Record<string,ProviderModel[]>>({}), rowErrors=$state<Record<string,string>>({});
   /** 验证摘要只读本地最新结果，不启动检测。 */
   let verification=$state<VerificationSnapshot|null>(null);
-  let accountInterval=$state<number|null>(null);
+  /** 同步状态按 Key 身份保存；读取失败时不沿用另一把 Key 的结果。 */
+  let keyQueries=$state<Record<string,ProviderKeyQuery>>({});
   /** 列表周期只重读本地快照，上游查询由全局账户任务负责。 */
   let listSeconds=$state(60);
   /** 账户保存及首次读取期间锁定父弹窗关闭入口。 */
@@ -61,26 +63,39 @@
     error="";
     try{
       const snapshot=await VelaService.providers();rows=snapshot.providers;defaults=snapshot.defaults;
-      const nextAccounts:Record<string,ProviderAccount>={},nextRelations:Record<string,ProviderModel[]>={},nextErrors:Record<string,string>={};
+      const nextAccounts:Record<string,ProviderAccount>={},nextRelations:Record<string,ProviderModel[]>={},nextErrors:Record<string,string>={}, nextKeyQueries:Record<string,ProviderKeyQuery>={};
       await Promise.all(rows.map(async(row)=>{
         const id=row.provider.id;
-        const results=await Promise.allSettled([VelaService.providerAccount(id),VelaService.providerModels(id)]);
+        const results=await Promise.allSettled([VelaService.providerAccount(id),VelaService.providerModels(id),row.preferredKey?VelaService.providerKeyQuery(row.preferredKey.id):Promise.resolve(null)]);
         if(results[0].status==="fulfilled")nextAccounts[id]=results[0].value;else nextErrors[id]=message(results[0].reason);
+        if(results[2].status==="fulfilled"&&results[2].value&&row.preferredKey)nextKeyQueries[row.preferredKey.id]=results[2].value;
         if(results[1].status==="fulfilled")nextRelations[id]=results[1].value;else nextErrors[id]=message(results[1].reason);
       }));
-      accounts={...accounts,...nextAccounts};relations={...relations,...nextRelations};rowErrors=nextErrors;
+      keyQueries=nextKeyQueries;accounts={...accounts,...nextAccounts};relations={...relations,...nextRelations};rowErrors=nextErrors;
       verification=await VelaService.verification();
-      const settings=await VelaService.settings();accountInterval=settings.account.enabled?settings.account.minutes:null;listSeconds=settings.general.providerSeconds;
+      const settings=await VelaService.settings();listSeconds=settings.general.providerSeconds;
     }catch(cause){error=message(cause);}finally{loading=false;}
   }
   onMount(()=>{
-    let stopped=false;
+    let stopped=false, running=false, pending=false;
     let timer:ReturnType<typeof setTimeout>;
-    const poll=async()=>{await load();if(!stopped)timer=setTimeout(()=>{void poll();},listSeconds*1000);};
+    /** 恢复与查询完成事件共用串行重读；在途事件在本轮后补读，避免遗漏新结果。 */
+    const poll=async()=>{
+      if(stopped)return;
+      if(running){pending=true;return;}
+      clearTimeout(timer);running=true;
+      try{await load();}finally{
+        running=false;
+        if(!stopped){if(pending){pending=false;void poll();}else timer=setTimeout(()=>{void poll();},listSeconds*1000);}
+      }
+    };
     void poll();
-    const restored=()=>{if(document.visibilityState==="visible")void load();};
+    /** 原生恢复与账户查询完成后立即重读，不等待列表周期。 */
+    const restored=()=>{if(document.visibilityState==="visible")void poll();};
     document.addEventListener("visibilitychange",restored);
-    return()=>{stopped=true;clearTimeout(timer);document.removeEventListener("visibilitychange",restored);};
+    const unsubscribeVisible=events.windowVisible.on(restored);
+    const unsubscribeAccounts=events.providerAccountsRefreshed.on(restored);
+    return()=>{unsubscribeVisible();unsubscribeAccounts();stopped=true;clearTimeout(timer);document.removeEventListener("visibilitychange",restored);};
   });
   /** 明确的主动刷新才查询上游；单项失败由行内查询状态表达。 */
   async function refresh():Promise<void>{refreshing=true;error="";try{await VelaService.refreshProviderAccounts("");await load();notify("账户刷新已完成，失败项可在对应账户查看原因");}catch(cause){error=message(cause);}finally{refreshing=false;}}
@@ -122,21 +137,22 @@
   function openRow(event:MouseEvent,id:string):void{if(event.target instanceof Element&&event.target.closest("button,a,input,[role=switch]"))return;detailID=id;}
 </script>
 <section class="provider-page list-page">
-  <PageHeader title="供应商" description="管理上游站点、密钥、模型关联与账户信息。">{#snippet actions()}<Button onclick={refresh} variant="ghost" size="icon-sm" aria-label={refreshing?"正在刷新上游信息":"刷新上游信息"}  aria-busy={refreshing} disabled={!isMyGo()||refreshing||loading||!rows.length} ><RefreshCw class={refreshing ? "animate-spin" : ""}/></Button><Button disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加供应商</Button>{/snippet}</PageHeader>
+  <PageHeader title="供应商" description="管理上游站点、密钥、模型关联与账户信息。" />
   {#if !isMyGo()}<Alert.Root variant="info"><Alert.Description>浏览器预览：供应商业务需在桌面应用中使用；此处不生成演示数据或模拟保存。</Alert.Description></Alert.Root>{/if}
   {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button></Alert.Description></Alert.Root>{/if}
   <section class="provider-surface list-surface">
-    <div class="provider-toolbar"><InputGroup.Root class="provider-search"><InputGroup.Input aria-label="搜索供应商" bind:value={query} placeholder="搜索名称、主站或关联模型"/><InputGroup.Addon><Search/></InputGroup.Addon></InputGroup.Root><div class="provider-filter"><Choice bind:value={modelFilter} label="按关联模型筛选" options={modelOptions}/></div><ToggleGroup.Root type="single" value={status} onValueChange={(value)=>{if(value)status=value;}} variant="segmented" size="xs" spacing={1} aria-label="供应商状态筛选">{#each [{value:"all",label:"全部",count:rows.length},{value:"enabled",label:"已启用",count:rows.filter((row)=>row.provider.enabled).length},{value:"disabled",label:"已停用",count:rows.filter((row)=>!row.provider.enabled).length}] as item}<ToggleGroup.Item value={item.value}>{item.label} <span>{item.count}</span></ToggleGroup.Item>{/each}</ToggleGroup.Root></div>
+    <div class="provider-toolbar"><InputGroup.Root class="provider-search"><InputGroup.Input aria-label="搜索供应商" bind:value={query} placeholder="搜索名称、主站或关联模型"/><InputGroup.Addon><Search/></InputGroup.Addon></InputGroup.Root><div class="provider-filter"><Choice bind:value={modelFilter} label="按关联模型筛选" options={modelOptions}/></div><ToggleGroup.Root type="single" value={status} onValueChange={(value)=>{if(value)status=value;}} variant="segmented" size="xs" spacing={1} aria-label="供应商状态筛选">{#each [{value:"all",label:"全部",count:rows.length},{value:"enabled",label:"已启用",count:rows.filter((row)=>row.provider.enabled).length},{value:"disabled",label:"已停用",count:rows.filter((row)=>!row.provider.enabled).length}] as item}<ToggleGroup.Item value={item.value}>{item.label} <span>{item.count}</span></ToggleGroup.Item>{/each}</ToggleGroup.Root><div class="provider-toolbar-actions"><Button onclick={refresh} variant="ghost" size="icon-sm" aria-label={refreshing?"正在刷新上游信息":"刷新上游信息"}  aria-busy={refreshing} disabled={!isMyGo()||refreshing||loading||!rows.length} ><RefreshCw class={refreshing ? "animate-spin" : ""}/></Button><Button disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加供应商</Button></div></div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0">
-    <Table.Root class="provider-table"><Table.Header><Table.Row><Table.Head>供应商</Table.Head><Table.Head data-align="number">余额</Table.Head><Table.Head>首选 Key / 倍率</Table.Head><Table.Head>健康</Table.Head><Table.Head>模型验证</Table.Head><Table.Head data-align="control">状态</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
+    <Table.Root class="provider-table"><Table.Header><Table.Row><Table.Head>供应商</Table.Head><Table.Head data-align="number">余额</Table.Head><Table.Head>首选 Key</Table.Head><Table.Head data-align="control">倍率</Table.Head><Table.Head>健康</Table.Head><Table.Head>模型验证</Table.Head><Table.Head data-align="control">状态</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
       <!-- 名称按钮提供键盘入口，整行点击仅扩展鼠标命中区域。 -->
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
       <Table.Row data-disabled={!provider.enabled} onclick={(event)=>openRow(event,provider.id)}>
         <Table.Cell class="provider-main" data-label="供应商"><div class="provider-identity"><span class="provider-avatar">{provider.name.slice(0,1).toUpperCase()}</span><Hint overflowOnly text={provider.name}>{#snippet children(hintProps1)}<Button variant="text" size="table-inline" {...mergeProps(hintProps1, { onclick: ()=>detailID=provider.id })} class="provider-name" >{provider.name}</Button>{/snippet}</Hint>{#if provider.website}<a  href={provider.website} target="_blank" rel="noreferrer" aria-label={`打开 ${provider.name} 主站`} ><ExternalLink class="size-3 text-muted-foreground"/></a>{/if}</div>{#if rowErrors[provider.id]}<small class="text-destructive">{rowErrors[provider.id]}</small>{/if}</Table.Cell>
-        <Table.Cell data-label="余额" data-align="number"><div class="provider-balance" class:is-empty={!display.available}  aria-label={display.label}>{#if display.symbol}<span class="provider-currency-symbol" aria-hidden="true">{display.symbol}</span>{/if}<span>{display.amount}</span></div>{#if account?.balance.status.state==="failed"}<small  class="block max-w-36 truncate text-[10px] text-destructive" >查询失败{account.balance.amount!==null?" · 保留上次结果":""}</small>{:else if accountInterval&&account?.config.mode}<small class="text-[10px] text-muted-foreground">每 {accountInterval} 分钟刷新</small>{/if}</Table.Cell>
-        <Table.Cell data-label="首选 Key / 倍率">{#if row.preferredKey}<div class="provider-key-summary" aria-label={`首选 Key ${row.preferredKey.name}，倍率 ${multiplier(row.preferredKey.multiplier)}`}><Hint overflowOnly text={row.preferredKey.name}>{#snippet children(hintProps5)}{#if row.preferredKey}<span {...hintProps5} class="provider-key-name">{row.preferredKey.name}</span>{/if}{/snippet}</Hint><Badge variant={row.preferredKey.multiplier===null?"neutral":"info"}>{multiplier(row.preferredKey.multiplier)}</Badge></div>{/if}</Table.Cell>
+        <Table.Cell data-label="余额" data-align="number"><QueryStatusHint label={display.label} mode={!account?"unavailable":account.config.mode?"query":"unconfigured"} status={account?.balance.status} available={display.available}><span class="provider-balance" class:is-empty={!display.available}>{#if display.symbol}<span class="provider-currency-symbol" aria-hidden="true">{display.symbol}</span>{/if}<span>{display.amount}</span></span></QueryStatusHint></Table.Cell>
+        <Table.Cell data-label="首选 Key">{#if row.preferredKey}<div class="provider-key-summary" aria-label={`首选 Key ${row.preferredKey.name}`}><Hint overflowOnly text={row.preferredKey.name}>{#snippet children(hintProps5)}{#if row.preferredKey}<span {...hintProps5} class="provider-key-name">{row.preferredKey.name}</span>{/if}{/snippet}</Hint></div>{/if}</Table.Cell>
+        <Table.Cell data-label="倍率" data-align="control">{#if row.preferredKey}{@const queryState=keyQueries[row.preferredKey.id]}<QueryStatusHint label={`倍率 ${multiplier(row.preferredKey.multiplier)}`} mode={!queryState?"unavailable":queryState.multiplierSource==="manual"?"manual":"query"} status={queryState?.multiplierStatus} available={row.preferredKey.multiplier!==null}><Badge variant={row.preferredKey.multiplier===null?"neutral":"info"}>{multiplier(row.preferredKey.multiplier)}</Badge></QueryStatusHint>{/if}</Table.Cell>
         <Table.Cell data-label="健康"><Badge variant={row.health.state === "normal" ? "positive" : row.health.state === "abnormal" || row.health.state === "circuit" ? "negative" : row.health.state === "degraded" ? "warning" : "neutral"}>{#if row.health.state === "circuit"}<ShieldAlert aria-hidden="true" />{/if}{({normal:"正常",degraded:"降级",abnormal:"异常",circuit:"熔断",unavailable:"不可用"})[row.health.state]}</Badge></Table.Cell>
         <Table.Cell data-label="模型验证"><span class="text-[11px] text-muted-foreground">{verificationSummary(provider.id)}</span>{#if verificationTime(provider.id)}<Hint overflowOnly text={verificationTime(provider.id)}>{#snippet children(hintProps7)}<small {...hintProps7} class="block truncate text-[10px] text-muted-foreground" >{verificationTime(provider.id)}</small>{/snippet}</Hint>{/if}</Table.Cell>
         <Table.Cell data-label="状态" data-align="control"><Switch checked={provider.enabled} disabled={busy} aria-label={`${provider.enabled?"停用":"启用"}供应商 ${provider.name}`} onCheckedChange={(value)=>setEnabled(provider,value)}/></Table.Cell>
@@ -149,5 +165,5 @@
 </section>
 <Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy)editorOpen=value;}}><Dialog.Content class="provider-form-dialog provider-editor-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{editing?"编辑供应商":"添加供应商"}</Dialog.Title><Dialog.Description>密钥和模型在创建后的供应商详情中维护。</Dialog.Description></Dialog.Header>{#if editorOpen&&defaults}<ProviderForm provider={editing} {defaults} {busy} error={formError} onsave={saveProvider} onclose={()=>editorOpen=false}/>{/if}</Dialog.Content></Dialog.Root>
 <Sheet.Root open={selected!==null} onOpenChange={(value)=>{if(!value)detailID="";}}><Sheet.Content variant="wide" class="provider-drawer">{#if selected&&defaults}{#key selected.id}<ProviderDetails provider={selected} {defaults} refreshSeconds={listSeconds} onupdated={load} {notify}/>{/key}{/if}</Sheet.Content></Sheet.Root>
-<Dialog.Root open={accountProvider!==null} onOpenChange={(value)=>{if(!value&&!accountBusy)accountProvider=null;}}><Dialog.Content class="provider-form-dialog" showCloseButton={!accountBusy} onInteractOutside={(event)=>{if(accountBusy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(accountBusy)event.preventDefault();}}><Dialog.Header><Dialog.Title>账户信息</Dialog.Title><Dialog.Description>{accountProvider?.name} · 供应商余额查询，Key 信息来源在各 Key 内配置。</Dialog.Description></Dialog.Header>{#if accountProvider}<AccountForm providerID={accountProvider.id} baseURL={accountProvider.url} onbusy={(value)=>accountBusy=value} {notify} onclose={()=>accountProvider=null} onupdated={load}/>{/if}</Dialog.Content></Dialog.Root>
+<Dialog.Root open={accountProvider!==null} onOpenChange={(value)=>{if(!value&&!accountBusy)accountProvider=null;}}><Dialog.Content class="provider-form-dialog provider-account-dialog" showCloseButton={!accountBusy} onInteractOutside={(event)=>{if(accountBusy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(accountBusy)event.preventDefault();}}><Dialog.Header><Dialog.Title>账户信息</Dialog.Title><Dialog.Description>{accountProvider?.name} · 供应商余额查询，Key 信息来源在各 Key 内配置。</Dialog.Description></Dialog.Header>{#if accountProvider}<AccountForm providerID={accountProvider.id} baseURL={accountProvider.url} onbusy={(value)=>accountBusy=value} {notify} onclose={()=>accountProvider=null} onupdated={load}/>{/if}</Dialog.Content></Dialog.Root>
 <Dialog.Root open={deleting!==null} onOpenChange={(value)=>{if(!busy&&!value)deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除供应商？</Dialog.Title><Dialog.Description>确认删除“{deleting?.name}”？它的全部 Key、凭据、模型关联、模型权限、映射和账户配置将一并删除，统一模型保持不变。</Dialog.Description></Dialog.Header>{#if formError}<Alert.Root variant="inline-error"><Alert.Description>{formError}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={remove}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>

@@ -12,12 +12,16 @@
   import { defaultQueryConfig } from "./query-defaults";
 
   /** 查询连接只维护草稿；Key 模式不编辑余额字段或另一把调用密钥。 */
-  let { value = $bindable(defaultQueryConfig()), forKey = false }: {
+  let { value = $bindable(defaultQueryConfig()), forKey = false, scrollable = false }: {
     /** 可双向绑定的连接草稿，秘密掩码仅作占位。 */
     value?: QueryConfig;
     /** 当前连接是否专属于一把上游 Key。 */
     forKey?: boolean;
+    /** 账户弹窗固定左右区域，仅配置区独立滚动；Key 编辑器沿用自身滚动容器。 */
+    scrollable?: boolean;
   } = $props();
+  /** 切换方式时仅将右侧配置滚动区复位，左侧选择位置不变。 */
+  let fields: HTMLDivElement | undefined = $state();
   /** 多个编辑器共存时保持标签与控件身份唯一。 */
   const id = $props.id();
   /** 与原 APP 一致，在 Sub2API 站点控制台读取 Refresh Token。 */
@@ -33,9 +37,10 @@
     { value: "usage_api", title: "API Key", description: "兼容上游查询接口" },
     { value: "custom", title: "自定义 URL", description: "GET / POST 与 JSON 字段路径" },
   ];
-  /** 切换方式清空秘密草稿，避免把其他方式的掩码误当成新认证。 */
+  /** 切换方式清空秘密草稿并复位右侧滚动，避免沿用旧认证或停在新表单中段。 */
   function selectMode(mode: string): void {
     if (value.mode === mode) return;
+    if (scrollable && fields) fields.scrollTop = 0;
     clearTimeout(commandTimer);
     commandCopied = false;
     commandError = "";
@@ -59,7 +64,7 @@
   onDestroy(() => clearTimeout(commandTimer));
 </script>
 
-<div class="connection-layout">
+<div class="connection-layout" class:scrollable>
   <Field.Set class="method-section">
     <Field.Legend>接入方式</Field.Legend>
     <Field.Description>选择站点实际支持的查询方式。</Field.Description>
@@ -71,7 +76,9 @@
       {/each}
     </ToggleGroup.Root>
   </Field.Set>
-  <div class="connection-fields">
+  <!-- 账户配置滚动区可由键盘方向键浏览，接入方式保持独立。 -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="connection-fields" bind:this={fields} role={scrollable ? "region" : undefined} aria-label={scrollable ? "账户连接配置" : undefined} tabindex={scrollable ? 0 : undefined}>
     {#if value.mode}
       <Field.Group>
         {#if value.mode !== "custom"}
@@ -123,10 +130,13 @@
   :global(.methods) strong, :global(.methods) small { display: block; }
   :global(.methods) small { margin-top: 4px; color: var(--muted-foreground); font-size: 12px; font-weight: 400; }
   .connection-fields { padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
+  .connection-layout.scrollable { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .scrollable :global(.method-section) { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .scrollable .connection-fields { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
   .empty-method { color: var(--muted-foreground); font-size: 13px; line-height: 1.7; }
   .field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .field-label-row :global(button) { color: var(--primary); }
   .command-error { color: var(--destructive); font-size: 12px; line-height: 1.6; }
 
-  @media (max-width: 640px) { .connection-layout { grid-template-columns: minmax(0, 1fr); } :global(.methods) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .connection-layout.scrollable { grid-template-rows: auto minmax(0, 1fr); } .connection-layout { grid-template-columns: minmax(0, 1fr); } :global(.methods) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

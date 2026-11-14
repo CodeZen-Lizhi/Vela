@@ -26,10 +26,10 @@ type accountHTTP struct {
 	rotated string
 }
 
-// connection 按 Key→供应商→全局解析有效出口，不读取环境代理或泄露代理认证。
-func (a *Accounts) connection(ctx context.Context, c QueryConfig, p ProxyChoice, parent ProxyChoice) (*accountHTTP, error) {
+// connection 按当前对象独立选择全局代理或直连，旧 provider 和空模式跟随全局，不读取环境代理或泄露代理认证。
+func (a *Accounts) connection(ctx context.Context, c QueryConfig, p ProxyChoice) (*accountHTTP, error) {
 	if p.Mode == ProxyProvider || p.Mode == "" {
-		p = parent
+		p.Mode = ProxyGlobal
 	}
 	var proxy *url.URL
 	if p.Mode == ProxyGlobal {
@@ -219,8 +219,8 @@ func failedStatus(old QueryStatus, e error) QueryStatus {
 	return old
 }
 
-// balance 查询余额、订阅和可选签到；独立子项失败不抹除已成功余额。
-func (h *accountHTTP) balance(ctx context.Context, old AccountBalance, checkin bool) (AccountBalance, error) {
+// balance 查询余额；后台刷新可附带既有订阅和签到，草稿验证只查余额。
+func (h *accountHTTP) balance(ctx context.Context, old AccountBalance, checkin, subscriptions bool) (AccountBalance, error) {
 	c := h.config
 	r := old
 	if c.Mode == "newapi" && checkin {
@@ -319,7 +319,7 @@ func (h *accountHTTP) balance(ctx context.Context, old AccountBalance, checkin b
 	r.Amount = n
 	r.Currency = currency
 	r.Status = successStatus()
-	if c.Mode == "sub2api" {
+	if c.Mode == "sub2api" && subscriptions {
 		sub, e := h.request(ctx, "GET", "/api/v1/subscriptions/summary", "")
 		if e != nil {
 			r.SubscriptionStatus = failedStatus(r.SubscriptionStatus, e)

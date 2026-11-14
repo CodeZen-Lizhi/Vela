@@ -27,6 +27,7 @@
   import * as Table from "$lib/components/ui/table";
   import { VelaService, type ProviderModel } from "$lib/generated/mygo";
   import Choice from "./Choice.svelte";
+  import { Input } from "$lib/components/ui/input";
 
   /** 诊断输入与结果直接复用绑定契约，避免维护重复协议定义。 */
   type TestRequest = Parameters<typeof VelaService.runProviderModelTest>[0];
@@ -34,14 +35,13 @@
   type TestOptions = Awaited<ReturnType<typeof VelaService.providerModelTestOptions>>;
   type TestAttempt = TestResult["attempts"][number];
   /** 当前模型固定在调用行；完成后刷新父级最近结果，关闭不清除持久化记录。 */
-  let { providerID, model, previous = null, onclose, oncompleted }: {
+  let { providerID, model, onclose, oncompleted }: {
     providerID: string;
     model: ProviderModel;
-    previous?: TestResult | null;
     onclose: () => void;
     oncompleted: () => Promise<void>;
   } = $props();
-  /** 配置默认展开；开始测试或打开已有结果时自动收起，保留当前范围摘要。 */
+  /** 每次打开从空结果和展开配置开始；本次测试后收起配置，保留当前范围摘要。 */
   let options = $state<TestOptions | null>(null);
   let loading = $state(true);
   let keyID = $state("");
@@ -69,10 +69,12 @@
             { value: "gemini", label: "Gemini GenerateContent" },
           ]);
   const selectedProtocolLabel = $derived(protocols.find((item) => item.value === protocol)?.label ?? protocol);
-  const selectedKeyLabel = $derived(keyID
-    ? options?.keys.find((item) => item.value === keyID)?.label ?? "指定 Key"
-    : "自动 Key");
-  const selectedMappingLabel = $derived(requestModel || "自动映射");
+  /** 空候选明确说明不可测试；单候选直接显示名称，多候选才提供自动选择。 */
+  const selectedKeyLabel = $derived(!options?.keys.length ? "暂无可测试 Key" : options.keys.length === 1 ? options.keys[0]?.label ?? "暂无可测试 Key" : keyID
+    ? options.keys.find((item) => item.value === keyID)?.label ?? "指定 Key"
+    : "自动选择（按优先级）");
+  /** 未配置映射时显示默认调用名，避免将唯一候选误表现为可选择列表。 */
+  const selectedMappingLabel = $derived(!model.mappings.length ? `默认模型名：${options?.modelName ?? model.modelName}` : options?.mappings.length === 1 ? options.mappings[0] ?? options.modelName : requestModel || "自动选择（按优先级）");
   const configSummary = $derived(`${selectedProtocolLabel} · ${selectedKeyLabel} · ${selectedMappingLabel}`);
   const promptLabel = $derived(options?.kind === "image" || options?.kind === "video" ? "测试提示词" : "测试消息");
   const statusKind = $derived(running
@@ -109,19 +111,19 @@
       : "一次真实请求，集中呈现最终结论与执行记录。");
 
   onMount(() => {
-    result = previous;
-    configExpanded = !previous;
     void loadOptions();
   });
   onDestroy(() => {
     if (requestID) void VelaService.cancelProviderModelTest(requestID).catch(() => {});
   });
-  /** 读取当前权限和映射候选；失败保留弹窗及上次结果，并提供重试。 */
+  /** 读取当前权限和映射候选；失败保留弹窗及本次结果，并提供重试。 */
   async function loadOptions(): Promise<void> {
     loading = true;
     error = "";
     try {
       options = await VelaService.providerModelTestOptions(providerID, model.modelId);
+      keyID = options.keys.length === 1 ? options.keys[0]?.value ?? "" : "";
+      requestModel = options.mappings.length === 1 ? options.mappings[0] ?? options.modelName : "";
       protocol = options.kind === "image"
         ? "image"
         : options.kind === "video"
@@ -273,24 +275,21 @@
                 <div class="config-field-grid">
                   <div class="config-field">
                     <Label>执行 Key</Label>
-                    <Choice
-                      bind:value={keyID}
-                      disabled={running || loading}
-                      label="执行 Key"
-                      options={[{ value: "", label: "自动 Key" }, ...options.keys]}
-                    />
+                    {#if options.keys.length > 1}
+                      <Choice bind:value={keyID} disabled={running || loading} label="执行 Key" options={[{ value: "", label: "自动选择（按优先级）" }, ...options.keys]} />
+                    {:else}
+                      <Input aria-label="执行 Key" value={selectedKeyLabel} readonly disabled={!options.keys.length} />
+                    {/if}
+                    {#if !options.keys.length}<p class="text-xs text-muted-foreground">请先添加密钥，并允许它使用当前模型。</p>{/if}
                   </div>
                   <div class="config-field">
                     <Label>模型映射</Label>
-                    <Choice
-                      bind:value={requestModel}
-                      disabled={running || loading}
-                      label="模型映射"
-                      options={[
-                        { value: "", label: "自动映射" },
-                        ...options.mappings.map((name) => ({ value: name, label: name })),
-                      ]}
-                    />
+                    {#if options.mappings.length > 1}
+                      <Choice bind:value={requestModel} disabled={running || loading} label="模型映射" options={[{ value: "", label: "自动选择（按优先级）" }, ...options.mappings.map((name) => ({ value: name, label: name }))]} />
+                    {:else}
+                      <Input aria-label="模型映射" value={options.mappings[0] ?? options.modelName} readonly />
+                      {#if !model.mappings.length}<p class="text-xs text-muted-foreground">默认模型名</p>{/if}
+                    {/if}
                   </div>
                 </div>
                 <div class="config-field">
@@ -303,9 +302,6 @@
                     disabled={running}
                   />
                 </div>
-                {#if !options.keys.length}
-                  <Alert.Root variant="inline-error"><Alert.Description>没有具备该模型权限且已设置密钥的 Key，请先配置密钥。</Alert.Description></Alert.Root>
-                {/if}
               </div>
             {:else}
               <div class="config-summary">
@@ -561,7 +557,7 @@
   .config-field { display: grid; min-width: 0; gap: 7px; }
   /* 允许长 Key 与映射在所属网格内收缩，避免选择器按最小内容宽度覆盖相邻字段。 */
   .config-field :global([data-slot="select-trigger"]) { min-width: 0; max-width: 100%; }
-  .config-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .config-field-grid { display: grid; align-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .model-test-panel-message { display: grid; min-height: 170px; place-content: center; justify-items: center; gap: 10px; padding: 20px; color: var(--muted-foreground); font-size: 11px; text-align: center; }
   .config-summary { display: grid; gap: 2px; padding: 8px 16px 14px; }
   .config-summary-row { display: grid; grid-template-columns: 16px 34px minmax(0, 1fr); align-items: center; gap: 7px; min-height: 37px; border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent); font-size: 9.5px; }

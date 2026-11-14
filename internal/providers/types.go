@@ -21,7 +21,7 @@ const (
 const (
 	// defaultKeyMultiplier 是手动倍率。
 	defaultKeyMultiplier = 1.0
-	// defaultKeyCacheMinutes 是缓存 TTL，单位分钟。
+	// defaultKeyCacheMinutes 是旧 TTL 字段的兼容默认值，当前执行链不使用。
 	defaultKeyCacheMinutes = 5
 	// defaultKeyProbeMinutes 是熔断探测间隔上限，单位分钟。
 	defaultKeyProbeMinutes = 10
@@ -39,13 +39,13 @@ const (
 	ProxyGlobal ProxyMode = "global"
 	// ProxyDirect 不使用代理，直接连接。
 	ProxyDirect ProxyMode = "direct"
-	// ProxyProvider 跟随所属供应商的出口方式，只用于上游 Key。
+	// ProxyProvider 是 Key 的历史兼容输入，保存和执行时均按 global 处理。
 	ProxyProvider ProxyMode = "provider"
 )
 
 // ProxyChoice 是供应商或上游 Key 的局部出口选择。
 type ProxyChoice struct {
-	// Mode 出口方式；供应商可取 global、direct，上游 Key 只可取 provider、direct。
+	// Mode 出口方式；供应商和上游 Key 均可取 global、direct；Key 兼容旧 provider 输入。
 	Mode ProxyMode `json:"mode"`
 }
 
@@ -119,8 +119,10 @@ type ProviderHealth struct {
 	Reason string `json:"reason"`
 }
 
-// PreferredKey 是供应商列表展示的首选 Key：已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的。
+// PreferredKey 是供应商列表展示的首选 Key：可调用 Key 中优先级数值最小的一把，优先级相同时取先创建的。
 type PreferredKey struct {
+	// ID 标识当前首选 Key，用于读取该 Key 的本地同步状态。
+	ID string `json:"id"`
 	// Name Key 名称。
 	Name string `json:"name"`
 	// Multiplier 倍率；nil 表示未知，0 是有效值。
@@ -151,7 +153,7 @@ type ProviderDefaults struct {
 	RequestSeconds int `json:"requestSeconds"`
 	// KeyMultiplier 新增 Key 的倍率。
 	KeyMultiplier float64 `json:"keyMultiplier"`
-	// KeyCacheMinutes 新增 Key 的缓存 TTL，单位分钟。
+	// KeyCacheMinutes 是新建 Key 历史 TTL 字段的兼容默认值，不提供编辑入口。
 	KeyCacheMinutes int `json:"keyCacheMinutes"`
 	// KeyProbeMinutes 新增 Key 的熔断探测间隔上限，单位分钟。
 	KeyProbeMinutes int `json:"keyProbeMinutes"`
@@ -173,7 +175,7 @@ type ProviderKey struct {
 	ProviderID string `json:"providerId"`
 	// Name 名称，同一供应商内可以重名。
 	Name string `json:"name"`
-	// Note 备注。
+	// Note 为历史备注兼容值，编辑器不再提供修改入口。
 	Note string `json:"note"`
 	// Enabled 是否启用。
 	Enabled bool `json:"enabled"`
@@ -189,7 +191,7 @@ type ProviderKey struct {
 	RPMLimit int `json:"rpmLimit"`
 	// ConcurrencyLimit 并发请求上限；0 表示不限制。
 	ConcurrencyLimit int `json:"concurrencyLimit"`
-	// CacheMinutes 缓存 TTL，单位分钟，0～60；0 表示禁用。
+	// CacheMinutes 为历史兼容值，0～60 分钟；当前执行链不使用，编辑器原样保留。
 	CacheMinutes int `json:"cacheMinutes"`
 	// ProbeMinutes 熔断探测间隔上限，单位分钟，1～32。
 	ProbeMinutes int `json:"probeMinutes"`
@@ -246,7 +248,7 @@ type ProviderKeyDraft struct {
 	Name string `json:"name"`
 	// Secret 密钥明文。新增时为空表示暂不设置，编辑时为空表示不修改原密钥。
 	Secret string `json:"secret"`
-	// Note 备注。
+	// Note 为历史备注兼容值，编辑器不再提供修改入口。
 	Note string `json:"note"`
 	// Multiplier 手动倍率，0～100，0 是有效值；必须填写，缺失不会被当作 0。
 	Multiplier *float64 `json:"multiplier"`
@@ -256,7 +258,7 @@ type ProviderKeyDraft struct {
 	RPMLimit int `json:"rpmLimit"`
 	// ConcurrencyLimit 并发请求上限，非负整数；0 表示不限制。
 	ConcurrencyLimit int `json:"concurrencyLimit"`
-	// CacheMinutes 缓存 TTL，单位分钟，0～60；0 表示禁用。
+	// CacheMinutes 为历史兼容值，0～60 分钟；当前执行链不使用，编辑器原样保留。
 	CacheMinutes int `json:"cacheMinutes"`
 	// ProbeMinutes 熔断探测间隔上限，单位分钟，1～32。
 	ProbeMinutes int `json:"probeMinutes"`

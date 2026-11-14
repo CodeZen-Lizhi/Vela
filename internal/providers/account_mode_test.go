@@ -25,18 +25,18 @@ func TestAccountModeCurrency(t *testing.T) {
 	defer server.Close()
 	a, p, _, _ := accountFixture(t, server.URL)
 	ctx := context.Background()
-	_, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "custom", URL: server.URL, Method: "GET", BalancePath: "data.balance", Currency: "CNY"}})
+	_, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "custom", URL: server.URL, Method: "GET", BalancePath: "data.balance", Currency: "CNY"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "sub2api", RefreshToken: "fixture", Currency: "CNY"}})
+	result, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "sub2api", RefreshToken: "fixture", Currency: "CNY"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Balance.Currency != "USD" || result.Balance.Cash == nil || *result.Balance.Amount != 15 {
 		t.Fatalf("内置方式错误继承旧币种：%+v", result.Balance)
 	}
-	result, err = a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture", Currency: "CNY"}})
+	result, err = saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture", Currency: "CNY"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -91,7 +91,7 @@ func TestLocalDocumentsCombinedAccountLifecycle(t *testing.T) {
 	if err != nil || p.Request.Proxy.Mode != ProxyGlobal {
 		t.Fatal("加密供应商创建失败", err)
 	}
-	account, err := a.SaveProviderAccount(ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-local-account"}})
+	account, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture-local-account"}})
 	if err != nil || account.Balance.Status.State != "success" {
 		t.Fatal("整文档加密下余额查询失败", err, account.Balance.Status, requests.Load())
 	}

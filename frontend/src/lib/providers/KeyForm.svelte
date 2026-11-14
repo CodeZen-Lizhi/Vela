@@ -30,6 +30,7 @@
   let draft = $state<ProviderKeyDraft>(untrack(() => ({
     name: item?.name ?? "",
     secret: "",
+    // 旧备注与无执行效果的 TTL 仅兼容保留，不再提供编辑入口。
     note: item?.note ?? "",
     multiplier: item ? item.multiplier : defaults.keyMultiplier,
     priority: item?.priority ?? nextPriority,
@@ -37,7 +38,7 @@
     concurrencyLimit: item?.concurrencyLimit ?? 0,
     cacheMinutes: item?.cacheMinutes ?? defaults.keyCacheMinutes,
     probeMinutes: item?.probeMinutes ?? defaults.keyProbeMinutes,
-    proxy: { ...(item?.proxy ?? { mode: "provider" }) },
+    proxy: { mode: item?.proxy.mode === "direct" ? "direct" : "global" },
   })));
   /** 名称来源、倍率来源和查询连接与基本配置一次保存。 */
   let queryDraft = $state<ProviderKeyQueryDraft>(defaultKeyQuery());
@@ -76,16 +77,14 @@
   let advanced = $state(untrack(() => !!item && (
     item.rpmLimit !== 0
     || item.concurrencyLimit !== 0
-    || item.cacheMinutes !== defaults.keyCacheMinutes
     || item.probeMinutes !== defaults.keyProbeMinutes
-    || item.proxy.mode !== "provider"
+    || item.proxy.mode === "direct"
   )));
   /** 自动同步已有配置时直接展开，新增时保持收起并走手动维护的快速路径。 */
   let syncOpen = $state(false);
-  /** RPM 与并发留空分别表示不限制；TTL/探测留空恢复默认值。 */
+  /** RPM 与并发留空分别表示不限制；探测留空恢复默认值。 */
   let rpm = $state<number | undefined>(untrack(() => draft.rpmLimit || undefined));
   let concurrency = $state<number | undefined>(untrack(() => draft.concurrencyLimit || undefined));
-  let cache = $state<number | undefined>(untrack(() => draft.cacheMinutes));
   let probe = $state<number | undefined>(untrack(() => draft.probeMinutes));
   /** 高级摘要只陈述当前限制，不重复展示全部低频字段。 */
   const limitSummary = $derived(`RPM ${rpm ?? "不限"} · 并发 ${concurrency ?? "不限"}`);
@@ -124,7 +123,6 @@
         ...draft,
         rpmLimit: rpm ?? 0,
         concurrencyLimit: concurrency ?? 0,
-        cacheMinutes: cache ?? defaults.keyCacheMinutes,
         probeMinutes: probe ?? defaults.keyProbeMinutes,
       },
       { ...queryDraft, config: queryConfigDraft(queryDraft.config) },
@@ -137,7 +135,7 @@
     <Field.Set disabled={busy} class="key-editor-fieldset">
       <section class="key-form-section" aria-labelledby="key-credentials-title">
         <header class="key-form-section-heading">
-          <div><h3 id="key-credentials-title">调用凭证</h3><p>用于识别并调用当前供应商；密钥只会加密保存。</p></div>
+          <h3 id="key-credentials-title">调用凭证</h3>
         </header>
         <Field.Group class="provider-editor-fields">
           <Field.Field orientation="horizontal" class="provider-setting-row">
@@ -163,39 +161,37 @@
 
       <section class="key-form-section" aria-labelledby="key-routing-title">
         <header class="key-form-section-heading">
-          <div><h3 id="key-routing-title">调用规则</h3><p>决定这把 Key 在供应商内部的价格口径、选择顺序与运行约束。</p></div>
+          <h3 id="key-routing-title">调用规则</h3>
         </header>
         <Field.Group class="provider-fields-grid key-routing-grid">
           <Field.Field>
             <Field.Label for="key-multiplier">倍率</Field.Label>
-            <div class="key-inline-control">
-              <MultiplierSource value={queryDraft.multiplierSource} label="Key 倍率来源" disabled={busy} onchange={setMultiplierSource}/>
-              {#if queryDraft.multiplierSource === "manual"}
-                <div class="provider-number-control"><Input id="key-multiplier" type="number" min={0} max={100} step="any" bind:value={draft.multiplier} required/><span>×</span></div>
-              {:else}
-                <div class="key-multiplier-readout" aria-live="polite">{item?.multiplier === null || item?.multiplier === undefined ? "保存后同步" : `当前 ${item.multiplier}×`}</div>
-              {/if}
-            </div>
-            <Field.Description>{queryDraft.multiplierSource === "upstream" ? "保存后跟随上游；同步失败保留当前有效值。" : "0 是有效倍率；未知不会按 1× 处理。"}</Field.Description>
+            {#if queryDraft.multiplierSource === "manual"}
+              <div class="provider-number-control key-number-control"><Input id="key-multiplier" type="number" min={0} max={100} step="any" bind:value={draft.multiplier} required/><span>×</span></div>
+            {:else}
+              <Input id="key-multiplier" class="max-w-28" value={item?.multiplier === null || item?.multiplier === undefined ? "倍率未知" : `${item.multiplier}×`} readonly />
+            {/if}
+          </Field.Field>
+          <Field.Field>
+            <Field.Label>倍率来源</Field.Label>
+            <div><MultiplierSource value={queryDraft.multiplierSource} label="倍率来源" disabled={busy} onchange={setMultiplierSource}/></div>
           </Field.Field>
           <Field.Field>
             <Field.Label for="key-priority">优先级</Field.Label>
-            <Input id="key-priority" type="number" min={0} step={1} bind:value={draft.priority} required class="max-w-40" />
-            <Field.Description>数字越小越优先；同优先级保留创建顺序。</Field.Description>
+            <Input id="key-priority" type="number" min={0} step={1} bind:value={draft.priority} required class="max-w-28" />
+            <Field.Description>数字越小越优先。</Field.Description>
           </Field.Field>
         </Field.Group>
 
         <Collapsible.Root bind:open={advanced} class="provider-editor-advanced" data-key-section="advanced">
-          <Collapsible.Trigger disabled={busy}>{#snippet child({ props })}<Button {...props} variant="text" size="disclosure"><span>高级设置</span><span class="provider-editor-expand-hint">{limitSummary}</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Button>{/snippet}</Collapsible.Trigger>
+          <Collapsible.Trigger disabled={busy}>{#snippet child({ props })}<Button {...props} variant="ghost" size="disclosure"><span>高级设置</span><span class="provider-editor-expand-hint">{limitSummary}</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Button>{/snippet}</Collapsible.Trigger>
           <Collapsible.Content forceMount class="provider-editor-advanced-content">
-            <p class="provider-editor-hint">留空表示不限制或使用后台默认值；缓存与熔断参数只影响这把 Key。</p>
+            <p class="provider-editor-hint">RPM 与并发留空表示不限；熔断探测留空使用默认值。</p>
             <Field.Group class="provider-editor-fields">
-              <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="key-note">备注</Field.Label><Field.Content><Input id="key-note" bind:value={draft.note} placeholder="用途、来源或轮换说明（可选）" /></Field.Content></Field.Field>
               <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="key-rpm">RPM 限制</Field.Label><Field.Content><Input id="key-rpm" type="number" min={1} max={10000} step={1} bind:value={rpm} placeholder="不限制" /></Field.Content></Field.Field>
               <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="key-concurrency">并发上限</Field.Label><Field.Content><Input id="key-concurrency" type="number" min={0} step={1} bind:value={concurrency} placeholder="不限制" /></Field.Content></Field.Field>
-              <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="key-cache">缓存 TTL</Field.Label><Field.Content><div class="provider-number-control"><Input id="key-cache" type="number" min={0} max={60} step={1} bind:value={cache} placeholder={String(defaults.keyCacheMinutes)}/><span>分钟</span></div><Field.Description>0 表示禁用。</Field.Description></Field.Content></Field.Field>
               <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="key-probe">熔断探测</Field.Label><Field.Content><div class="provider-number-control"><Input id="key-probe" type="number" min={1} max={32} step={1} bind:value={probe} placeholder={String(defaults.keyProbeMinutes)}/><span>分钟</span></div><Field.Description>只限制失败后的最长探测间隔。</Field.Description></Field.Content></Field.Field>
-              <ProxyField bind:value={draft.proxy} forKey horizontal />
+              <ProxyField bind:value={draft.proxy} horizontal />
             </Field.Group>
           </Collapsible.Content>
         </Collapsible.Root>
@@ -218,7 +214,6 @@
   </div>
   {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
   <footer class="provider-editor-footer key-editor-footer">
-    <p>模型权限在列表中通过盾牌入口维护。</p>
     <div class="key-editor-actions"><Button type="button" variant="outline" disabled={busy} onclick={onclose}>取消</Button><Button type="submit" disabled={busy || queryLoading || !!queryError}>{busy ? "保存中…" : item ? "保存更改" : "添加 Key"}</Button></div>
   </footer>
 </form>

@@ -485,8 +485,10 @@ export interface Payload {
   bodyState: string;
 }
 
-/** PreferredKey 是供应商列表展示的首选 Key：已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的。 */
+/** PreferredKey 是供应商列表展示的首选 Key：可调用 Key 中优先级数值最小的一把，优先级相同时取先创建的。 */
 export interface PreferredKey {
+  /** ID 标识当前首选 Key，用于读取该 Key 的本地同步状态。 */
+  id: string;
   /** Name Key 名称。 */
   name: string;
   /** Multiplier 倍率；nil 表示未知，0 是有效值。 */
@@ -541,6 +543,8 @@ export interface ProviderAccount {
 
 /** ProviderAccountDraft 只允许修改账户配置，不接收客户端余额结果。 */
 export interface ProviderAccountDraft {
+  /** ValidationID 引用当前草稿的临时结果；仅成功验证可应用余额，空时只保存配置。 */
+  validationId: string;
   /** Config、MonthlyQuota、Checkin 与 ProviderAccount 同名字段含义一致。 */
   config: QueryConfig;
   monthlyQuota: number;
@@ -552,6 +556,14 @@ export interface ProviderAccountRefresh {
   /** Accounts 与 Keys 仅包含本次指定范围的对象。 */
   accounts: ProviderAccount[];
   keys: ProviderKeyQuery[];
+}
+
+/** ProviderAccountValidation 只返回余额验证结果及不透明引用，不向页面回传认证信息。 */
+export interface ProviderAccountValidation {
+  /** ID 为临时查询引用；仅成功结果可应用余额，保存、取消或再次验证后失效。 */
+  id: string;
+  /** Balance 为本次草稿查询结果，不代表已写入正式账户。 */
+  balance: AccountBalance;
 }
 
 /** ProviderDefaults 是表单占位文字、预填值和“当前生效值”提示使用的默认值，由本模块唯一定义。 */
@@ -566,7 +578,7 @@ export interface ProviderDefaults {
   requestSeconds: number;
   /** KeyMultiplier 新增 Key 的倍率。 */
   keyMultiplier: number;
-  /** KeyCacheMinutes 新增 Key 的缓存 TTL，单位分钟。 */
+  /** KeyCacheMinutes 是新建 Key 历史 TTL 字段的兼容默认值，不提供编辑入口。 */
   keyCacheMinutes: number;
   /** KeyProbeMinutes 新增 Key 的熔断探测间隔上限，单位分钟。 */
   keyProbeMinutes: number;
@@ -605,7 +617,7 @@ export interface ProviderKey {
   providerId: string;
   /** Name 名称，同一供应商内可以重名。 */
   name: string;
-  /** Note 备注。 */
+  /** Note 为历史备注兼容值，编辑器不再提供修改入口。 */
   note: string;
   /** Enabled 是否启用。 */
   enabled: boolean;
@@ -621,7 +633,7 @@ export interface ProviderKey {
   rpmLimit: number;
   /** ConcurrencyLimit 并发请求上限；0 表示不限制。 */
   concurrencyLimit: number;
-  /** CacheMinutes 缓存 TTL，单位分钟，0～60；0 表示禁用。 */
+  /** CacheMinutes 为历史兼容值，0～60 分钟；当前执行链不使用，编辑器原样保留。 */
   cacheMinutes: number;
   /** ProbeMinutes 熔断探测间隔上限，单位分钟，1～32。 */
   probeMinutes: number;
@@ -643,7 +655,7 @@ export interface ProviderKeyDraft {
   name: string;
   /** Secret 密钥明文。新增时为空表示暂不设置，编辑时为空表示不修改原密钥。 */
   secret: string;
-  /** Note 备注。 */
+  /** Note 为历史备注兼容值，编辑器不再提供修改入口。 */
   note: string;
   /** Multiplier 手动倍率，0～100，0 是有效值；必须填写，缺失不会被当作 0。 */
   multiplier: number | null;
@@ -653,7 +665,7 @@ export interface ProviderKeyDraft {
   rpmLimit: number;
   /** ConcurrencyLimit 并发请求上限，非负整数；0 表示不限制。 */
   concurrencyLimit: number;
-  /** CacheMinutes 缓存 TTL，单位分钟，0～60；0 表示禁用。 */
+  /** CacheMinutes 为历史兼容值，0～60 分钟；当前执行链不使用，编辑器原样保留。 */
   cacheMinutes: number;
   /** ProbeMinutes 熔断探测间隔上限，单位分钟，1～32。 */
   probeMinutes: number;
@@ -773,7 +785,7 @@ export interface Proxy {
 
 /** ProxyChoice 是供应商或上游 Key 的局部出口选择。 */
 export interface ProxyChoice {
-  /** Mode 出口方式；供应商可取 global、direct，上游 Key 只可取 provider、direct。 */
+  /** Mode 出口方式；供应商和上游 Key 均可取 global、direct；Key 兼容旧 provider 输入。 */
   mode: ProxyMode;
 }
 
@@ -1310,6 +1322,10 @@ export const VelaService = {
   deleteProviderKey(keyID: string): Promise<void> {
     return call("VelaService.DeleteProviderKey", keyID);
   },
+  /** DiscardProviderAccountValidation 清除已关闭弹窗的验证结果，不影响已保存配置。 */
+  discardProviderAccountValidation(providerID: string, validationID: string): Promise<void> {
+    return call("VelaService.DiscardProviderAccountValidation", providerID, validationID);
+  },
   /** DownloadApplicationUpdate 下载并验证已检查版本，下载完成后等待用户确认重启。 */
   downloadApplicationUpdate(): Promise<void> {
     return call("VelaService.DownloadApplicationUpdate");
@@ -1386,6 +1402,10 @@ export const VelaService = {
   refreshProviderKey(keyID: string): Promise<ProviderKeyQuery> {
     return call("VelaService.RefreshProviderKey", keyID);
   },
+  /** RefreshReusedProviderKeys 在验证并保存后独立同步复用账户连接的 Key，不重复查询余额。 */
+  refreshReusedProviderKeys(providerID: string): Promise<void> {
+    return call("VelaService.RefreshReusedProviderKeys", providerID);
+  },
   /** RequestKeyTotals 读取清理后仍保留的 Key 消耗归属，并通过凭据模块解析当前名称。 */
   requestKeyTotals(q: Query): Promise<KeyAggregate[]> {
     return call("VelaService.RequestKeyTotals", q);
@@ -1446,7 +1466,7 @@ export const VelaService = {
   saveGlobalProxy(p: Proxy): Promise<void> {
     return call("VelaService.SaveGlobalProxy", p);
   },
-  /** SaveProviderAccount 保存账户并独立同步余额及复用它的 Key；同步失败在结果状态中表达。 */
+  /** SaveProviderAccount 只保存账户；可采用当前草稿已验证的余额，不触发上游查询。 */
   saveProviderAccount(providerID: string, draft: ProviderAccountDraft): Promise<ProviderAccount> {
     return call("VelaService.SaveProviderAccount", providerID, draft);
   },
@@ -1542,6 +1562,10 @@ export const VelaService = {
   updateProviderKey(keyID: string, draft: ProviderKeyDraft): Promise<ProviderKey> {
     return call("VelaService.UpdateProviderKey", keyID, draft);
   },
+  /** ValidateProviderAccount 临时验证当前草稿余额，不保存配置或同步 Key。 */
+  validateProviderAccount(providerID: string, draft: ProviderAccountDraft): Promise<ProviderAccountValidation> {
+    return call("VelaService.ValidateProviderAccount", providerID, draft);
+  },
   /** Verification 读取本地计划、最近结果和进度，不触发采样或加载参考库。 */
   verification(): Promise<VerificationSnapshot> {
     return call("VelaService.Verification");
@@ -1558,6 +1582,8 @@ export const VelaService = {
 export const events = {
   /** windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。 */
   windowVisible: event<boolean>("window:visible"),
+  /** providerAccountsRefreshed 通知恢复窗口触发的账户查询已结束，页面此时重读落库后的余额和倍率。 */
+  providerAccountsRefreshed: event<boolean>("provider:accounts-refreshed"),
   /** verificationProgress 将合并后的检测样本进度推送给已打开页面。 */
   verificationProgress: event<VerificationProgress>("verification:progress"),
 } as const;

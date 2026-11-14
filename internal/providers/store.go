@@ -146,11 +146,11 @@ func normalizeServiceURL(raw string) (string, error) {
 	return u.Scheme + "://" + strings.ToLower(u.Host), nil
 }
 
-// normalizeProxy 校验出口选择并清理无关字段；只有上游 Key 可以选择跟随所属供应商。
+// normalizeProxy 校验出口选择并清理无关字段；供应商和 Key 均直接跟随全局，兼容 Key 的旧 provider 输入。
 func normalizeProxy(choice ProxyChoice, forKey bool) (ProxyChoice, error) {
 	modes := []ProxyMode{ProxyGlobal, ProxyDirect}
-	if forKey {
-		modes = []ProxyMode{ProxyProvider, ProxyDirect}
+	if forKey && choice.Mode == ProxyProvider {
+		choice.Mode = ProxyGlobal
 	}
 	if !slices.Contains(modes, choice.Mode) {
 		return ProxyChoice{}, errors.New("请选择网络代理方式")
@@ -303,7 +303,8 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 
 // keyBrief 是汇总供应商概览时用到的 Key 信息。
 type keyBrief struct {
-	// enabled 是否启用；health 是调度运行核心提供的健康快照；doc 提供名称、倍率与优先级。
+	// id 标识同步状态所属 Key；enabled 是否启用；health 为健康快照；doc 提供名称、倍率与优先级。
+	id      string
 	enabled bool
 	health  ProviderKeyHealthSnapshot
 	doc     keyDocument
@@ -313,7 +314,7 @@ type keyBrief struct {
 // 首选 Key 取可调用 Key 中优先级数值最小的一把，优先级相同时取先创建的；健康汇总取启用 Key 的最高健康分。
 // 首选 Key 排除冷却、熔断或无凭据的 Key；健康分档不受供应商启停或即时准入影响。
 func summarize(enabled bool, keys []keyBrief) (*PreferredKey, ProviderHealth) {
-	var preferred *keyDocument
+	var preferred *keyBrief
 	var bestScore float64
 	active := 0
 	for i := range keys {
@@ -322,8 +323,8 @@ func summarize(enabled bool, keys []keyBrief) (*PreferredKey, ProviderHealth) {
 		}
 		active++
 		bestScore = max(bestScore, keys[i].health.Score)
-		if keys[i].health.Available && (preferred == nil || keys[i].doc.Priority < preferred.Priority) {
-			preferred = &keys[i].doc
+		if keys[i].health.Available && (preferred == nil || keys[i].doc.Priority < preferred.doc.Priority) {
+			preferred = &keys[i]
 		}
 	}
 	if active == 0 {
@@ -344,7 +345,7 @@ func summarize(enabled bool, keys []keyBrief) (*PreferredKey, ProviderHealth) {
 	if !enabled || preferred == nil {
 		return nil, health
 	}
-	return &PreferredKey{Name: preferred.Name, Multiplier: preferred.Multiplier}, health
+	return &PreferredKey{ID: preferred.id, Name: preferred.doc.Name, Multiplier: preferred.doc.Multiplier}, health
 }
 
 // Snapshot 读取供应商页需要的全部内容：供应商概览与表单默认值。
@@ -416,6 +417,7 @@ func (s *Store) keyBriefs(ctx context.Context) (map[string][]keyBrief, error) {
 			brief.health = s.healthLookup(keyID, executionVersion(sealed))
 			brief.health.Available = brief.health.Available && sealed != nil
 		}
+		brief.id = keyID
 		result[providerID] = append(result[providerID], brief)
 	}
 	return result, rows.Err()

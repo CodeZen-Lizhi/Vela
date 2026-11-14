@@ -211,4 +211,4 @@
   </Dialog.Content>
 </Dialog.Root>
 
-{#if testing}<ProviderModelTest providerID={providerID} model={testing} previous={testResults.find((item) => item.modelId === testing?.modelId) ?? null} onclose={() => testing = null} oncompleted={reload}/>{/if}
+{#if testing}<ProviderModelTest providerID={providerID} model={testing} onclose={() => testing = null} oncompleted={reload}/>{/if}

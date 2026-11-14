@@ -24,7 +24,7 @@ func (s *VelaService) ProviderAccount(ctx context.Context, providerID string) (p
 	return a.ProviderAccount(ctx, providerID)
 }
 
-// SaveProviderAccount 保存账户并独立同步余额及复用它的 Key；同步失败在结果状态中表达。
+// SaveProviderAccount 只保存账户；可采用当前草稿已验证的余额，不触发上游查询。
 func (s *VelaService) SaveProviderAccount(ctx context.Context, providerID string, draft providers.ProviderAccountDraft) (providers.ProviderAccount, error) {
 	a, e := s.accountManager()
 	if e != nil {
@@ -76,4 +76,32 @@ func (s *VelaService) SaveProviderKey(ctx context.Context, providerID, keyID str
 		return providers.ProviderKeyQuery{}, err
 	}
 	return a.SaveKey(ctx, providerID, keyID, draft, query)
+}
+
+// ValidateProviderAccount 临时验证当前草稿余额，不保存配置或同步 Key。
+func (s *VelaService) ValidateProviderAccount(ctx context.Context, providerID string, draft providers.ProviderAccountDraft) (providers.ProviderAccountValidation, error) {
+	a, err := s.accountManager()
+	if err != nil {
+		return providers.ProviderAccountValidation{}, err
+	}
+	return a.ValidateProviderAccount(ctx, providerID, draft)
+}
+
+// DiscardProviderAccountValidation 清除已关闭弹窗的验证结果，不影响已保存配置。
+func (s *VelaService) DiscardProviderAccountValidation(providerID, validationID string) error {
+	a, err := s.accountManager()
+	if err != nil {
+		return err
+	}
+	a.DiscardProviderAccountValidation(providerID, validationID)
+	return nil
+}
+
+// RefreshReusedProviderKeys 在验证并保存后独立同步复用账户连接的 Key，不重复查询余额。
+func (s *VelaService) RefreshReusedProviderKeys(ctx context.Context, providerID string) error {
+	a, err := s.accountManager()
+	if err != nil {
+		return err
+	}
+	return a.RefreshReusedProviderKeys(ctx, providerID)
 }

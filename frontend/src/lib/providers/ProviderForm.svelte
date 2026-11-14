@@ -50,7 +50,7 @@
         <ProxyField bind:value={draft.request.proxy} horizontal />
       </Field.Group>
       <Collapsible.Root bind:open={advanced} class="provider-editor-advanced">
-        <Collapsible.Trigger disabled={busy}>{#snippet child({ props })}<Button {...props} variant="text" size="disclosure"><span>高级设置</span><span class="provider-editor-expand-hint">超时、尝试与连接</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Button>{/snippet}</Collapsible.Trigger>
+        <Collapsible.Trigger disabled={busy}>{#snippet child({ props })}<Button {...props} variant="ghost" size="disclosure"><span>高级设置</span><span class="provider-editor-expand-hint">超时、尝试与连接</span><ChevronDown class={advanced ? "size-4 rotate-180" : "size-4"}/></Button>{/snippet}</Collapsible.Trigger>
         <Collapsible.Content forceMount class="provider-editor-advanced-content">
           <p class="provider-editor-hint">留空使用默认值；总尝试次数包含首次请求。</p>
           <Field.Group class="provider-editor-fields">
@@ -58,7 +58,15 @@
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-total">流式总超时</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-total" type="number" min={1} max={1200} step={0.001} bind:value={totalSeconds} placeholder={String(defaults.streamTotalMillis / 1000)}/><span>秒</span></div></Field.Content></Field.Field>
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-request">非流式超时</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-request" type="number" min={1} max={1200} step={1} bind:value={requestSeconds} placeholder={String(defaults.requestSeconds)}/><span>秒</span></div></Field.Content></Field.Field>
             <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-attempts">总尝试次数</Field.Label><Field.Content><div class="provider-number-control"><Input id="provider-attempts" type="number" min={1} max={99} step={1} bind:value={attempts} placeholder={String(defaults.attempts)}/><span>次</span></div><Field.Description>包含首次请求。</Field.Description></Field.Content></Field.Field>
-            <Field.Field orientation="horizontal" class="provider-setting-row"><Field.Label for="provider-ws">Responses WebSocket</Field.Label><Field.Content><Switch id="provider-ws" bind:checked={draft.request.responsesWebSocket} disabled={busy}/><Field.Description>允许 Responses WebSocket 请求使用此供应商，仅在上游支持时开启；HTTP / SSE 不受影响。</Field.Description></Field.Content></Field.Field>
+            <Field.Field orientation="horizontal" class="provider-connection-setting">
+              <Field.Content>
+                <div class="provider-connection-toggle">
+                  <Field.Label for="provider-ws" variant="content">Responses WebSocket</Field.Label>
+                  <Switch id="provider-ws" aria-describedby="provider-ws-description" bind:checked={draft.request.responsesWebSocket} disabled={busy}/>
+                </div>
+                <Field.Description id="provider-ws-description">仅在上游支持时开启，不影响 HTTP / SSE。</Field.Description>
+              </Field.Content>
+            </Field.Field>
           </Field.Group>
         </Collapsible.Content>
       </Collapsible.Root>

@@ -33,7 +33,7 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	}
 	qctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	h, queryErr := a.connection(qctx, c, p.Request.Proxy, p.Request.Proxy)
+	h, queryErr := a.connection(qctx, c, p.Request.Proxy)
 	if queryErr == nil {
 		defer h.transport.CloseIdleConnections()
 		queryErr = a.authenticate(qctx, h)
@@ -45,7 +45,7 @@ func (a *Accounts) refreshBalance(ctx context.Context, id string) error {
 	}
 	balance := account.Balance
 	if queryErr == nil {
-		balance, queryErr = h.balance(qctx, balance, account.Checkin)
+		balance, queryErr = h.balance(qctx, balance, account.Checkin, true)
 	}
 	if queryErr != nil {
 		if isSilentRefresh(ctx) {
@@ -135,8 +135,19 @@ func (a *Accounts) saveRotation(ctx context.Context, h *accountHTTP, table, id, 
 	if current != revision || c != h.config {
 		return nil
 	}
+	previousToken := c.RefreshToken
 	c.RefreshToken = h.rotated
-	return a.writeAccount(saveCtx, table, id, c, json.RawMessage(raw), revision)
+	if err := a.writeAccount(saveCtx, table, id, c, json.RawMessage(raw), revision); err != nil {
+		return err
+	}
+	// 后台或复用 Key 的认证继续轮换时，同步推进草稿缓存，防止直接保存退回已失效凭据。
+	if table == "provider_accounts" {
+		if v, ok := a.validations[id]; ok && v.config.Mode == c.Mode && v.config.BaseURL == c.BaseURL && (v.rotated == previousToken || v.config.RefreshToken == previousToken) {
+			v.rotated = h.rotated
+			a.validations[id] = v
+		}
+	}
+	return nil
 }
 
 // refreshKey 先独立保存认证轮换，再按来源更新；结果写回确认 Key 密文、连接世代和供应商快照仍一致。
@@ -213,7 +224,7 @@ func (a *Accounts) refreshKey(ctx context.Context, id string) error {
 		queryErr = errors.New("尚未配置信息查询连接")
 	}
 	if queryErr == nil {
-		h, queryErr = a.connection(qctx, c, kd.Proxy, p.Request.Proxy)
+		h, queryErr = a.connection(qctx, c, kd.Proxy)
 	}
 	if queryErr == nil {
 		defer h.transport.CloseIdleConnections()

@@ -390,11 +390,11 @@ func (m *Manager) credential(ctx context.Context, t VerificationTarget) (provide
 	return providers.ExecutionCandidate{}, "", errors.New("固定检测目标不再可用")
 }
 
-// client 复用项目代理解析与传输层，禁止重定向携带认证，调用方释放连接。
+// client 按 Key 独立选择全局或直连，旧 provider 和空模式跟随全局；禁止重定向携带认证，调用方释放连接。
 func (m *Manager) client(ctx context.Context, c providers.ExecutionCandidate) (*http.Client, error) {
 	choice := c.Key.Proxy
 	if choice.Mode == providers.ProxyProvider || choice.Mode == "" {
-		choice = c.Provider.Request.Proxy
+		choice.Mode = providers.ProxyGlobal
 	}
 	var proxy *url.URL
 	if choice.Mode == providers.ProxyGlobal {

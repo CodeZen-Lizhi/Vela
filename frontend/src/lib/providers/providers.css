@@ -5,6 +5,7 @@
 .provider-toolbar { display:flex; gap:12px; padding:12px 16px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); }
 .provider-search { max-width:260px; flex:1; min-width:150px; }
 .provider-filter { width:160px; }
+.provider-toolbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
 .provider-table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; font-size:12px; }
 .provider-table th { background:var(--muted); color:var(--muted-foreground); font-size:11px; font-weight:500; padding:12px 16px; white-space:nowrap; }
 .provider-table td { padding:18px 16px; border-top:1px solid var(--border); vertical-align:middle; }
@@ -13,7 +14,7 @@
 .provider-table tbody tr:hover { background:color-mix(in srgb,var(--muted) 55%,transparent); }
 .provider-identity { display:flex; gap:10px; align-items:center; min-width:0; }
 .provider-avatar { display:grid; place-items:center; flex-shrink:0; width:34px; height:34px; border-radius:9px; color:var(--accent-foreground); background:var(--accent); font-size:14px; font-weight:600; }
-.provider-name { flex:0 1 auto; min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.provider-name { display:block; text-align:left; flex:0 1 auto; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 
 .provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
 .provider-row-actions { --row-action-size:2rem; }
@@ -21,7 +22,7 @@
 .provider-balance { display:inline-flex; align-items:baseline; gap:0; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .provider-balance.is-empty { color:var(--muted-foreground); font-weight:400; }
 .provider-currency-symbol { color:var(--primary); font-size:12px; font-weight:650; }
-.provider-key-summary { display:flex; align-items:center; gap:8px; width:100%; max-width:220px; min-width:0; }
+.provider-key-summary { display:flex; align-items:center; gap:8px; width:100%; min-width:0; }
 .provider-key-name { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
 
 .provider-form-dialog[data-slot=dialog-content] { width:min(760px,88vw); max-width:none; max-height:88dvh; display:flex; flex-direction:column; gap:18px; padding:24px; }
@@ -49,7 +50,6 @@
 /* 倍率与健康度由多项组合，表头及整组内容共用居中基准；其余列保持各自文本对齐。 */
 .provider-key-identity { display:flex; align-items:center; gap:3px; }
 .provider-key-identity > span { max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; }
-.provider-multiplier { display:flex; align-items:center; flex-wrap:nowrap; gap:6px; }
 .provider-multiplier-value { min-width:24px; font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 /* 来源和错误状态变化均不参与重新分配列宽，状态提示始终保留一行高度。 */
 .provider-key-table { table-layout:fixed; }
@@ -77,16 +77,19 @@
 .provider-query-layout { display:grid; grid-template-columns:170px minmax(0,1fr); gap:20px; }
 .provider-methods { display:flex; flex-direction:column; gap:7px; }
 
-/* 列宽由容器分配，桌面最小窗口也完整显示状态与操作，不依赖横向滚动。 */
-.provider-table:not(.provider-key-table) th:nth-child(1) { width:21%; }
+/* 各列按内容长度分配固定比例并随容器伸缩，短状态列收紧，名称和 Key 保留更多空间。 */
+.provider-table:not(.provider-key-table) th:nth-child(1) { width:20%; }
 .provider-table:not(.provider-key-table) th:nth-child(2) { width:11%; }
 .provider-table:not(.provider-key-table) th:nth-child(3) { width:16%; }
-.provider-table:not(.provider-key-table) th:nth-child(4) { width:13%; }
-.provider-table:not(.provider-key-table) th:nth-child(5) { width:10%; }
-.provider-table:not(.provider-key-table) th:nth-child(6) { width:8%; }
-.provider-table:not(.provider-key-table) th:nth-child(7) { width:21%; }
+.provider-table:not(.provider-key-table) th:nth-child(4) { width:8%; }
+.provider-table:not(.provider-key-table) th:nth-child(5) { width:9%; }
+.provider-table:not(.provider-key-table) th:nth-child(6) { width:13%; }
+.provider-table:not(.provider-key-table) th:nth-child(7) { width:7%; }
+.provider-table:not(.provider-key-table) th:nth-child(8) { width:16%; }
 .provider-table td { white-space:normal; overflow-wrap:anywhere; }
 .provider-identity > a { flex-shrink:0; }
+/* 短内容列统一居中，避免余额靠右而健康靠左造成相邻列视觉拥挤。 */
+.provider-table:not(.provider-key-table) :is(th,td):is(:nth-child(2),:nth-child(5)) { text-align:center; }
 
 /* 默认窗口或较宽侧栏下按剩余空间收紧表格留白，给状态和验证摘要留出文字宽度。 */
 @container workspace (max-width:1000px) {
@@ -129,8 +132,10 @@
  .provider-filter { width:100%; }
 }
 
-/* 账户连接含可选请求字段，内容在弹窗内滚动，操作按钮保持可达。 */
-.provider-form-dialog .account-form { overflow:auto; min-height:0; }
+/* 账户弹窗尺寸仅随窗口变化，标题、接入方式和操作区不随右侧长配置滚动。 */
+.provider-account-dialog[data-slot=dialog-content] { height:min(700px,88dvh); overflow:hidden; }
+.provider-account-dialog > [data-slot=dialog-header] { flex-shrink:0; }
+.provider-form-dialog .account-form { overflow:hidden; min-height:0; }
 
 /* 后台 WebView 会暂停动画帧；关闭态立即退出绘制，避免等待卸载时仍遮挡页面。 */
 [data-slot=dialog-content][data-state=closed],
@@ -151,10 +156,17 @@
 .key-form-section + .key-form-section { padding-top:14px; border-top:1px solid var(--border); }
 .key-form-section-heading h3 { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; }
 .key-form-section-heading h3::before { content:""; width:3px; height:14px; border-radius:999px; background:var(--primary); }
-.key-form-section-heading p { margin-top:5px; color:var(--muted-foreground); font-size:12px; line-height:1.55; }
-.key-inline-control { display:grid; grid-template-columns:104px minmax(0,1fr); align-items:center; gap:8px; }
-.key-multiplier-readout { display:flex; align-items:center; min-height:36px; padding:0 12px; border:1px solid var(--border); border-radius:8px; color:var(--muted-foreground); background:var(--muted); font-size:12px; }
-.key-routing-grid { align-items:start; }
+.provider-key-editor-dialog[data-slot=dialog-content] { width:min(680px,88vw); }
+.key-routing-grid[data-slot=field-group] { grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:start; }
+.key-number-control { max-width:136px; }
+.key-editor-body .provider-editor-advanced { margin-top:12px; }
+.key-editor-body .provider-editor-advanced-content .provider-setting-row:last-child { grid-column:1/-1; }
+@media(min-width:601px) {
+ .key-editor-body .key-form-section > .provider-editor-fields > .provider-setting-row { grid-template-columns:88px minmax(0,1fr); gap:12px; }
+ .key-editor-body .provider-editor-advanced-content .provider-setting-row { grid-template-columns:88px minmax(0,1fr); gap:12px; }
+ .key-editor-body .provider-editor-advanced-content .provider-number-control,
+ .key-editor-body .provider-editor-advanced-content [data-slot=input] { max-width:160px; }
+}
 .key-sync-section { overflow:hidden; border:1px solid var(--border); border-radius:12px; background:color-mix(in srgb,var(--muted) 22%,var(--background)); }
 .key-sync-trigger[data-slot=button] { min-height:46px; height:auto; padding:8px 14px; text-align:left; border-radius:0; }
 .key-sync-title { display:flex; align-items:center; gap:7px; flex-shrink:0; font-size:13px; font-weight:600; }
@@ -162,10 +174,13 @@
 .key-sync-content[data-state=closed] { display:none; }
 .key-sync-content { display:flex; flex-direction:column; gap:16px; padding:16px; border-top:1px solid var(--border); background:var(--background); }
 .key-sync-intro { color:var(--muted-foreground); font-size:11px; line-height:1.6; }
-.key-editor-footer { justify-content:space-between; }
-.key-editor-footer > p { color:var(--muted-foreground); font-size:11px; }
+.key-editor-footer { justify-content:flex-end; }
 .key-editor-actions { display:flex; align-items:center; gap:8px; }
 .provider-setting-row[data-slot=field] { display:grid; grid-template-columns:136px minmax(0,1fr); gap:20px; align-items:start; }
+/* 基础信息使用紧凑标签列，输入框和代理选项共用左侧起点；高级设置保持原布局。 */
+@media(min-width:601px) {
+ .provider-editor-dialog [data-slot=field-set] > .provider-editor-fields > .provider-setting-row { grid-template-columns:88px minmax(0,1fr); gap:12px; }
+}
 .provider-setting-row > [data-slot=field-label] { padding-top:8px; width:auto; flex:none; }
 .provider-setting-row > [data-slot=field-content] { min-width:0; gap:6px; }
 .provider-editor-advanced { border-top:1px solid var(--border); margin-top:20px; }
@@ -177,7 +192,9 @@
 /* 高级数值两列紧凑排列，开关独占整行；保留数字类型的原生校验，仅隐藏步进箭头。 */
 .provider-editor-advanced-content .provider-editor-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; }
 .provider-editor-advanced-content .provider-setting-row { grid-template-columns:108px minmax(0,1fr); gap:10px; }
-.provider-editor-advanced-content .provider-setting-row:last-child { grid-column:1/-1; }
+/* 标题与开关就近排列，说明置于下方，右侧自然留白。 */
+.provider-connection-setting[data-slot=field] { grid-column:1/-1; }
+.provider-connection-toggle { display:flex; align-items:center; gap:10px; }
 
 .provider-number-control { display:flex; align-items:center; gap:10px; }
 .provider-number-control > [data-slot=input] { min-width:0; flex:1; }
@@ -190,7 +207,7 @@
  .provider-setting-row > [data-slot=field-label] { padding-top:0; }
  .provider-editor-hint { margin-left:0; }
  .provider-editor-expand-hint { display:none; }
- .key-inline-control { grid-template-columns:minmax(0,1fr); }
+ .key-routing-grid[data-slot=field-group] { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .key-sync-trigger[data-slot=button] { align-items:flex-start; }
  .key-sync-summary { width:100%; flex-basis:100%; text-align:left; white-space:normal; }
  .key-editor-footer { align-items:stretch; flex-direction:column; }

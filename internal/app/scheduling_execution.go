@@ -109,11 +109,11 @@ func (s *SchedulingExecution) ResetKeyHealth(ctx context.Context, keyID string) 
 	return s.Executor.ResetHealth(ctx, keyID, version)
 }
 
-// clientFor 按Key→供应商→全局代理解析出口，客户端按地址复用，重定向不携带上游凭据。
+// clientFor 按 Key 独立选择全局代理或直连，旧 provider 和空模式跟随全局，客户端按地址复用，重定向不携带上游凭据。
 func (s *SchedulingExecution) clientFor(ctx context.Context, c scheduling.Candidate) (*http.Client, error) {
 	choice := c.Key.Proxy
 	if choice.Mode == providers.ProxyProvider || choice.Mode == "" {
-		choice = c.Provider.Request.Proxy
+		choice.Mode = providers.ProxyGlobal
 	}
 	var proxy *url.URL
 	if choice.Mode == providers.ProxyGlobal {

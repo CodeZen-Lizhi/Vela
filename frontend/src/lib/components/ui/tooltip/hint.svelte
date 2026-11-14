@@ -11,7 +11,7 @@
     text: string | null | undefined;
     /** 默认仅在文字以省略号截断时显示；只有折叠侧栏菜单可设为false。 */
     overflowOnly?: boolean;
-    /** 菜单提示放在侧栏右侧，省略文字从行外最近的上下边缘显示。 */
+    /** 菜单提示放在侧栏右侧，省略文字贴近原元素显示。 */
     side?: ComponentProps<typeof Content>["side"];
     /** 原元素接收Tooltip触发属性，保留布局、事件及可访问名称。 */
     children: Snippet<[Record<string, unknown>]>;
@@ -20,24 +20,10 @@
   let overflowing = $state(false);
   /** 未截断的名称拒绝打开提示。 */
   let open = $state(false);
-  /** 提示按原文字横向位置与整行上下边界定位，避免压住当前行。 */
-  let anchor = $state<ComponentProps<typeof Content>["customAnchor"]>(null);
-  /** 高行选择距原文字更近的一侧，避免提示远离文字或遮住当前行。 */
-  let placement = $state<ComponentProps<typeof Content>["side"]>("top");
-  /** 读取实际省略状态及当前行边界，不改变控件尺寸、焦点或业务事件。 */
+  /** 只判断当前文字是否省略，浮层直接锚定原元素，避免按整行定位产生过远间距。 */
   function prepareHint(event: Event): void {
     const element = event.currentTarget as HTMLElement;
     overflowing = getComputedStyle(element).textOverflow === "ellipsis" && element.clientWidth > 0 && element.scrollWidth > element.clientWidth;
-    const textRect = element.getBoundingClientRect();
-    const rowRect = element.closest("tr")?.getBoundingClientRect();
-    placement = rowRect && rowRect.bottom - textRect.bottom < textRect.top - rowRect.top ? "bottom" : side;
-    anchor = {
-      getBoundingClientRect: () => {
-        const textRect = element.getBoundingClientRect();
-        const rowRect = element.closest("tr")?.getBoundingClientRect() ?? textRect;
-        return new DOMRect(textRect.left, rowRect.top, textRect.width, rowRect.height);
-      },
-    };
   }
   /** 仅传递提示的关联和事件，避免按钮默认type及状态覆盖输入框、选择器的原有契约。 */
   function triggerProps(props: Record<string, unknown>): Record<string, unknown> {
@@ -47,11 +33,11 @@
 </script>
 
 {#if text}
-  <Root disableHoverableContent bind:open={() => open, (next) => open = next && (!overflowOnly || overflowing)}>
+  <Root delayDuration={300} disableHoverableContent bind:open={() => open, (next) => open = next && (!overflowOnly || overflowing)}>
     <Trigger>
       {#snippet child({ props })}{@render children(triggerProps(props))}{/snippet}
     </Trigger>
-    <Content side={overflowOnly ? placement : side} align={overflowOnly ? "start" : "center"} customAnchor={overflowOnly ? anchor : null}>{text}</Content>
+    <Content side={overflowOnly ? "bottom" : side} align={overflowOnly ? "start" : "center"}>{text}</Content>
   </Root>
 {:else}
   {@render children({})}

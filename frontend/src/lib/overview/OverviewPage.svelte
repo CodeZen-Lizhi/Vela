@@ -14,7 +14,7 @@
   import * as Select from "$lib/components/ui/select";
   import AttentionSettings from "$lib/settings/AttentionSettings.svelte";
   import { errorMessage } from "$lib/settings/sections";
-  import { VelaService, type OverviewSnapshot } from "$lib/generated/mygo";
+  import { events, VelaService, type OverviewSnapshot } from "$lib/generated/mygo";
   import { attention, applyAttentionPreferences, markRateRead, refreshAttention } from "./attention.svelte";
   import { cacheRate, usagePartsKnown, compact, dateKey, formatMetric, groupRows, heatDays, shiftDay, successRate, summarize, timeBuckets, type Dimension, type Metric } from "./data";
   import Trend from "./Trend.svelte";
@@ -93,19 +93,25 @@
   onMount(() => {
     try { guideDismissed = sessionStorage.getItem("vela-connect-dismissed") === "1"; } catch { /* 不影响统计查询。 */ }
     if (!desktop) return;
-    let stopped = false, running = false;
+    let stopped = false, running = false, pending = false;
     let timer: ReturnType<typeof setTimeout>;
     /** 页面可见时串行重读，卸载释放轮询。 */
     const poll = async (): Promise<void> => {
-      if (stopped || running || document.hidden) return;
+      if (stopped || document.hidden) return;
+      if (running) { pending = true; return; }
       running = true; await load(); running = false;
-      if (!stopped) timer = setTimeout(() => void poll(), attention.seconds * 1000);
+      if (!stopped) {
+        if (pending) { pending = false; void poll(); }
+        else timer = setTimeout(() => void poll(), attention.seconds * 1000);
+      }
     };
     /** 恢复窗口后立即更新统计，旧定时器不再重复触发。 */
     const visible = (): void => { if (!document.hidden) { clearTimeout(timer); void poll(); } };
     document.addEventListener("visibilitychange", visible);
+    const unsubscribeVisible = events.windowVisible.on(visible);
+    const unsubscribeAccounts = events.providerAccountsRefreshed.on(visible);
     void poll();
-    return () => { stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
+    return () => { unsubscribeVisible(); unsubscribeAccounts(); stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
   });
 </script>
 
