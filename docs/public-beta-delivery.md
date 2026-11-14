@@ -55,3 +55,41 @@ npm run release:prepare -- --notes docs/releases/0.1.0-beta.1.md --allow-dirty
 - 各远端供应商、所有媒体/文件/Realtime 组合、20 并发及 100 万历史规模，以及未定义的启动/内存/延迟性能门槛。
 
 原生验收须由显式设置隔离目录的进程启动，绑定 UI 前核对实际 PID 与环境；UI 工具可能通过 LaunchServices 自动重开应用，不能假设它继承终端环境。涉及旧版升级时须先退出所有共享数据的旧进程。
+
+
+## DMG 双击自安装（2026-11-14）
+
+用户选择“从 DMG 双击 App 自行安装”，替代本轮先前新增的 PKG 方案。已移除 PKG 构建脚本及发布入口，沿用 MyGo 的 App/DMG 构建。只读 `/Volumes/` 或 Gatekeeper AppTranslocation 中的正式版在初始化用户数据和单实例检查前进入原生“安装并打开”确认；取消不访问业务数据，正常安装版和开发版不拦截。
+
+安装先在目标父目录暂存新版并检查签名及应用身份，再仅向目标旧版可执行路径发送一次 SIGTERM，等待原生正常退出与业务收尾。最多30秒，拒绝退出时不替换、不强杀并显示错误。以同卷换名替换整包，失败时恢复旧包，无法恢复时保留备份位置；权限不足或旧包归其他用户所有时通过系统申请管理员授权。成功后由原桌面用户通过 `open -n` 打开已安装副本，避免激活还在DMG中的进程；显式隔离数据目录透传给新进程，安装不操作业务数据库或凭据。
+
+原生验收使用最终DMG的真实Vela.app作为来源，共享实际安装确认/安装/启动入口，将目标固定在 `.cache/dmg-self-install/Applications/`。原生确认后，旧生产App进程5660正常返回0，新进程5834从安装目标启动；旧包独有文件被移除，新包签名通过，隔离凭据主密钥SHA256不变，SQLite integrity_check为ok，新进程确认使用同一隔离数据目录。未替换日常 `/Applications/Vela.app`。证据为 `.cache/dmg-self-install/checks.json`、`state.json`、`native.log`。CUA读取验收宿主时因其已退出而超时，未取得弹窗截图；安装成功依据独立进程、文件和重读结果，不宣称已取得截图。
+
+Go验收覆盖真实签名App的复制与整包替换、其他目录同名进程保留、损坏安装源在退出旧版前失败、拒绝退出30秒后旧包保留和暂存清理，以及真实只读DMG来源识别；构建、测试与自检最终结果见本节后续记录。管理员授权分支及Gatekeeper首次来源提示未实测，不据此保证所有机器免系统确认。需求正文同步Aether总方案R55与A37。
+
+最终检查：`go test ./cmd/vela ./internal/desktopinstall -count=1 -v`通过（含4项安装器测试，无跳过），`go vet`、Shell/Go静态自检及Diff空白检查通过；`npm run build`完成App签名及DMG生成，Svelte0错误/0警告，保留既有大chunk提示。当前DMG SHA256：`5ca9c2014b3991816390d3b4b3cc173007788d111b09cac34c575d2f5c0b018d`。验收进程已正常退出，日常应用保持运行。应用内下载更新仅答复可行性，未接入或发布更新源。
+
+
+## 应用内更新接入（2026-11-14）
+
+用户已授权“DMG首次安装＋应用内更新”。常规设置增加检查更新、版本及纯文本发行说明、共享Progress下载进度、下载完成后的二次重启确认。更新状态由宿主Manager持有，不因离开设置取消下载；检查与下载串行，重复点击不并发，失败保留原因和重试入口，只有签名验证完成才可重启。复用MyGo Updater正常退出后的替换和重启，无新增更新服务或静默下载。beta构建检查后续测试版及正式版，正式构建仅正式发布；不可写安装位置及开发版明确提示不可更新。
+
+独立Ed25519签名公钥位于 `config/update-public-key.txt`；正式私钥保存在用户配置目录的 `Vela/update-signing/mygo-update.key`，权限0600，未加入源码、日志或包。MyGo构建额外输出签名tar.gz及平台清单，CHANGELOG提供对应版本说明；release:prepare校验清单存在、实际包大小及Ed25519签名，更新文件纳入候选SHA256SUMS和manifest。此签名用于更新包验证，与Apple Developer ID签名/公证不同。
+
+实际验收：原生隔离App使用当前Manager/MyGo后端、真实本机HTTP更新清单和包，先拒绝错误签名，再下载有效签名包；ready时未提前重启，确认后旧进程返回0，1.1.0新版从原目标路径启动，替换后App签名通过。证据 `.cache/application-update/native/checks.json`、`native-http.log`；测试密钥与正式密钥隔离，原生验收不访问日常应用或用户数据库。前端用实际ApplicationUpdate及共享控件验证检查→下载25%→ready→稍后不重启→确认后仅一次重启，控制台错误0；820px页面clientWidth/scrollWidth均820，截图为 `.cache/application-update/downloading.png`、`ready-820.png`。该界面验收使用合成服务响应，不能当作原生IPC或远端发布通过。
+
+检查：受影响app/updates/cmd三包测试通过，updates race通过；6项发布测试通过，含错误签名和包大小拒绝；go vet、Diff检查及最终npm run build通过，Svelte0错误/0警告，保留既有大chunk提示。最终签名产物另以源码公钥验证通过。
+
+上线边界：只读查询确认 `CodeZen-Lizhi/Vela` 为PRIVATE，匿名GitHub Releases API返回404。已向用户说明需使用公开发布仓库或HTTPS更新地址；当前正式公开更新源尚待决定，不能宣传已上线。没有对外创建/上传Release、push/tag，未替换日常应用；新增能力须先通过DMG安装带内置公钥的版本，之前不含更新器的版本不能凭本次源码自动获得更新入口。权威需求同步总方案R55与A37。
+
+
+### 正式更新仓库公开（2026-11-14）
+
+用户明确选择将现有 `CodeZen-Lizhi/Vela` 仓库改为公开，已执行可见性修改；无需另建发布仓库，内置更新源保持原地址。修改前镜像读取远端唯一main分支历史，51个可达提交；Gitleaks实际扫描48个非合并提交、约18.23MB。两条命中均为Key生命周期测试的同一固定假密钥，已核对连续数字字母尾部和memoryKeys替代，不是真实凭据；未发现密钥、数据库或.env类文件进入历史。扫描是已执行的凭据检查，不保证穷尽所有敏感信息。
+
+修改后以不带认证的HTTP请求验证：仓库API返回visibility=public、private=false；Releases API返回200，列表为空。证据位于 `.cache/visibility-audit/assessment.json`、`public-repo.json`、`public-releases.json`；原始扫描结果已脱敏。当前仅仓库及已有历史公开，未push本地改动、创建tag或发布Release，在线更新资产仍需后续明确授权发布。总方案R55同步确认使用现有公开仓库。
+
+
+## 首个测试版发布授权（2026-11-14）
+
+用户明确要求创建Release并上传DMG、签名更新包及更新清单。本次将已验收的请求记录布局、DMG自安装和应用内更新改动纳入可追溯源码提交，从干净源码构建 `v0.1.0-beta.1`，通过草稿Release上传并校验后公开为prerelease。构建在本机macOS执行，不将正式更新私钥传给GitHub；源码、标签、更新清单及下载资产保持同版本。发布后的URL、摘要与匿名下载验证以实际结果补记；本段仅记录授权与发布流程，不提前宣称上传完成。

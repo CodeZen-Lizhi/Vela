@@ -23,7 +23,8 @@
     "dev:web": "npm --workspace vela-frontend run dev",
     "build:web": "npm --workspace vela-frontend run build",
     "check": "npm run generate && npm --workspace vela-frontend run check",
-    "test:go": "go test ./..."
+    "test:go": "go test ./...",
+    "test:installer": "go test ./internal/desktopinstall -count=1"
   },
   "devDependencies": {
     "mygo-cli": "^0.8.3"

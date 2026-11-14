@@ -1,4 +1,5 @@
 import test from "node:test";
+import { generateKeyPairSync, createHash, sign } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +8,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout } from "node:timers/promises";
 import { root, syncVersion, frontendArguments } from "./release-version.mjs";
-import { sourceState, checksums, sha256 } from "./release.mjs";
+import { sourceState, checksums, sha256, verifyUpdate } from "./release.mjs";
 
 /** 为每项测试创建隔离文件目录，结束后只清理该目录。 */
 function temporary(t) {
@@ -89,4 +90,21 @@ test("npm workspace dev 在指定端口启动，并注入根版本", { timeout: 
   const code = await response.text();
   assert.ok(code.includes(JSON.parse(readFileSync(join(root, "package.json"))).version));
   assert.match(code, /VITE_VELA_VERSION/);
+});
+
+
+/** 更新发布门禁验证真实签名，拒绝篡改内容及错误长度。 */
+test("更新候选拒绝不匹配大小与伪造签名", (t) => {
+  const directory = temporary(t);
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const key = publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("base64");
+  const content = Buffer.from("signed update");
+  const manifest = { url: "https://example.test/update.tar.gz", size: content.length, signature: sign(null, createHash("sha256").update(content).digest(), privateKey).toString("base64") };
+  writeFileSync(join(directory, "update.tar.gz"), content);
+  writeFileSync(join(directory, "update.json"), JSON.stringify(manifest));
+  assert.equal(verifyUpdate(directory, "update.json", key), "update.tar.gz");
+  writeFileSync(join(directory, "update.tar.gz"), Buffer.from("tamper update"));
+  assert.throws(() => verifyUpdate(directory, "update.json", key), /签名/);
+  writeFileSync(join(directory, "update.tar.gz"), "short");
+  assert.throws(() => verifyUpdate(directory, "update.json", key), /大小/);
 });

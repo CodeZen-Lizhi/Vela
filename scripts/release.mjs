@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { binaryPath } from "mygo-cli";
@@ -34,6 +34,17 @@ export function sourceState(directory = root) {
 /** 枚举可交付文件，按相对路径稳定排序；App 目录通过 ZIP 记录整体摘要。 */
 export function checksums(directory) {
   return readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name !== "SHA256SUMS").map((entry) => `${sha256(readFileSync(join(directory, entry.name)))}  ${entry.name}`).sort().join("\n") + "\n";
+}
+
+/** 验证 MyGo 更新包的大小与 Ed25519 签名，确保候选文件可由内置公钥接受。 */
+export function verifyUpdate(directory, manifestName, publicKey) {
+  const manifest = JSON.parse(readFileSync(join(directory, manifestName), "utf8"));
+  const filename = new URL(manifest.url).pathname.split("/").pop();
+  const archive = readFileSync(join(directory, filename));
+  if (archive.length !== manifest.size) throw new Error("更新包大小与清单不匹配");
+  const key = createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(publicKey.trim(), "base64")]), format: "der", type: "spki" });
+  if (!verify(null, createHash("sha256").update(archive).digest(), key, Buffer.from(manifest.signature, "base64"))) throw new Error("更新包签名与应用公钥不匹配");
+  return filename;
 }
 
 /** 构建一个本地 macOS 候选版本，拒绝覆盖已有候选包和隐式外部发布。 */
@@ -79,6 +90,10 @@ function prepareRelease() {
     cwd: root, stdio: "inherit", env: { ...process.env, VELA_RELEASE_METADATA: metadataFile },
   });
   if (JSON.stringify(sourceState()) !== JSON.stringify(source)) throw new Error("构建期间源码发生变化；此候选包不可用于发布，请重新准备");
+  // 发布候选必须带签名更新清单，缺少签名密钥不能交付无法后续升级的候选。
+  const updateManifest = `update-${platform}.json`;
+  if (!existsSync(join(candidate, updateManifest))) throw new Error("缺少签名更新清单，请配置更新私钥后重新构建");
+  const updateArchive = verifyUpdate(candidate, updateManifest, readFileSync(join(root, "config/update-public-key.txt"), "utf8"));
   const app = join(candidate, "Vela.app");
   const resources = join(app, "Contents/Resources");
   const arch = values.platform.split("/")[1];
@@ -97,7 +112,7 @@ function prepareRelease() {
   writeFileSync(join(candidate, "RELEASE_NOTES.md"), notes);
   const archive = `vela-${version}-${arch}.app.zip`;
   execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", app, join(candidate, archive)], { stdio: "inherit" });
-  writeFileSync(join(candidate, "release-manifest.json"), JSON.stringify({ ...metadata, app: "Vela.app", archive, dmg, bundleVersion, goBuildInfo, signing: "MyGo config: ad hoc by default; no notarization configured" }, null, 2) + "\n");
+  writeFileSync(join(candidate, "release-manifest.json"), JSON.stringify({ ...metadata, app: "Vela.app", archive, dmg, updateManifest, updateArchive, bundleVersion, goBuildInfo, signing: "MyGo config: ad hoc by default; no notarization configured" }, null, 2) + "\n");
   writeFileSync(join(candidate, "SHA256SUMS"), checksums(candidate));
   rmSync(inputs, { recursive: true });
   console.log(`本地候选包已准备：${candidate}\n源码：${source.commit}${source.dirty ? " (dirty)" : ""}\nSHA256SUMS 已生成；未执行外部发布。`);

@@ -21,6 +21,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
+	"github.com/CodeZen-Lizhi/vela/internal/updates"
 	"github.com/CodeZen-Lizhi/vela/internal/verification"
 	"github.com/egoist/mygo"
 )
@@ -43,6 +44,13 @@ func main() {
 		mygo.Bind(app.NewVelaService(app.Options{Version: buildinfo.Version}))
 		if err := mygo.App.Run(); err != nil {
 			log.Fatal(err)
+		}
+		return
+	}
+	if handled, err := runDiskImageInstaller(); handled || err != nil {
+		if err != nil {
+			log.Printf("Vela 安装失败: %v", err)
+			os.Exit(1)
 		}
 		return
 	}
@@ -245,7 +253,10 @@ func startApplication(dataDir string, isolated bool) error {
 		}
 	}()
 	mygo.Theme.SetSource(themeSource(general.Appearance))
+	applicationUpdates := updates.NewDesktop(buildinfo.Version)
+	defer applicationUpdates.Close()
 	mygo.Bind(app.NewVelaService(app.Options{
+		Updates:      applicationUpdates,
 		Records:      history,
 		Version:      buildinfo.Version,
 		Models:       store,

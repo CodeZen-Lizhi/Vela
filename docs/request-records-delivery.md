@@ -392,3 +392,17 @@ Ego 浏览器加载当前实际 Detail/ExecutionPath 和共享控件，以明确
 真实快照还暴露了未定价模型 pricing.base 为 null 时详情崩溃的问题，已修复空价格列表兼容并重验打开详情。相关 Go 两包 223 项通过，前端显示/路径回归 8 项通过，go vet、Diff 空白检查与最终前端生产构建通过，Svelte 0 错误/0 警告，保留既有主 chunk 提示。临时 Go 快照导出程序已移回 `.cache/record-list-local/fixture-source.go.txt`，不进入正式代码。
 
 证据位于 `.cache/record-list-local/`：`checks-1200.json`、`checks-820.json`、`detail-check-820.json`、`diagram-check-1200.json` 及对应 PNG。页面证据覆盖当前实际组件和真实业务快照，Go 验证覆盖实际网关/调度/SQLite；浏览器未直连原生 MyGo IPC，未重新打包或安装原生应用。需求正文同步 Aether `request-records.md` 的 RR-R02 与 RR-R05。
+
+
+## 实时列错位与动态列宽修正（2026-11-14）
+
+进行中行直接在 tr 上生成高亮伪元素，Chromium 将其纳入表格结构形成匿名列：1038px 表格中模型列由276px缩到138px，右侧留出138px空白。高亮改由最后一个现有单元格生成、仍相对整行定位，保留原呼吸效果。移除固定列宽与“模型列填满剩余宽度”，改用原生自动表格布局；模型及供应商内容按内容伸缩并受上下限约束，状态预留进行中及终态宽度，窄窗口收紧留白。
+
+Ego 浏览器加载当前实际 RecordsPage、共享组件和样式，以七条合成记录核对1200×800、820×800的完成、实时开启、进行中、收尾和实时关闭；九列表头/单元格位置及右边界一致，表格无横向溢出，状态切换前后列宽一致。1200px下短/长模型列实测约118/290px，长名称内容区上限250px并省略。截图已复读，证据为 `.cache/record-width/checks.json` 和 `active-1200.png`、`active-820.png`。Svelte检查0错误/0警告，Diff空白检查通过；未打包或安装原生应用，浏览器证据不替代原生WebView验收。权威需求同步RR-R02与RR-A11。
+
+
+### 列表状态跳动反馈与安装版本核对（2026-11-14）
+
+用户确认按钮状态未自行切换，问题是列表布局/高亮随请求出现与结束来回变化。只读核对日常进程路径 `/Applications/Vela.app/Contents/MacOS/Vela`：二进制15:20构建、15:26启动，仍包含 `tr::after` 高亮旧规则；早于本轮源码修复，不能用该安装版验证修复结果。正常收尾仍遵循RR-R03，实时关闭不会撤销已经展示的请求。
+
+已执行 `npm run build`，生成 `build/darwin-arm64/Vela.app` 与同目录DMG；Svelte0错误/0警告，保留既有大chunk提示，签名完整性检查通过。直接核对新二进制包含 `td:last-child::after` 修正规则。尝试使用现有验收宿主加载当前组件做原生WebView补验，但页面正文未加载，未取得原生结果，不能写为已通过；证据/临时脚本位于 `.cache/record-toggle/`。用户明确选择“仅保留新安装包”，本轮不替换日常安装版或重启网关。

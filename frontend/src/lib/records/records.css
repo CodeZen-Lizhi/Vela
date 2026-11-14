@@ -59,7 +59,7 @@
   container-type: inline-size;
 }
 .records-table table {
-  table-layout: fixed;
+  table-layout: auto;
   width: 100%;
 }
 .records-table th,
@@ -69,7 +69,7 @@
   font-size: 12px;
   text-align: left;
   vertical-align: middle;
-  padding: 8px 5px;
+  padding: 8px;
   line-height: 1.4;
 }
 .records-table th {
@@ -86,36 +86,34 @@
   text-transform: none;
   white-space: nowrap;
 }
-/* 短内容列按阅读宽度设上限，剩余空间留给模型及映射，避免宽窗放大列间空白。 */
-.records-table th:nth-child(1) { width: 76px; }
-.records-table th:nth-child(2) { width: auto; }
-.records-table th:nth-child(3) { width: min(112px, (100cqw - 374px) * .21); }
-.records-table th:nth-child(4) { width: 88px; }
-.records-table th:nth-child(5) { width: 66px; }
-.records-table th:nth-child(6) { width: 52px; }
-.records-table th:nth-child(7) { width: min(144px, (100cqw - 374px) * .27); }
-.records-table th:nth-child(8) { width: 92px; }
-.records-table th:nth-child(9) { width: min(132px, (100cqw - 374px) * .21); }
+/* 原生自动布局按各列内容分配空间，长身份受上下限约束，不独占剩余宽度。 */
+.record-model-line,
+.records-table td:nth-child(2) > .record-truncate {
+  width: max-content;
+  min-width: 72px;
+  max-width: clamp(90px, calc(100cqw - 650px), 250px);
+}
+.record-provider-line,
+.records-table td:nth-child(3) > .record-truncate {
+  width: max-content;
+  max-width: clamp(65px, 12cqw, 140px);
+}
+.records-table td:first-child { white-space: nowrap; }
+.records-table td:nth-child(4) { max-width: 100px; }
+/* 为进行中与终态状态预留相同宽度，收尾时不因胶囊文字变化挤动相邻列。 */
+.records-table td:nth-child(5) { min-width: 82px; }
 .record-column-heading { display: flex; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
 .record-column-heading > span:first-child { white-space: nowrap; }
 .record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
-/* 窄表格将计量说明放到标题下方，避免说明挤入下一列。 */
+/* 窄窗口收紧留白和身份列，表头说明换行，数值列继续按真实内容分配。 */
 @container (max-width: 850px) {
   .record-column-heading { flex-wrap: wrap; row-gap: 2px; }
-}
-/* 按实际内容宽度分配紧凑列，状态、类型与金额保留完整宽度；侧栏拉宽也使用同一规则。 */
-@container workspace (max-width: 700px) {
-  .records-table th:nth-child(1) { width: calc((100cqw - 94px) * .12); }
-  .records-table th:nth-child(2) { width: calc((100cqw - 94px) * .18); }
-  .records-table th:nth-child(3) { width: calc((100cqw - 94px) * .10); }
-  .records-table th:nth-child(4) { width: calc((100cqw - 94px) * .10); }
-  .records-table th:nth-child(5) { width: calc((100cqw - 94px) * .12); }
-  .records-table th:nth-child(6) { width: calc((100cqw - 94px) * .10); }
-  .records-table th:nth-child(7) { width: calc((100cqw - 94px) * .15); }
-  .records-table th:nth-child(8) { width: 94px; }
-  .records-table th:nth-child(9) { width: calc((100cqw - 94px) * .13); }
-  .records-table td { padding-inline: 3px; }
-  .record-column-heading { flex-wrap: wrap; row-gap: 2px; }
+  .records-table th,
+  .records-table td { padding-inline: 4px; }
+  .records-table th:has([data-slot="select-trigger"]) { padding-inline: 0; }
+  .record-provider-line,
+  .records-table td:nth-child(3) > .record-truncate { max-width: 75px; }
+  .records-table td:nth-child(5) { min-width: 74px; }
   .records-token-usage > div { flex-wrap: wrap; }
 }
 .records-table th { height: 36px; padding-block: 3px; }
@@ -247,10 +245,10 @@
   container: record-detail / inline-size;
 }
 .record-row { cursor: pointer; height: 72px; }
-/* 进行中柔光从四边向内晕开，呼吸只改变覆盖层透明度，不影响文字与行点击。 */
+/* 高亮由现有单元格生成并相对整行定位；直接放在 tr 上会形成匿名列，挤乱表格。 */
 .record-row[data-record-state="active"] { position: relative; background: transparent; }
 .record-row[data-record-state="active"]:hover { background: transparent; }
-.record-row[data-record-state="active"]::after {
+.record-row[data-record-state="active"] > td:last-child::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -264,7 +262,7 @@
   48% { opacity: 1; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .record-row[data-record-state="active"]::after { animation: record-row-diffuse 4.2s cubic-bezier(.45, 0, .55, 1) infinite; }
+  .record-row[data-record-state="active"] > td:last-child::after { animation: record-row-diffuse 4.2s cubic-bezier(.45, 0, .55, 1) infinite; }
 }
 .record-row[data-record-state="active"] .record-model { color: var(--primary); }
 .record-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }

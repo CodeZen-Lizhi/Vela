@@ -13,6 +13,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"github.com/CodeZen-Lizhi/vela/internal/scheduling"
 	"github.com/CodeZen-Lizhi/vela/internal/settings"
+	"github.com/CodeZen-Lizhi/vela/internal/updates"
 	"github.com/CodeZen-Lizhi/vela/internal/verification"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
@@ -20,6 +21,8 @@ import (
 
 // VelaService 提供运行信息、模型管理、供应商管理、调度策略和全局设置操作，由 MyGo 生成 TypeScript 客户端。
 type VelaService struct {
+	// updates 管理主动检查、下载及用户确认重启，生命周期由宿主持有。
+	updates *updates.Manager
 	// records 管理独立请求历史与清理，生命周期由桌面宿主持有。
 	records *records.Store
 	// startedAt、version 是运行信息；models、providers、settings、scheduling 由桌面入口创建，共用的数据库在退出时关闭。
@@ -45,6 +48,8 @@ type VelaService struct {
 
 // Options 汇集桌面入口交给应用服务的依赖；生成绑定时只需要版本。
 type Options struct {
+	// Updates 是宿主创建的应用更新管理器，生成绑定时可为空。
+	Updates *updates.Manager
 	// Records 是实际执行入口共用的请求记录模块。
 	Records *records.Store
 	// Version 是应用版本。
@@ -90,6 +95,7 @@ type RuntimeInfo struct {
 // NewVelaService 创建应用服务并接收入口已打开的模块。
 func NewVelaService(o Options) *VelaService {
 	return &VelaService{
+		updates:      o.Updates,
 		records:      o.Records,
 		startedAt:    time.Now(),
 		version:      o.Version,

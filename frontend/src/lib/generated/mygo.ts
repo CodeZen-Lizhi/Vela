@@ -1044,6 +1044,24 @@ export interface SettingsSnapshot {
   attention: AttentionSettings;
 }
 
+/** Status 是界面可读取的更新状态；下载失败保留已检查的新版本，允许重试。 */
+export interface Status {
+  /** Enabled 表示当前安装位置和构建支持自动更新。 */
+  enabled: boolean;
+  /** CurrentVersion 是正在运行的版本，Version 是已检查到的新版本。 */
+  currentVersion: string;
+  version: string;
+  /** Notes 是纯文本显示的发行说明，不作为 HTML 执行。 */
+  notes: string;
+  /** Phase 为 idle、checking、latest、available、downloading、ready 或 restarting。 */
+  phase: string;
+  /** Downloaded 和 Total 是更新器报告的字节数，Total 为零时进度未知。 */
+  downloaded: number;
+  total: number;
+  /** Error 保留本次失败原因，不能用“最新版本”冒充检查失败。 */
+  error: string;
+}
+
 /** Summary 是整个筛选集合的合计，未知数据独立计数而非补零。 */
 export interface Summary {
   /** Total、Active、Success、Failed、Local 为各状态请求数。 */
@@ -1226,9 +1244,17 @@ export const VelaService = {
   addModel(providerID: string, modelID: string): Promise<Model> {
     return call("VelaService.AddModel", providerID, modelID);
   },
+  /** ApplicationUpdate 返回更新状态，生成绑定和浏览器预览不会启动更新器。 */
+  applicationUpdate(): Promise<Status> {
+    return call("VelaService.ApplicationUpdate");
+  },
   /** CancelProviderModelTest 取消指定请求及后续候选，已发出的上游消耗不可撤回。 */
   cancelProviderModelTest(id: string): Promise<void> {
     return call("VelaService.CancelProviderModelTest", id);
+  },
+  /** CheckApplicationUpdate 检查固定官方源，不接受前端提供下载地址。 */
+  checkApplicationUpdate(): Promise<Status> {
+    return call("VelaService.CheckApplicationUpdate");
   },
   /** CheckModelCatalog 按已保存策略触发到期检查，立即返回，关闭自动更新时不会联网。 */
   checkModelCatalog(): Promise<CatalogStatus> {
@@ -1273,6 +1299,10 @@ export const VelaService = {
   /** DeleteProviderKey 删除一把上游 Key 及其密钥，调用方先展示确认。 */
   deleteProviderKey(keyID: string): Promise<void> {
     return call("VelaService.DeleteProviderKey", keyID);
+  },
+  /** DownloadApplicationUpdate 下载并验证已检查版本，下载完成后等待用户确认重启。 */
+  downloadApplicationUpdate(): Promise<void> {
+    return call("VelaService.DownloadApplicationUpdate");
   },
   /** GlobalProxy 读取唯一的全局网络设置。 */
   globalProxy(): Promise<Proxy> {
@@ -1361,6 +1391,10 @@ export const VelaService = {
   /** ResetProviderKeyHealth 将当前凭据恢复为满分并立即持久化，不修改其他 Key 或调度配置。 */
   resetProviderKeyHealth(keyID: string): Promise<void> {
     return call("VelaService.ResetProviderKeyHealth", keyID);
+  },
+  /** RestartApplicationUpdate 仅允许已校验完成的更新进入正常重启链路。 */
+  restartApplicationUpdate(): Promise<void> {
+    return call("VelaService.RestartApplicationUpdate");
   },
   /** RevealAccessKey 在用户主动查看时返回访问密钥。 */
   revealAccessKey(): Promise<string> {

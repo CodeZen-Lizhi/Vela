@@ -6,13 +6,21 @@
 
 在一个本机入口管理 AI 供应商、API Key、模型映射、调度和请求记录。桌面使用 MyGo 和系统 WebView，业务核心为 Go，界面为 Svelte。
 
-当前准备首个公开测试版 **0.1.0-beta.1**，目标为 **macOS 14+、Apple Silicon（arm64）**。本地候选包已生成，验收覆盖和剩余边界见[交付记录](docs/public-beta-delivery.md)。尚未对外发布，不代表稳定版或全部性能目标已通过。
+首个公开测试版为 **0.1.0-beta.1**，目标为 **macOS 14+、Apple Silicon（arm64）**。本地候选包已生成，验收覆盖和剩余边界见[交付记录](docs/public-beta-delivery.md)。测试版不代表稳定版或全部性能目标已通过。
 
 ## 下载与安装
 
 [源码与开发入口](https://github.com/CodeZen-Lizhi/Vela) · [Releases 下载页](https://github.com/CodeZen-Lizhi/Vela/releases) · [0.1.0-beta.1 说明](docs/releases/0.1.0-beta.1.md)
 
-发布后请从 Releases 选择对应版本的 arm64 安装包。本次采用 ad-hoc 签名，未经过 Apple 公证，首次打开可能被 macOS 拦截。核对下载来源后，将 `Vela.app` 放入“应用程序”，尝试打开，再按系统提示到“系统设置 → 隐私与安全性”选择“仍要打开”。提示随系统版本变化；不需要关闭系统安全保护。详细升级及异常恢复步骤见[版本说明](docs/releases/0.1.0-beta.1.md#升级与应急恢复)。
+请从 Releases 选择对应版本的 arm64 DMG，打开后双击其中的 `Vela.app`，选择“安装并打开”：应用会先复制并校验新版，再正常退出“应用程序”中的旧版，等待网关和数据收尾后替换并启动新版。30 秒内无法退出则停止，不强杀、不覆盖仍在运行的旧版；现有配置和记录保留。取消安装不会打开用户数据。目标目录权限不足时，由系统请求管理员授权。
+
+也可先自行退出旧版，再将 App 拖入“应用程序”。本次采用 ad-hoc 签名，未经过 Apple 公证，首次打开可能被 macOS 拦截。核对来源后按“系统设置 → 隐私与安全性”的提示选择“仍要打开”，不需要关闭系统安全保护。详细升级及异常恢复步骤见[版本说明](docs/releases/0.1.0-beta.1.md#升级与应急恢复)。
+
+## 后续更新
+
+在“设置 → 常规 → 应用更新”点击“检查更新”，查看新版本与说明，下载校验完成后选择“重启并更新”；选择“稍后”继续使用当前进程。重启会短暂停止网关并正常收尾，数据目录保留。下载失败或签名不匹配不会替换当前应用，可重试；已暂存的更新也会在下次正常退出后完成替换。测试版检查后续测试版和正式版，正式版只检查正式发布。
+
+当前已完成本地更新产物与链路验证，官方仓库 `CodeZen-Lizhi/Vela` 已公开并可匿名读取 Releases，更新文件随 `v0.1.0-beta.1` 测试版 Release 分发；已安装相同版本不会重复更新，后续发布更高版本后可在应用内升级。开发版、只读位置或安装目录不可写时不启用应用内更新，可用 DMG 重新安装。
 
 ## 快速上手：完成第一个 Chat 请求
 
@@ -66,7 +74,7 @@ unset VELA_GATEWAY_KEY
 - Responses HTTP 的 `background:true` 尚未支持，会在出站前返回 400。
 - Responses 续接、视频、Gemini 文件/上传和 Interactions 的资源绑定只存在于当前进程。重启、过期、淘汰或原凭据/地址/映射失效后可能返回 409；不能跨进程续接或自动改选其他 Key。
 - 费用根据上游可用用量和本地价格估算，不是供应商账单；缺失用量/价格保持未知。指纹结果仅表示参考库内统计相似性，不能认证模型身份或单凭结果认定渠道造假，检测会产生真实上游费用。
-- 自动更新未接入，Intel、Windows、Linux 不属于本次包的支持范围。20 并发及 100 万条历史规模尚未验收。
+- 已接入手动检查、下载与确认重启更新，GitHub 更新发布尚未上线；Intel、Windows、Linux 不属于本次包的支持范围。20 并发及 100 万条历史规模尚未验收。
 
 ## 开发
 
@@ -77,8 +85,13 @@ npm install
 npm run dev
 ```
 
-`npm run dev:web` 仅预览界面，不含桌面服务。使用 `VELA_DATA_DIR=/tmp/vela-dev npm run dev` 可隔离开发数据；隔离目录使用独立凭据，不读取日常钥匙串。版本修改后运行 `npm run version:sync`，更新依赖后运行 `npm run licenses:generate`。检查入口为 `go test ./...`、`npm run check`、`npm run test:release`；`npm run build` 构建桌面产物到 `build/`。本地候选发布命令为 `npm run release:prepare -- --notes docs/releases/0.1.0-beta.1.md`；未提交改动用于本地验收时可显式加 `--allow-dirty`，源码状态会记入包内元数据。构建成功不能替代安装包验收；本轮状态见[公开测试版交付记录](docs/public-beta-delivery.md)。
+`npm run dev:web` 仅预览界面，不含桌面服务。使用 `VELA_DATA_DIR=/tmp/vela-dev npm run dev` 可隔离开发数据；隔离目录使用独立凭据，不读取日常钥匙串。版本修改后运行 `npm run version:sync`，更新依赖后运行 `npm run licenses:generate`。检查入口为 `go test ./...`、`npm run check`、`npm run test:release`；`npm run build` 构建 App 和支持双击自安装的 DMG 到 `build/`；`npm run test:installer` 隔离验证复制校验、退出、超时与替换。本地候选发布命令为 `npm run release:prepare -- --notes docs/releases/0.1.0-beta.1.md`；未提交改动用于本地验收时可显式加 `--allow-dirty`，源码状态会记入包内元数据。构建成功不能替代安装包验收；本轮状态见[公开测试版交付记录](docs/public-beta-delivery.md)。
 
 ## 许可
 
 本项目采用 MIT 许可，具体条款见 [LICENSE](LICENSE)。第三方依赖与模型指纹内置核心/数据的许可说明见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
+
+
+应用更新发布复用 MyGo：`mygo.config.ts` 固定 GitHub 仓库及 `config/update-public-key.txt` 公钥。私钥默认读取本机用户配置目录下 `Vela/update-signing/mygo-update.key`（macOS 为 `~/Library/Application Support/Vela/update-signing/mygo-update.key`），权限0600，不进入源码；CI 可通过 `MYGO_UPDATER_PRIVATE_KEY` 或 `VELA_UPDATE_PRIVATE_KEY_FILE` 注入。请妥善保管并备份私钥，已安装应用只接受相应公钥验证通过的更新，丢失私钥会影响后续更新。
+
+构建会额外输出 `update-darwin-arm64.json` 和带签名的 `.tar.gz` 更新包；`CHANGELOG.md` 须包含根版本对应章节。候选发布入口验证大小和签名，将更新文件纳入清单。取得发布授权后，发布到对应 `v版本` 的 GitHub Release：上传 DMG、更新包、更新清单和校验文件，beta版本标为 prerelease，不用 draft 作为更新源。只有上传 DMG 无法供应用内更新；本地构建不自动发布；对外发布需明确授权。

@@ -6,3 +6,6 @@ dist/
 node_modules/
 mygo_windows_*.syso
 frontend/.svelte-kit/
+
+# 更新私钥仅保存在仓库外，防止构建时误加入源码。
+mygo-update.key

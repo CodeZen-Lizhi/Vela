@@ -5,6 +5,7 @@
   import { Button } from "$lib/components/ui/button";
   import { VelaService, type SettingsSnapshot } from "$lib/generated/mygo";
   import { errorMessage, type Notify, type SettingsSection } from "./sections";
+  import ApplicationUpdate from "./ApplicationUpdate.svelte";
   import GeneralSettings from "./GeneralSettings.svelte";
   import ConnectionSettings from "./ConnectionSettings.svelte";
   import AccountSettings from "./AccountSettings.svelte";
@@ -84,6 +85,7 @@
         bind:openAtLogin={snapshot.openAtLogin}
         {desktop}
       />
+      <ApplicationUpdate />
     </div>
     <div hidden={section !== "connection"}>
       <ConnectionSettings
