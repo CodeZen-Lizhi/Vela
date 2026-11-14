@@ -1,11 +1,13 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
-  import { Plus, Copy, Pencil, Trash2, ChevronRight, X, Activity } from "@lucide/svelte";
+  import { onDestroy, untrack } from "svelte";
+  import { Plus, Copy, Pencil, Trash2, X, Activity, RefreshCw } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import ModelSelection from "./ModelSelection.svelte";
   import MappingPriorityList from "./MappingPriorityList.svelte";
+  import MappingRequestName from "./MappingRequestName.svelte";
   import ProviderModelTest from "./ProviderModelTest.svelte";
   import { Switch } from "$lib/components/ui/switch";
   import * as Dialog from "$lib/components/ui/dialog";
@@ -32,6 +34,22 @@
   let drafts = $state<ProviderModelMappingsDraft[]>([]), original = $state("");
   /** 展开项只影响展示，不会写入持久化配置。 */
   let expanded = $state<string[]>([]);
+  /** 上游候选及查询反馈独立于映射草稿；失败保留同一供应商上次成功的列表。 */
+  let upstreamNames = $state<string[]>([]), upstreamLoading = $state(false), upstreamError = $state(""), upstreamWarning = $state("");
+  /** 请求序号隔离供应商切换及重试，过期结果不覆盖当前候选。 */
+  let upstreamRequest = 0;
+  $effect(() => {
+    providerID;
+    upstreamRequest++;
+    upstreamNames = []; upstreamError = ""; upstreamWarning = ""; upstreamLoading = false;
+  });
+  $effect(() => {
+    if (dialog === "mapping") {
+      const owner = providerID;
+      untrack(() => void loadUpstream(false, owner));
+    }
+  });
+  onDestroy(() => upstreamRequest++);
   /** 关联模式以集合比较，映射模式以完整有序草稿比较。 */
   const changed = $derived(dialog === "associate"
     ? JSON.stringify([...selected].sort()) !== original
@@ -63,6 +81,18 @@
   function editMappings(model?: ProviderModel): void {
     drafts = models.map((item) => ({modelId: item.modelId, mappings: item.mappings.map((mapping) => ({...mapping}))}));
     original = JSON.stringify(drafts); query = model?.modelName ?? ""; mappingScope = "all"; hidden = []; error = ""; dialog = "mapping";
+  }
+  /** 打开工作台复用成功缓存，手动刷新跳过缓存；任意失败都不覆盖候选或草稿。 */
+  async function loadUpstream(forceRefresh = false, owner = providerID): Promise<void> {
+    const request = ++upstreamRequest;
+    upstreamLoading = true; upstreamError = "";
+    try {
+      const result = await VelaService.providerUpstreamModels(owner, forceRefresh);
+      if (request !== upstreamRequest || owner !== providerID) return;
+      upstreamNames = result.modelNames; upstreamWarning = result.warning;
+    } catch (cause) {
+      if (request === upstreamRequest && owner === providerID) upstreamError = message(cause);
+    } finally { if (request === upstreamRequest) upstreamLoading = false; }
   }
   /** 全选或取消全部统一模型的关联草稿，保存前不改变已有关联。 */
   function selectAll(checked: boolean): void {
@@ -108,8 +138,13 @@
       await reload();
     } finally { busy = false; }
   }
-  /** 新增一个空请求名，保存时由后端拒绝未填完整的映射。 */
-  function addMapping(draft: ProviderModelMappingsDraft): void { draft.mappings.push({requestName: "", priority: draft.mappings.length + 1}); }
+  /** 选择和手填共用有序草稿，拒绝空名和同模型重复名，不修改其他模型。 */
+  function addMapping(draft: ProviderModelMappingsDraft, name: string): void {
+    name = name.trim();
+    if (!name) throw new Error("上游请求名不能为空");
+    if (draft.mappings.some((mapping) => mapping.requestName === name)) throw new Error("此请求名已添加");
+    draft.mappings = [...draft.mappings, {requestName: name, priority: draft.mappings.length + 1}];
+  }
   /** 删除模型全部映射后恢复默认请求名，关联保持。 */
   async function deleteMappings(): Promise<void> {
     if (!deleting) return; busy = true; error = "";
@@ -122,16 +157,17 @@
 <div class="provider-section-heading"><h3>{mappingTab ? "模型映射" : "模型列表"}</h3><Button variant="outline" size="sm" onclick={() => mappingTab ? editMappings() : associate()}><Plus data-icon="inline-start" />{mappingTab ? "管理映射" : "关联模型"}</Button></div>
 <div class="provider-surface provider-model-list">
   {#each models as model (model.modelId)}
-    <div class="provider-model-row">
-      {#if mappingTab}<Button size="icon-xs" variant="ghost" aria-label={`${expanded.includes(model.modelId) ? "收起" : "展开"} ${model.name} 的映射`} aria-expanded={expanded.includes(model.modelId)} onclick={() => expanded = expanded.includes(model.modelId) ? expanded.filter((id) => id !== model.modelId) : [...expanded, model.modelId]}><ChevronRight class={expanded.includes(model.modelId) ? "rotate-90" : ""} /></Button>{/if}
-      <div class="min-w-0 flex-1"><p class="text-xs font-medium">{model.name}</p><div class="flex items-center gap-1"><code>{model.modelName}</code>{#if !mappingTab}<Button size="icon-xs" variant="ghost" aria-label={`复制 ${model.modelName}`} onclick={() => copy(model.modelName)}><Copy /></Button>{/if}</div></div>
-      {#if mappingTab}<span class="text-xs text-muted-foreground">{model.mappings.length} 个映射</span><Button size="icon-xs" variant="ghost" aria-label={`编辑 ${model.name} 映射`} onclick={() => editMappings(model)}><Pencil /></Button><Button size="icon-xs" variant="ghost" disabled={!model.mappings.length} aria-label={`删除 ${model.name} 映射`} onclick={() => { deleting = model; error = ""; }}><Trash2 /></Button>
+    <div class="provider-model-row relative">
+      {#if mappingTab && model.mappings.length}
+        <Button class="absolute inset-0 h-full" size="row" variant="ghost" aria-label={`${expanded.includes(model.modelId) ? "收起" : "展开"} ${model.name} 的映射`} aria-expanded={expanded.includes(model.modelId)} onclick={() => expanded = expanded.includes(model.modelId) ? expanded.filter((id) => id !== model.modelId) : [...expanded, model.modelId]} />
+      {/if}
+      <div class={mappingTab ? "pointer-events-none relative min-w-0 flex-1" : "min-w-0 flex-1"}><p class="text-xs font-medium">{model.name}</p><div class="flex items-center gap-1"><code>{model.modelName}</code>{#if !mappingTab}<Button size="icon-xs" variant="ghost" aria-label={`复制 ${model.modelName}`} onclick={() => copy(model.modelName)}><Copy /></Button>{/if}</div></div>
+      {#if mappingTab}<span class="pointer-events-none relative text-xs text-muted-foreground">{model.mappings.length} 个映射</span><Button size="icon-xs" variant="ghost" class="relative" aria-label={`编辑 ${model.name} 映射`} onclick={() => editMappings(model)}><Pencil /></Button><Button size="icon-xs" variant="ghost" disabled={!model.mappings.length} class="relative" aria-label={`删除 ${model.name} 映射`} onclick={() => { deleting = model; error = ""; }}><Trash2 /></Button>
       {:else}{@const testResult = testResults.find((item) => item.modelId === model.modelId)}<span  class={`shrink-0 text-[11px] ${testResult?.state === "success" ? "text-primary" : testResult?.state === "failed" ? "text-destructive" : "text-muted-foreground"}`} >{testStatus(model.modelId)}</span><Button onclick={() => testing = model} variant="ghost" size="icon-xs" disabled={busy}  aria-label={`测试 ${model.name} 连通性`} ><Activity /></Button><Switch checked={model.enabled} disabled={busy} aria-label={`${model.enabled ? "停用" : "启用"}模型 ${model.name}`} onCheckedChange={(value) => setEnabled(model, value)} /><Button onclick={() => { unlinking = model; error = ""; }} variant="ghost" size="icon-xs" disabled={busy}  aria-label={`解除 ${model.name} 的关联`} ><Trash2 /></Button>{/if}
     </div>
-    {#if mappingTab && expanded.includes(model.modelId)}
+    {#if mappingTab && model.mappings.length > 0 && expanded.includes(model.modelId)}
       <div class="border-t bg-muted/30 px-4 py-3">
         <MappingPriorityList mappings={model.mappings} disabled={busy} oncommit={(mappings) => saveInlineMappings(model,mappings)} />
-        {#if !model.mappings.length}<p class="py-2 text-xs text-muted-foreground">默认请求名：{model.modelName}</p>{/if}
       </div>
     {/if}
   {:else}<Empty.Root>尚未关联模型。请先在模型页创建统一模型，再在此关联。</Empty.Root>{/each}
@@ -142,6 +178,7 @@
     <div class={dialog === "associate" ? "provider-editor-body" : "min-h-0 overflow-auto"}>
       {#if dialog === "mapping"}<div class="provider-tools provider-mapping-filters mb-4"><Input aria-label="搜索模型映射" bind:value={query} placeholder="搜索模型名称、ID或请求名" />
         <Choice bind:value={mappingScope} label="映射筛选" options={[{value:"all",label:"全部模型"},{value:"mapped",label:"已映射"},{value:"unmapped",label:"未映射"},{value:"modified",label:"已修改"}]} />
+        <Button variant="ghost" size="icon-sm" aria-label="刷新上游模型" aria-busy={upstreamLoading} disabled={upstreamLoading || busy} onclick={() => loadUpstream(true)}><RefreshCw class={upstreamLoading ? "animate-spin" : ""} /></Button>
       </div>{/if}
       {#if dialog === "associate"}
         <ModelSelection models={allModels.map((model) => ({id: model.id, name: model.name, modelName: model.modelId, status: selected.includes(model.id) && !models.some((item) => item.modelId === model.id) ? "将添加" : !selected.includes(model.id) && models.some((item) => item.modelId === model.id) ? "将移除" : models.some((item) => item.modelId === model.id) ? "已关联" : ""}))} {selected} disabled={busy} emptyText="尚无统一模型，请先在模型页创建。" onselect={selectModel} onselectall={selectAll} />
@@ -149,8 +186,12 @@
         <div class="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{modifiedCount} 个模型有改动</span><Button variant="ghost" size="sm" onclick={() => drafts = JSON.parse(original)}>重置草稿</Button>{#if hidden.length}<Button variant="ghost" size="sm" onclick={() => hidden = []}>恢复隐藏的 {hidden.length} 个模型</Button>{/if}</div>
         {#each mappingRows as draft (draft.modelId)}{@const model = models.find((item) => item.modelId === draft.modelId)!}
           <section class="mb-4 rounded-lg border p-4"><header class="mb-3 flex items-center gap-2"><div class="min-w-0 flex-1"><h4 class="text-xs font-semibold">{model.name}</h4><code class="text-[11px] text-muted-foreground">{model.modelName}</code></div><Button variant="ghost" size="icon-xs" aria-label={`暂时隐藏 ${model.name}`} onclick={() => hidden = [...hidden, draft.modelId]}><X /></Button></header>
-            <MappingPriorityList mappings={draft.mappings} disabled={busy} editable oncommit={async (mappings) => {draft.mappings = mappings;}} />
-            <Button variant="outline" size="sm" onclick={() => addMapping(draft)}><Plus data-icon="inline-start" />添加请求名</Button>
+            <MappingPriorityList mappings={draft.mappings} disabled={busy} editable oncommit={async (mappings) => {draft.mappings = mappings;}}>
+              {#snippet nameEditor(name, excluded, locked, onselect)}
+                <MappingRequestName value={name} names={upstreamNames} {excluded} disabled={locked} loading={upstreamLoading} queryError={upstreamError} warning={upstreamWarning} label={`${model.name} 的请求名 ${name}`} {onselect} onretry={() => void loadUpstream(true)} />
+              {/snippet}
+            </MappingPriorityList>
+            <div class="mt-2"><MappingRequestName names={upstreamNames} excluded={draft.mappings.map((mapping) => mapping.requestName)} disabled={busy} loading={upstreamLoading} queryError={upstreamError} warning={upstreamWarning} label={`为 ${model.name} 添加映射`} onselect={(name) => addMapping(draft, name)} onretry={() => void loadUpstream(true)} /></div>
           </section>
         {:else}<p class="py-6 text-center text-xs text-muted-foreground">没有符合条件的模型。</p>{/each}
       {/if}

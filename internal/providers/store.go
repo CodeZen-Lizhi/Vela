@@ -64,6 +64,8 @@ type Store struct {
 	healthLookup func(string, string) ProviderKeyHealthSnapshot
 	// documents 加密供应商和Key的完整配置文档。
 	documents *credentials.Store
+	// upstreamCache 保存各供应商当前配置下五分钟内的成功模型列表，由 mu 保护。
+	upstreamCache map[string]upstreamModelsCache
 }
 
 // New 复用已打开的数据库并建表；keys 是凭据主密钥的保存位置。

@@ -1099,6 +1099,16 @@ export interface Tier {
   rates: Rate[];
 }
 
+/** UpstreamModelsResult 是仅供候选选择的上游名称，不修改本地模型、关联或映射。 */
+export interface UpstreamModelsResult {
+  /** ModelNames 是去重并按名称排序的请求名；成功空列表序列化为 []。 */
+  modelNames: string[];
+  /** Warning 提示部分 Key 查询失败，不包含上游响应正文或秘密。 */
+  warning: string;
+  /** FromCache 表示本次命中当前有效连接配置的成功缓存。 */
+  fromCache: boolean;
+}
+
 /** Usage 使用已归一化且不重复包含缓存的输入量；nil 用量表示上游没有提供。 */
 export interface Usage {
   /** Quality 是媒体计价质量，空值表示请求未明确提供。 */
@@ -1359,6 +1369,10 @@ export const VelaService = {
   /** ProviderModels 读取供应商已关联模型及有序映射，不暴露价格和凭据。 */
   providerModels(providerID: string): Promise<ProviderModel[]> {
     return call("VelaService.ProviderModels", providerID);
+  },
+  /** ProviderUpstreamModels 查询供应商真实上游候选；只读配置，强刷失败保留此前成功缓存。 */
+  providerUpstreamModels(providerID: string, forceRefresh: boolean): Promise<UpstreamModelsResult> {
+    return call("VelaService.ProviderUpstreamModels", providerID, forceRefresh);
   },
   /** Providers 一次读取供应商页需要的内容：供应商概览与表单默认值。 */
   providers(): Promise<ProviderSnapshot> {
