@@ -39,7 +39,7 @@
   gap: 8px;
 }
 .v-filters {
-  flex-basis: 100%;
+  margin-left: auto;
   min-width: 0;
   justify-content: flex-end;
   flex-wrap: nowrap;
@@ -48,16 +48,16 @@
 .v-result-filters {
   min-width: 0;
   flex-wrap: nowrap;
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 .v-filters > [data-slot="select-trigger"],
 .v-toolbar-actions > [data-slot="select-trigger"],
 .v-result-filters > [data-slot="select-trigger"] {
-  width: 160px;
+  width: 140px;
   flex-shrink: 0;
 }
 .v-search {
-  width: 360px;
+  width: 280px;
   max-width: 100%;
   min-width: 180px;
 }
@@ -130,117 +130,12 @@
   color: var(--muted-foreground);
   border-top: 1px solid var(--border);
 }
-.v-plans {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-content: start;
-  align-items: start;
-  gap: 12px;
-  min-height: 100%;
-  padding: 16px;
-  background: var(--muted);
-}
-.v-plan {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-}
-.v-plan > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.v-plan .v-identity,
-.v-plan .v-identity > div {
-  min-width: 0;
-}
-.v-plan .v-identity strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.v-plan strong {
-  font-size: 13px;
-  font-weight: 600;
-}
-.v-plan small {
-  display: block;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  line-height: 1.6;
-}
-.v-plan-facts {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(100px, 0.75fr);
-  margin: 0;
-  padding: 9px 0;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-.v-plan-facts > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.v-plan-facts > div + div {
-  padding-left: 14px;
-  border-left: 1px solid var(--border);
-}
-.v-plan-facts dt {
-  font-size: 11px;
-  line-height: 1.55;
-  color: var(--muted-foreground);
-}
-.v-plan-facts dd {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 550;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.v-plan-facts dd.is-empty {
-  color: var(--muted-foreground);
-  font-weight: 500;
-}
-.v-plan-facts dd > strong {
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.25;
-}
-.v-plan-facts dd > span {
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
-}
-.v-plan > footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 0;
-  padding-top: 0;
-}
-.v-plan-empty {
-  grid-column: 1/-1;
-  min-height: 340px;
-}
+/* 计划与结果共用表格密度、供应商列及操作列，仅调整业务列比例。 */
+.v-plan-table th:nth-child(1) { width:18%; }
+.v-plan-table th:nth-child(2) { width:30%; }
+.v-plan-table th:nth-child(3) { width:22%; }
+.v-plan-table th:nth-child(4) { width:18%; }
+.v-plan-table th:nth-child(5) { width:12%; }
 
 .v-wide-dialog {
   width: min(1040px, 86vw) !important;
@@ -418,13 +313,13 @@
   .v-search { width:auto; flex:1; }
   .v-table th,.v-table td { padding:12px 6px; }
   .v-table .v-identity { gap:6px; }
-  .v-plans { grid-template-columns:repeat(2,minmax(0,1fr)); }
+
 }
 @media (max-width: 760px) {
   .v-filters { flex-wrap:wrap; }
   .v-result-filters { flex-basis:100%; }
   .v-filters > [data-slot="select-trigger"] { margin-left:auto; }
-  .v-plans { grid-template-columns:1fr; }
+
   .v-table .v-actions { flex-direction:column; gap:2px; }
 }
 /* 窄窗口恢复参考模型独立行，避免五个下拉框和删除按钮被压得过窄。 */
@@ -462,26 +357,6 @@
 }
 /* 低于桌面最小宽度后才降级，正常桌面窗口始终保持三列设置与单行线路。 */
 @media (max-width: 600px) {
-  .v-plan-facts {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .v-plan-facts > div + div {
-    padding-top: 10px;
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    border-left: 0;
-  }
-  .v-plan > footer > small {
-    flex-basis: 100%;
-  }
-  .v-plan > footer .v-actions {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-  .v-plan > footer .v-actions > button {
-    flex: 1 1 100%;
-  }
   .v-line-head {
     display: none;
   }

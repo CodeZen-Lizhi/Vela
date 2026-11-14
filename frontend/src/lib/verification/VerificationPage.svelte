@@ -11,6 +11,7 @@
     Play,
     Eye,
     KeyRound,
+    Pencil,
   } from "@lucide/svelte";
   import PageHeader from "$lib/components/PageHeader.svelte";
   import * as Tabs from "$lib/components/ui/tabs";
@@ -276,13 +277,13 @@
           <Tabs.Trigger value="results">验证结果 <span>{scopedReports.length}</span></Tabs.Trigger>
           <Tabs.Trigger value="plans">检测计划 <span>{scopedPlans.length}</span></Tabs.Trigger>
         </Tabs.List>
-        <div class="v-toolbar-actions">
+        {#if tab === "plans"}<div class="v-toolbar-actions">
           <!-- 计划页签把供应商筛选和创建操作收在同一侧，避免筛选独占空行。 -->
-          {#if tab === "plans"}<Choice
+          <Choice
             bind:value={providerId}
             label="验证供应商"
             options={[{ value: "", label: "全部供应商" }, ...providerOptions]}
-          />{/if}
+          />
           <Button
             class="v-create-plan"
             size="sm"
@@ -293,7 +294,7 @@
               ? "编辑当前计划"
               : "创建检测计划"}</Button
           >
-        </div>
+        </div>{/if}
       {#if tab === "results"}
         <div class="v-filters">
           <!-- 搜索与结论筛选只属于验证结果页签；两个页签都保留供应商范围筛选。 -->
@@ -302,7 +303,7 @@
               ><InputGroup.Input
                 bind:value={query}
                 aria-label="搜索验证结果"
-                placeholder="搜索模型、Key、供应商或思考强度"
+                placeholder="搜索模型、Key、供应商…"
               /><InputGroup.Addon><Search /></InputGroup.Addon></InputGroup.Root
             ><Choice
               bind:value={status}
@@ -417,77 +418,43 @@
               >查看检测计划</Button
             >{/if}
         </Empty.Root>{/if}
-    {:else}<div class="v-plans">
-        {#each scopedPlans as plan (plan.providerId)}{@const executable =
-            executableLines(plan)}{@const name =
-            providerOptions.find((item) => item.value === plan.providerId)
-              ?.label ||
-            snapshot?.targets.find(
-              (target) => target.providerId === plan.providerId,
-            )?.providerName ||
-            plan.providerId}
-          <article class="v-plan">
-            <header>
-              <div class="v-identity">
-                <span class="v-avatar">{name.slice(0, 1)}</span>
-                <div>
-                  <Hint overflowOnly text={name}>{#snippet children(hintProps4)}<strong {...hintProps4}>{name}</strong>{/snippet}</Hint><small
-                    >{plan.enabled
-                      ? `自动运行 · 每 ${plan.hours} 小时`
-                      : "仅手动检测"}</small
-                  >
-                </div>
-              </div>
-              <Switch
-                checked={plan.enabled}
-                disabled={busy || !desktop}
-                aria-label={`${name} 自动运行`}
-                onCheckedChange={(enabled) => toggle(plan, enabled)}
-              />
-            </header>
-            <dl class="v-plan-facts">
-              <div>
-                <dt>最近执行</dt>
-                <dd class:is-empty={!plan.lastAt}>{time(plan.lastAt)}</dd>
-              </div>
-              <div>
-                <dt>已配置链路</dt>
-                <dd><strong>{plan.lines.length}</strong><span>条</span></dd>
-              </div>
-            </dl>
-            <footer>
-              <small>检测会产生上游费用</small>
-              <div class="v-actions">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onclick={() => openPlan(plan)}>编辑范围</Button
-                ><Button onclick={() => start(plan.providerId)}
-                  size="sm"
-                  disabled={!desktop || busy || running || !executable}
-
-                  ><Play data-icon="inline-start" />立即检测</Button
-                >
-              </div>
-            </footer>
-          </article>{/each}{#if !scopedPlans.length}<Empty.Root class="col-span-full">
-            <FlaskConical class="size-6" /><Empty.Title>还没有检测计划</Empty.Title>
-            <Empty.Description>先为供应商选择要验证的模型、Key、协议与思考强度。</Empty.Description>
-            <Button
-              variant="outline"
-              disabled={!desktop || !snapshot || !providers.length}
-              onclick={() => openPlan()}
-              ><Plus data-icon="inline-start" />创建检测计划</Button
-            >
-          </Empty.Root>{/if}
-      </div>{/if}
+    {:else}
+      <Table.Root class="v-table v-plan-table">
+        <Table.Header><Table.Row>
+          <Table.Head>供应商</Table.Head><Table.Head>检测范围</Table.Head>
+          <Table.Head>执行方式</Table.Head><Table.Head>最近执行</Table.Head>
+          <Table.Head data-align="control">操作</Table.Head>
+        </Table.Row></Table.Header>
+        <Table.Body>
+          {#each scopedPlans as plan (plan.providerId)}
+            {@const executable = executableLines(plan)}
+            {@const name = providerOptions.find((item) => item.value === plan.providerId)?.label || snapshot?.targets.find((target) => target.providerId === plan.providerId)?.providerName || plan.providerId}
+            {@const modelIds = [...new Set(plan.lines.map((line) => line.modelId))]}
+            {@const keyCount = new Set(plan.lines.map((line) => line.keyId)).size}
+            {@const firstModel = snapshot?.targets.find((target) => target.providerId === plan.providerId && target.modelId === modelIds[0])}
+            <Table.Row>
+              <Table.Cell><div class="v-identity"><span class="v-avatar">{name.slice(0, 1)}</span><Hint overflowOnly text={name}>{#snippet children(hintProps4)}<strong {...hintProps4}>{name}</strong>{/snippet}</Hint></div></Table.Cell>
+              <Table.Cell><strong>{firstModel?.modelName || modelIds[0] || "未配置线路"}{modelIds.length > 1 ? ` 等 ${modelIds.length} 个模型` : ""}</strong><small>{modelIds.length} 个模型 · {plan.lines.length} 条线路 · {keyCount} 把 Key</small></Table.Cell>
+              <Table.Cell><div class="v-identity"><Switch checked={plan.enabled} disabled={busy || !desktop} aria-label={`${name} 自动运行`} onCheckedChange={(enabled) => toggle(plan, enabled)} /><span>{plan.enabled ? `每 ${plan.hours} 小时` : "手动执行"}</span></div></Table.Cell>
+              <Table.Cell>{time(plan.lastAt)}</Table.Cell>
+              <Table.Cell data-align="control"><div class="v-actions">
+                <Button variant="ghost" size="row-action" aria-label={`立即检测 ${name}`} disabled={!desktop || busy || running || !executable} onclick={() => start(plan.providerId)}><Play /></Button>
+                <Button variant="ghost" size="row-action" aria-label={`编辑 ${name} 检测计划`} onclick={() => openPlan(plan)}><Pencil /></Button>
+              </div></Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
+      {#if !scopedPlans.length}<Empty.Root>
+        <FlaskConical class="size-6" /><Empty.Title>还没有检测计划</Empty.Title>
+        <Empty.Description>先为供应商选择要验证的模型、Key、协议与思考强度。</Empty.Description>
+      </Empty.Root>{/if}
+    {/if}
     </Tabs.Content>
-      {#if tab === "results"}
-        <footer class="v-surface-footer">
-          <span>差异优先，其次按最近检测倒序 · 仅保留最近一轮</span><span>检测会产生上游消耗；结果不是身份认证。</span
-          >
-        </footer>
-      {/if}
+    <footer class="v-surface-footer">
+      <span>{tab === "results" ? "差异优先，其次按最近检测倒序 · 仅保留最近一轮" : "每个供应商的固定线路与执行设置"}</span>
+      <span>检测会产生上游消耗；结果不是身份认证。</span>
+    </footer>
   </Tabs.Root>
 </section>
 <Dialog.Root
