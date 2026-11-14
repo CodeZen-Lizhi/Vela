@@ -1,11 +1,13 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+  import { Check, Terminal } from "@lucide/svelte";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import * as Field from "$lib/components/ui/field";
-  import type { QueryConfig } from "$lib/generated/mygo";
+  import { VelaService, type QueryConfig } from "$lib/generated/mygo";
   import Choice from "./Choice.svelte";
   import { defaultQueryConfig } from "./query-defaults";
 
@@ -18,6 +20,12 @@
   } = $props();
   /** 多个编辑器共存时保持标签与控件身份唯一。 */
   const id = $props.id();
+  /** 与原 APP 一致，在 Sub2API 站点控制台读取 Refresh Token。 */
+  const refreshTokenCommand = "localStorage.getItem('refresh_token')";
+  /** 快捷命令复制状态只服务当前连接表单。 */
+  let commandCopied = $state(false);
+  let commandError = $state("");
+  let commandTimer: ReturnType<typeof setTimeout> | undefined;
   /** 已认可的四种连接方式及对应业务说明。 */
   const methods = [
     { value: "sub2api", title: "Sub2API", description: "使用站点 Refresh Token" },
@@ -28,8 +36,27 @@
   /** 切换方式清空秘密草稿，避免把其他方式的掩码误当成新认证。 */
   function selectMode(mode: string): void {
     if (value.mode === mode) return;
+    clearTimeout(commandTimer);
+    commandCopied = false;
+    commandError = "";
     value = { ...value, mode, method: value.method || "GET", currency: value.currency || "USD", quotaDivisor: value.quotaDivisor || 500000, refreshToken: "", accessToken: "", apiKey: "", headers: "", body: "" };
   }
+
+  /** 仅把快捷命令写入系统剪贴板，不在界面展开命令或操作教程。 */
+  async function copyRefreshTokenCommand(): Promise<void> {
+    clearTimeout(commandTimer);
+    commandError = "";
+    try {
+      await VelaService.copyText(refreshTokenCommand);
+      commandCopied = true;
+      commandTimer = setTimeout(() => { commandCopied = false; }, 1800);
+    } catch (cause) {
+      commandCopied = false;
+      commandError = `复制失败：${String(cause)}`;
+    }
+  }
+
+  onDestroy(() => clearTimeout(commandTimer));
 </script>
 
 <div class="connection-layout">
@@ -50,7 +77,16 @@
         {#if value.mode !== "custom"}
           <Field.Field><Field.Label for={`${id}-base`}>站点地址</Field.Label><Input id={`${id}-base`} type="url" bind:value={value.baseUrl} placeholder="https://api.example.com" /><Field.Description>留空使用供应商服务地址。</Field.Description></Field.Field>
           {#if value.mode === "sub2api"}
-            <Field.Field><Field.Label for={`${id}-refresh`}>Refresh Token</Field.Label><Input id={`${id}-refresh`} type="password" autocomplete="new-password" value={value.refreshToken === "***" ? "" : value.refreshToken} oninput={(event) => value.refreshToken = event.currentTarget.value} placeholder={value.refreshToken === "***" ? "***（已保存，留空保留）" : "填写 Refresh Token"} /><Field.Description>已保存的令牌不会回显，留空不替换。</Field.Description></Field.Field>
+            <Field.Field>
+              <div class="field-label-row">
+                <Field.Label for={`${id}-refresh`}>Refresh Token</Field.Label>
+                <Button type="button" variant="text" size="inline" onclick={() => void copyRefreshTokenCommand()} aria-label="复制获取 Refresh Token 的命令">{#if commandCopied}<Check />已复制{:else}<Terminal />复制获取命令{/if}</Button>
+              </div>
+              <Input id={`${id}-refresh`} type="password" autocomplete="new-password" value={value.refreshToken === "***" ? "" : value.refreshToken} oninput={(event) => value.refreshToken = event.currentTarget.value} placeholder={value.refreshToken === "***" ? "***（已保存，留空保留）" : "填写 Refresh Token"} />
+              <Field.Description>从 Sub2API 控制台获取；已保存的令牌不会回显，留空不替换。</Field.Description>
+              <span class="sr-only" role="status">{commandCopied ? "已复制获取 Refresh Token 的命令" : ""}</span>
+              {#if commandError}<p class="command-error" role="alert">{commandError}</p>{/if}
+            </Field.Field>
           {:else if value.mode === "newapi"}
             <Field.Field><Field.Label for={`${id}-user`}>用户 ID</Field.Label><Input id={`${id}-user`} bind:value={value.userId} required /></Field.Field>
             <Field.Field><Field.Label for={`${id}-access`}>系统访问令牌</Field.Label><Input id={`${id}-access`} type="password" autocomplete="new-password" value={value.accessToken === "***" ? "" : value.accessToken} oninput={(event) => value.accessToken = event.currentTarget.value} placeholder={value.accessToken === "***" ? "***（已保存，留空保留）" : "填写系统访问令牌"} /><Field.Description>在 New API 个人设置中生成，不是模型调用 Key。</Field.Description></Field.Field>
@@ -88,6 +124,9 @@
   :global(.methods) small { margin-top: 4px; color: var(--muted-foreground); font-size: 12px; font-weight: 400; }
   .connection-fields { padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
   .empty-method { color: var(--muted-foreground); font-size: 13px; line-height: 1.7; }
+  .field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .field-label-row :global(button) { color: var(--primary); }
+  .command-error { color: var(--destructive); font-size: 12px; line-height: 1.6; }
 
   @media (max-width: 640px) { .connection-layout { grid-template-columns: minmax(0, 1fr); } :global(.methods) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

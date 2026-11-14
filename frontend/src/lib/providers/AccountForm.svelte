@@ -1,14 +1,9 @@
 <script lang="ts">
-  import { formatUSD } from "../currency.js";
   import * as Alert from "$lib/components/ui/alert";
-  import * as Collapsible from "$lib/components/ui/collapsible";
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import { Switch } from "$lib/components/ui/switch";
   import * as Field from "$lib/components/ui/field";
   import { VelaService, type ProviderAccount, type ProviderAccountDraft } from "$lib/generated/mygo";
-  import SubscriptionSummary from "./SubscriptionSummary.svelte";
   import QueryConnection from "./QueryConnection.svelte";
   import { defaultQueryConfig, queryConfigDraft } from "./query-defaults";
 
@@ -27,28 +22,28 @@
     /** 父对话框据此阻止 Escape、遮罩和关闭按钮中断保存。 */
     onbusy?: (busy: boolean) => void;
   } = $props();
-  /** 弹窗的独立配置草稿，查询结果不进入保存载荷。 */
+  /** 弹窗的独立配置草稿；旧月配额与签到字段不展示，随保存兼容保留。 */
   let draft = $state<ProviderAccountDraft>({ config: defaultQueryConfig(), monthlyQuota: 0, checkin: false });
   /** 后端返回的最近账户结果；失败保留最后成功值。 */
   let account = $state<ProviderAccount | null>(null);
   /** 加载成功前不允许以空草稿覆盖已有配置。 */
   let loading = $state(true);
-  /** 保存时锁定全部可编辑控件与关闭动作。 */
-  let saving = $state(false);
-  /** 加载或保存失败的可重试反馈。 */
+  /** 当前正在执行的验证或保存动作；null 表示可继续编辑。 */
+  let pending = $state<"validate" | "save" | null>(null);
+  /** 任一验证或保存动作执行期间锁定控件与关闭入口。 */
+  const saving = $derived(pending !== null);
+  /** 加载、验证或保存失败的可重试反馈。 */
   let error = $state("");
   /** 配置持久化与后续查询分别反馈，查询失败不显示为保存失败。 */
   let feedback = $state("");
+  /** 验证结果是否包含余额或 Key 同步失败，用于区分成功与错误状态。 */
+  let feedbackFailed = $state(false);
+  /** 最近一次验证后的草稿指纹，用于判断反馈是否仍对应当前输入。 */
+  let validatedFingerprint = $state("");
+  /** 当前草稿是否已完整验证成功，供保存动作避免重复发起上游查询。 */
+  let validationSucceeded = $state(false);
   /** 生命周期标记防止卸载后继续通知父组件。 */
   let active = true;
-  /** 多实例表单使用独立控件身份。 */
-  const id = $props.id();
-  /** 汇总当前账户各查询项的独立状态。 */
-  const statuses = $derived(account ? [
-    { label: "余额查询", status: account.balance.status },
-    ...(account.config.mode === "sub2api" ? [{ label: "订阅查询", status: account.balance.subscriptionStatus }] : []),
-    ...(account.checkin && account.config.mode === "newapi" ? [{ label: "签到", status: account.balance.checkin }] : []),
-  ] : []);
 
   $effect(() => { onbusy?.(loading || saving); });
   onMount(() => { void load(); return () => { active = false; onbusy?.(false); }; });
@@ -68,24 +63,86 @@
   /** 保存后重新使用脱敏配置，清除内存中已提交的新凭据。 */
   function applyAccount(result: ProviderAccount): void {
     account = result;
+    // 已隐藏的兼容字段读回草稿，保存时原样写回，避免旧配置被清空。
     draft = { config: { ...result.config, baseUrl: result.config.baseUrl || baseURL, method: result.config.method || "GET", currency: result.config.currency || "USD", quotaDivisor: result.config.quotaDivisor || 500000 }, monthlyQuota: result.monthlyQuota, checkin: result.checkin };
   }
 
-  /** 保存配置并展示后端查询状态；失败保留草稿，成功后刷新父列表但不自动关闭反馈。 */
-  async function save(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
+  /** 草稿指纹只用于识别验证后是否继续修改，不参与保存或查询载荷。 */
+  function fingerprint(): string {
+    return JSON.stringify($state.snapshot(draft));
+  }
+
+  /** 仅在验证反馈仍对应当前草稿时展示，后续输入变化不会保留过期成功提示。 */
+  const feedbackCurrent = $derived(Boolean(feedback) && validatedFingerprint === fingerprint());
+
+  /** 汇总复用供应商连接且需要上游字段的 Key，区分无需同步、成功和失败。 */
+  async function inspectKeySync(): Promise<{ checked: number; failedKeys: number; reason: string }> {
+    const keys = await VelaService.providerKeys(providerID);
+    const queries = await Promise.all(keys.map(async (key) => ({ key, query: await VelaService.providerKeyQuery(key.id) })));
+    const relevant = queries.filter(({ query }) => query.reuseProvider && (query.nameSource !== "manual" || query.multiplierSource !== "manual"));
+    const failed = new Map<string, string>();
+    for (const { key, query } of relevant) {
+      const nameFailed = query.nameSource !== "manual" && query.nameStatus.state === "failed";
+      const multiplierFailed = query.multiplierSource !== "manual" && query.multiplierStatus.state === "failed";
+      if (nameFailed || multiplierFailed) {
+        const reason = (nameFailed ? query.nameStatus.error : "") || (multiplierFailed ? query.multiplierStatus.error : "") || "所选上游字段同步失败";
+        failed.set(key.id, reason);
+      }
+    }
+    return { checked: relevant.length, failedKeys: failed.size, reason: failed.values().next().value ?? "" };
+  }
+
+  /** 保存当前草稿并立即验证余额及复用 Key；验证动作保留弹窗，保存动作成功后关闭。 */
+  async function run(intent: "validate" | "save"): Promise<void> {
     if (saving || loading || !account) return;
     if (!draft.config.mode) { error = "请选择接入方式"; return; }
-    saving = true; error = ""; feedback = "";
+    pending = intent; error = ""; feedback = ""; feedbackFailed = false; validationSucceeded = false;
     try {
       const result = await VelaService.saveProviderAccount(providerID, { ...draft, config: queryConfigDraft(draft.config), checkin: draft.config.mode === "newapi" && draft.checkin });
       if (!active) return;
       applyAccount(result);
-      feedback = result.balance.status.state === "failed" ? "账户配置已保存，余额查询失败；已有有效余额保留。" : "账户配置已保存。";
-      notify(feedback);
-      try { await onupdated(); } catch (cause) { if (active) error = `配置已保存，但列表刷新失败：${String(cause)}`; }
-    } catch (cause) { if (active) error = `保存失败：${String(cause)}`; }
-    finally { if (active) saving = false; }
+      const currentFingerprint = fingerprint();
+      let keySync: Awaited<ReturnType<typeof inspectKeySync>> | null = null;
+      let keySyncError = "";
+      try { keySync = await inspectKeySync(); } catch (cause) { keySyncError = String(cause); }
+      let refreshError = "";
+      try { await onupdated(); } catch (cause) { refreshError = String(cause); if (active) error = `配置已保存，但列表刷新失败：${refreshError}`; }
+      if (!active) return;
+      const balanceFailed = result.balance.status.state === "failed";
+      const balanceReason = result.balance.status.error.trim();
+      feedbackFailed = balanceFailed || Boolean(keySyncError) || Boolean(keySync?.failedKeys) || Boolean(refreshError);
+      if (refreshError) {
+        feedback = `验证结果已返回，但列表刷新失败：${refreshError}。请重试保存。`;
+      } else if (balanceFailed) {
+        feedback = `验证失败：${balanceReason || "无法查询供应商余额，请检查连接配置"}。配置已保存，可修改后重试。`;
+      } else if (keySyncError) {
+        feedback = `验证结果不完整：余额查询成功，但无法读取 Key 同步状态（${keySyncError}）。列表已更新，可再次验证。`;
+      } else if (keySync?.failedKeys) {
+        feedback = `验证部分失败：余额查询成功，但 ${keySync.failedKeys} 把复用 Key 的信息同步失败（${keySync.reason}）。配置已保存，可修改后重试。`;
+      } else if (keySync?.checked) {
+        feedback = `验证成功：已查询供应商余额并同步 ${keySync.checked} 把复用 Key，列表已更新。`;
+      } else {
+        feedback = "验证成功：已查询供应商余额；没有需要同步的复用 Key，列表已更新。";
+      }
+      validatedFingerprint = currentFingerprint;
+      validationSucceeded = !feedbackFailed;
+      notify(refreshError ? "配置已保存，但列表刷新失败，请重试" : feedbackFailed ? "验证未完全通过，请检查账户配置" : intent === "save" ? "已保存，列表已更新" : "验证成功，列表已更新");
+      if (intent === "save" && !feedbackFailed) onclose();
+    } catch (cause) {
+      if (active) error = `${intent === "validate" ? "验证" : "保存"}失败：${String(cause)}`;
+    } finally {
+      if (active) pending = null;
+    }
+  }
+
+  /** 保存按钮仅在当前草稿已验证成功时直接关闭，否则执行完整的保存与验证。 */
+  async function save(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    if (validationSucceeded && validatedFingerprint === fingerprint()) {
+      onclose();
+      return;
+    }
+    await run("save");
   }
 
   /** 关闭动作与父对话框忙碌保护使用相同条件。 */
@@ -97,38 +154,28 @@
   {#if account}
     <Field.Set disabled={loading || saving} class="min-w-0"><Field.Group>
       <QueryConnection bind:value={draft.config} />
-      <Collapsible.Root class="account-options"><Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="inline">配额与签到 <span class="text-muted-foreground">月配额：{draft.monthlyQuota || "不限"}</span></Button>{/snippet}</Collapsible.Trigger><Collapsible.Content><Field.Group class="pt-4">
-        <Field.Field><Field.Label for={`${id}-quota`}>本地月配额（美元）</Field.Label><Input id={`${id}-quota`} type="number" min={0} step="any" bind:value={draft.monthlyQuota} required /><Field.Description>0 表示不限；与上游余额及订阅额度分别保存。</Field.Description></Field.Field>
-        {#if draft.config.mode === "newapi"}<Field.Field orientation="horizontal"><Field.Label for={`${id}-checkin`}>余额查询时顺带签到</Field.Label><Switch id={`${id}-checkin`} bind:checked={draft.checkin} disabled={saving} /></Field.Field><Field.Description>默认关闭，签到失败不阻断余额查询。</Field.Description>{/if}
-      </Field.Group></Collapsible.Content></Collapsible.Root>
     </Field.Group></Field.Set>
-    <section class="query-result" aria-label="最近账户查询结果">
-      <h3>最近查询结果</h3>
-      <dl><div><dt>余额</dt><dd>{account.balance.amount === null ? "未知" : account.balance.currency.toUpperCase() === "USD" || !account.balance.currency ? formatUSD(account.balance.amount) : `${account.balance.amount} ${account.balance.currency}`}</dd></div>
-        {#if account.balance.cash !== null}<div><dt>现金</dt><dd>{account.balance.currency.toUpperCase() === "USD" ? formatUSD(account.balance.cash) : `${account.balance.cash} ${account.balance.currency}`}</dd></div>{/if}
-        {#if account.balance.points !== null}<div><dt>积分</dt><dd>{account.balance.points}</dd></div>{/if}
-        {#if account.balance.used !== null}<div><dt>上游已用</dt><dd>{account.balance.currency.toUpperCase() === "USD" ? formatUSD(account.balance.used) : `${account.balance.used} ${account.balance.currency}`}</dd></div>{/if}
-      </dl>
-      {#if account.config.mode === "sub2api" && account.balance.subscription}<SubscriptionSummary value={account.balance.subscription}/>{/if}
-      {#each statuses as item}<div class="query-state" class:failed={item.status.state === "failed"}><strong>{item.label}：{item.status.state === "success" ? "成功" : item.status.state === "failed" ? "失败" : "尚未查询"}</strong>{#if item.status.error}<p>{item.status.error}</p>{/if}{#if item.status.lastSuccess && !item.status.lastSuccess.startsWith("0001-")}<small>最后成功：{new Date(item.status.lastSuccess).toLocaleString()}</small>{/if}</div>{/each}
-    </section>
-    <p class="status">定时刷新统一在“设置 → 账户”中配置。</p>
   {/if}
-  {#if feedback}<p class="status" role="status">{feedback}</p>{/if}
-  {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
-  <footer><Button type="button" variant="outline" disabled={loading || saving} onclick={close}>{feedback ? "完成" : "取消"}</Button>{#if !account && !loading}<Button type="button" variant="outline" onclick={() => void load()}>重新读取</Button>{:else}<Button type="submit" disabled={loading || saving || !account}>{saving ? "保存并查询中…" : "保存更改"}</Button>{/if}</footer>
+  <div class="account-action-area">
+    {#if feedbackCurrent}<p class="status" class:failed={feedbackFailed} role="status">{feedback}</p>{/if}
+    {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
+    <footer>
+      <Button type="button" variant="outline" disabled={loading || saving} onclick={close}>{feedbackCurrent ? "关闭" : "取消"}</Button>
+      {#if !account && !loading}
+        <Button type="button" variant="outline" onclick={() => void load()}>重新读取</Button>
+      {:else}
+        <Button type="button" variant="outline" disabled={loading || saving || !account} onclick={() => void run("validate")}>{pending === "validate" ? "正在验证…" : "验证"}</Button>
+        <Button type="submit" disabled={loading || saving || !account}>{pending === "save" ? "正在保存…" : "保存"}</Button>
+      {/if}
+    </footer>
+  </div>
 </form>
 
 <style>
   .account-form { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 
-  :global(.account-options) { padding-top: 14px; border-top: 1px solid var(--border); }
-
-  .query-result { padding: 14px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
-  h3 { margin-bottom: 12px; font-size: 13px; font-weight: 600; }
-  dl { display: flex; flex-wrap: wrap; gap: 16px; } dt { font-size: 12px; color: var(--muted-foreground); } dd { margin: 3px 0 0; font-size: 14px; }
-  .query-state { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; font-size: 12px; overflow-wrap: anywhere; }
-  .query-state strong { font-weight: 500; } .query-state small, .status { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
-  .failed { color: var(--destructive); }
-  footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .status { color: var(--positive); font-size: 12px; line-height: 1.6; }
+  .status.failed { color: var(--destructive); }
+  .account-action-area { position: sticky; bottom: 0; z-index: 1; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); background: var(--background); }
+  footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 </style>

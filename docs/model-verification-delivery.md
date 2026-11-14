@@ -22,7 +22,12 @@
 - 四协议由本地 HTTP/SSE 测试覆盖，未调用真实付费模型服务，不能据此证明外部供应商准确率。系统睡眠通过宿主事件接入及可控暂停/恢复验证，未主动让用户电脑进入睡眠。
 - 模型验证交付时，总览与用量记录页面尚未实现；供应商只读验证摘要已接入。2026-11-12 请求记录批次已接入模型验证实际采样消耗与独立累计，并通过真实 HTTP 重试组合验证，见 [请求记录交付](request-records-delivery.md)；总览提醒组合验收仍待对应模块。参考数据随应用发布，没有独立在线更新入口。
 
+## 总览差异提醒展示检测时间（2026-11-14）
 
+- 用户指出总览“模型验证存在差异”右侧显示的是难以理解的英文算法说明。原实现直接展示报告的 `reason`，其中“Confidence is a closed-set probability within the reference bank.”只是通用置信度口径，不是产生差异的原因。
+- 总览差异提醒改为显示供应商 / Key / 模型路径和 `VerificationReport.time` 对应的实际完成时间，并复用模型验证页的时间格式。提醒继续保持只读，不新增跨页跳转。
+- Ego 运行完整 App 与固定验证快照：1200×800、820×600、390×600 均显示“最近检测 2026/11/13 22:32:57”，不再出现英文说明，页面无横向溢出；模型验证页同一报告显示相同时间。截图位于 `.cache/attention-time/attention-1200x800.png`、`attention-820x600.png`、`attention-390x600.png` 和 `verification-1200.png`。
+- 需求同步至 [模型验证需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/model-verification.md) 的 MV-R11、MV-A25，以及 [UI 原型要求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/ui-prototype.md) 的“Vela 总览正式接入”关注条款。`npm run check` 为 0 错误/0 警告。
 
 ## 预期参考模型（2026-11-12）
 

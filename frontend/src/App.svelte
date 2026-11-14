@@ -30,6 +30,8 @@
   import { settingsSections, type SettingsSection } from "$lib/settings/sections";
   /** 当前显示的顶级页面，默认打开已接入真实统计的总览。 */
   let page = $state("总览");
+  /** 设置子分类是否展开；已在设置页时由侧栏入口切换。 */
+  let settingsExpanded = $state(false);
  /** 供应商最近调用携带的一次性记录入口。 */
  let recordsProvider=$state(""),recordsID=$state("");
  /** 进入记录页时保留目标身份，普通导航清除定向范围。 */
@@ -96,10 +98,22 @@
     toast(message, { id: "vela-feedback", duration: 3500 });
   }
 
-  /** 点击“设置”进入常规，点击子分类切换面板；停留在设置页期间各分类保持挂载，切换分类不丢草稿。 */
+  /** 点击“设置”进入常规并展开子分类；已在设置页时再次点击切换收起或展开。 */
+  function toggleSettings(): void {
+    if (page !== "设置") {
+      settingsSection = "general";
+      page = "设置";
+      settingsExpanded = true;
+      return;
+    }
+    settingsExpanded = !settingsExpanded;
+  }
+
+  /** 打开指定设置分类并展开侧栏；停留在设置页期间各分类保持挂载，切换分类不丢草稿。 */
   function openSettings(section: SettingsSection = "general"): void {
     settingsSection = section;
     page = "设置";
+    settingsExpanded = true;
   }
 </script>
 
@@ -133,18 +147,19 @@
         >{/snippet}</Hint>{/each}
     </nav>
     <div class="settings-nav">
-      <Hint side="right" overflowOnly={false} text={sidebarCollapsed ? "设置" : undefined}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: () => openSettings() })}
+      <Hint side="right" overflowOnly={false} text={sidebarCollapsed ? "设置" : undefined}>{#snippet children(hintProps1)}<Button {...mergeProps(hintProps1, { onclick: toggleSettings })}
         class="nav-item w-full"
         variant="navigation" size="navigation"
         aria-label="设置"
 
         aria-current={page === "设置" ? "page" : undefined}
-        aria-expanded={page === "设置" && !sidebarCollapsed}
+        aria-expanded={page === "设置" && settingsExpanded && !sidebarCollapsed}
+        aria-controls={page === "设置" && settingsExpanded && !sidebarCollapsed ? "settings-subnav" : undefined}
 
         ><Settings2 class="size-4" aria-hidden="true" /><span>设置</span></Button
       >{/snippet}</Hint>
-      {#if page === "设置" && !sidebarCollapsed}
-        <nav class="settings-subnav" aria-label="设置分类">
+      {#if page === "设置" && settingsExpanded && !sidebarCollapsed}
+        <nav id="settings-subnav" class="settings-subnav" aria-label="设置分类">
           {#each settingsSections as section}
             <Button
               variant="subnavigation" size="subnavigation"
@@ -167,7 +182,7 @@
       </p>{/if}
     </header>
     <main class="app-main" class:list-workspace={["供应商", "模型", "使用记录", "模型验证"].includes(page)}>
-      {#if page === "总览"}<OverviewPage {notify} navigate={(target) => { if (target === "providers") page = "供应商"; else openSettings("connection"); }} />{:else if page === "供应商"}<ProvidersPage {notify} {openRecords} openAccountSettings={() => openSettings("account")} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
+      {#if page === "总览"}<OverviewPage {notify} navigate={(target) => { if (target === "providers") page = "供应商"; else openSettings("connection"); }} />{:else if page === "供应商"}<ProvidersPage {notify} {openRecords} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
           {notify}
         />{:else if page === "使用记录"}<RecordsPage {notify} initialProvider={recordsProvider} initialRecord={recordsID} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
           section={settingsSection}

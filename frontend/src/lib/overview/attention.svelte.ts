@@ -2,12 +2,13 @@ import { formatUSD } from "../currency.js";
 import { VelaService, type AttentionSettings, type ProviderKey } from "$lib/generated/mygo";
 import { isMyGo } from "mygo-runtime";
 import { errorMessage } from "$lib/settings/sections";
+import { time as verificationTime } from "$lib/verification/display";
 
 /** 关注事项只陈述本地已保存事实，不触发查询上游或模型验证。 */
 export interface AttentionItem {
   /** 稳定事项身份，倍率已读操作只作用于这一事件。 */
   id: string;
-  /** 类别决定图标与语义色；path、title、detail 提供完整文字结论。 */
+  /** 类别决定图标与语义色；path 定位调用链路，title 陈述结论，detail 展示对应事实。 */
   kind: "balance" | "difference" | "health" | "rate-up" | "rate-down";
   path: string; title: string; detail: string;
 }
@@ -92,7 +93,8 @@ export async function refreshAttention(): Promise<void> {
       knownKeys.push({ key, path });
       for (const model of models) {
         const latest = verification.reports.filter(report => report.target.providerId === provider.id && report.target.keyId === key.id && report.target.modelId === model.modelId).sort((a, b) => b.time - a.time)[0];
-        if (latest?.conclusion === "difference" && latest.state === "complete") items.push({ id: `difference:${latest.id}`, kind: "difference", path: `${path} / ${model.name}`, title: "模型验证存在差异", detail: latest.reason || "最近一次验证存在差异" });
+        // 关注项只显示报告完成时间；通用置信度说明属于报告诊断，不重复到总览。
+        if (latest?.conclusion === "difference" && latest.state === "complete") items.push({ id: `difference:${latest.id}`, kind: "difference", path: `${path} / ${model.name}`, title: "模型验证存在差异", detail: `最近检测 ${latest.time ? verificationTime(latest.time) : "时间未知"}` });
       }
     }
   }
