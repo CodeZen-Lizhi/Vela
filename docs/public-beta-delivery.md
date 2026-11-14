@@ -93,3 +93,14 @@ Go验收覆盖真实签名App的复制与整包替换、其他目录同名进程
 ## 首个测试版发布授权（2026-11-14）
 
 用户明确要求创建Release并上传DMG、签名更新包及更新清单。本次将已验收的请求记录布局、DMG自安装和应用内更新改动纳入可追溯源码提交，从干净源码构建 `v0.1.0-beta.1`，通过草稿Release上传并校验后公开为prerelease。构建在本机macOS执行，不将正式更新私钥传给GitHub；源码、标签、更新清单及下载资产保持同版本。发布后的URL、摘要与匿名下载验证以实际结果补记；本段仅记录授权与发布流程，不提前宣称上传完成。
+
+
+### v0.1.0-beta.1 已发布（2026-11-14 17:33，Asia/Shanghai）
+
+Release：https://github.com/CodeZen-Lizhi/Vela/releases/tag/v0.1.0-beta.1 。GitHub状态draft=false、prerelease=true；未将测试版标为正式latest。源码提交 `b4d61b7b38d2a0257cc331d72ec6d61afdfbe30f` 位于 `codex/release-0.1.0-beta.1`，对应不可混淆的发布标签 `v0.1.0-beta.1`。从该标签的干净源码在本机Mac构建，包内source.dirty=false、commit与标签一致。
+
+已上传11项资产：DMG、签名tar.gz更新包、平台更新JSON、SHA256SUMS、App ZIP、许可/第三方声明、完整版本说明、构建及发布元数据、MyGo生成的安装脚本。草稿上传完成后逐项比对GitHub资产大小及SHA256摘要全部一致，再公开为测试版。通过不带认证的HTTPS实际下载DMG、更新包、JSON及SHA256SUMS，校验值一致；下载后的更新包重新使用源码公钥验证Ed25519签名通过。真实生产模式MyGo更新器使用正式GitHub源，以0.1.0-beta.0为当前版本成功识别0.1.0-beta.1（phase=available、error为空），证明beta源发现可用。证据：`.cache/application-update/published/`及`official-check.json`。
+
+发布前全仓Go测试和6项发布测试通过，待发布源码Gitleaks扫描无命中；最终候选包签名与版本、完整资产SHA256验证通过，实际生产App隔离启动后正常退出0、SQLite完整性为ok。沿用此前DMG自安装、界面及真实HTTP签名更新/重启证据；本轮未调用付费供应商、未替换日常应用。Apple Developer ID签名/公证、其他机器首次Gatekeeper行为和既有未覆盖性能指标继续保持明示。
+
+本次使用本机macOS打包和更新签名，GitHub负责分发；未配置GitHub Actions在线打包，正式更新私钥未上传GitHub。已安装不含更新入口的旧包需先用本版DMG安装，安装相同版本不会重复升级，未来更高版本可通过应用内更新获取。
