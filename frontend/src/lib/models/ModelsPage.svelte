@@ -341,7 +341,7 @@
       if (document.visibilityState === "visible") void refreshCatalogState(true);
     };
     document.addEventListener("visibilitychange", onVisible);
-    const unsubscribeVisible = events.windowVisible.on(onVisible);
+    const unsubscribeVisible = isMyGo() ? events.windowVisible.on(onVisible) : () => {};
     return () => {
       unsubscribeVisible();
       disposed = true;

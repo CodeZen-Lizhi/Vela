@@ -161,8 +161,8 @@ export function observeAttention(): () => void {
   /** 页面恢复可见时取消旧计时并重读，避免重叠请求。 */
   const visible = (): void => { if (!document.hidden) { clearTimeout(timer); void poll(); } };
   document.addEventListener("visibilitychange", visible);
-    const unsubscribeVisible = events.windowVisible.on(visible);
-    const unsubscribeAccounts = events.providerAccountsRefreshed.on(visible);
+  const unsubscribeVisible = events.windowVisible.on(visible);
+  const unsubscribeAccounts = events.providerAccountsRefreshed.on(visible);
   void poll();
   return () => { unsubscribeVisible(); unsubscribeAccounts(); stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
 }

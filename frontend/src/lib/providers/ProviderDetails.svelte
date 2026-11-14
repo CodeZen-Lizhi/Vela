@@ -7,6 +7,7 @@
   import * as Tabs from "$lib/components/ui/tabs";
   import { Progress } from "$lib/components/ui/progress";
   import { onMount } from "svelte";
+  import { isMyGo } from "mygo-runtime";
   import { Plus, Pencil, Copy, Trash2, ShieldCheck, RotateCcw } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
@@ -92,8 +93,8 @@
     /** 已打开的详情与列表同时重读，不重建抽屉或覆盖编辑草稿。 */
     const restored=()=>{if(document.visibilityState==="visible")void poll();};
     document.addEventListener("visibilitychange",restored);
-    const unsubscribeVisible=events.windowVisible.on(restored);
-    const unsubscribeAccounts=events.providerAccountsRefreshed.on(restored);
+    const unsubscribeVisible=isMyGo()?events.windowVisible.on(restored):()=>{};
+    const unsubscribeAccounts=isMyGo()?events.providerAccountsRefreshed.on(restored):()=>{};
     return()=>{unsubscribeVisible();unsubscribeAccounts();stopped=true;clearTimeout(pollTimer);clearInterval(clockTimer);document.removeEventListener("visibilitychange",restored);};
   });
   /** 子功能保存后刷新抽屉与列表摘要，不切换当前页签。 */

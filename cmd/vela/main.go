@@ -34,6 +34,9 @@ var trayIconPNG []byte
 // windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。
 var windowVisible = mygo.NewEvent[bool]("window:visible")
 
+// providerAccountsRefreshed 通知恢复窗口触发的账户查询已结束，页面此时重读落库后的余额和倍率。
+var providerAccountsRefreshed = mygo.NewEvent[bool]("provider:accounts-refreshed")
+
 // verificationProgress 将合并后的检测样本进度推送给已打开页面。
 var verificationProgress = mygo.NewEvent[verification.VerificationProgress]("verification:progress")
 
@@ -283,6 +286,11 @@ func startApplication(dataDir string, isolated bool) error {
 			config, err := preferences.AccountRefresh(queryContext)
 			if err == nil && config.OnVisible {
 				_ = accounts.RefreshBackground(queryContext, true, true)
+				if queryContext.Err() == nil {
+					if err := providerAccountsRefreshed.Broadcast(true); err != nil {
+						log.Printf("推送账户查询完成事件失败: %v", err)
+					}
+				}
 			}
 		}()
 	}

@@ -93,8 +93,8 @@
     /** 原生恢复与账户查询完成后立即重读，不等待列表周期。 */
     const restored=()=>{if(document.visibilityState==="visible")void poll();};
     document.addEventListener("visibilitychange",restored);
-    const unsubscribeVisible=events.windowVisible.on(restored);
-    const unsubscribeAccounts=events.providerAccountsRefreshed.on(restored);
+    const unsubscribeVisible=isMyGo()?events.windowVisible.on(restored):()=>{};
+    const unsubscribeAccounts=isMyGo()?events.providerAccountsRefreshed.on(restored):()=>{};
     return()=>{unsubscribeVisible();unsubscribeAccounts();stopped=true;clearTimeout(timer);document.removeEventListener("visibilitychange",restored);};
   });
   /** 明确的主动刷新才查询上游；单项失败由行内查询状态表达。 */
