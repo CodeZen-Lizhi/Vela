@@ -96,3 +96,31 @@
 Ego 浏览器运行实际 Vela App 和供应商详情，以隔离 MyGo RPC 样本验证：1200×800 默认添加表单常显凭证与调用规则，高级设置和上游同步可见；纯手动摘要与无连接状态正确，切换倍率自动后同步区自动展开；选择上游 Key 名称后仅出现名称字段与完整 Key 字段；编辑已有上游分组/自动倍率 Key 时自动展开并仅出现分组与倍率路径，最近同步失败状态显示正确；密钥输入在 password/text 间切换；空名称提交不调用保存并聚焦名称；实际添加载荷为手动 1×、原优先级、默认限制、跟随供应商代理与默认复用/手动查询草稿。820×600 浅深主题下页面和表单无横向溢出，底部操作可见。证据位于 `.cache/key-editor-first-principles/`。
 
 `npm --workspace vela-frontend run check` 通过，Svelte 检查 0 错误、0 警告；前端生产构建通过，保留既有 Vite 大 chunk 提示。该证据使用合成只读 RPC，未访问真实上游、未重新打包或验证原生 MyGo WebView。需求已同步 `provider-management.md` 的 PM-R06、PM-R12、PM-A25 和 `ui-prototype.md` 的“Vela 添加与编辑 Key 第一性原则重构”。
+
+## Key 健康度状态色与手动恢复（2026-11-14）
+
+Key 健康度按 8 与 5 的边界显示绿、黄、红三档，进度条、轨道和分值同步使用主题语义色。操作列新增“恢复健康度”按钮：低于 10 时可用，满分时可见但禁用；点击后无需确认，将当前凭据恢复为 `10.0/10`，清除连续失败、熔断、冷却和恢复探测状态，并立即刷新该行。
+
+恢复操作复用当前调度运行核心和真实 SQLite 健康快照。后端递增健康代次，使恢复前已准入的旧请求稍后完成时不能覆盖恢复结果；持久化失败时回滚内存状态，避免界面与重启结果不一致。仅修改目标 Key，其他 Key、调度配置和实际额度占用不变。需求已同步 `provider-management.md` 的 PM-R05、PM-A26 和 `ui-prototype.md` 的“Vela Key 健康度颜色与恢复操作”。
+
+验证：`go test ./internal/scheduling ./internal/providers ./internal/app -count=1` 319 项通过；`go test -race ./internal/scheduling ./internal/app -count=1` 241 项通过；`go test ./cmd/vela -count=1` 5 项通过；Go vet 与前端 Svelte 检查均为 0 错误、0 警告。Ego 运行实际 App 与合成 RPC 验证低于满分可恢复、满分禁用、成功刷新、故障保留原分数；820×600 浅深主题下五个行尾操作完整容纳且无页面或表格横向溢出。截图位于 `.cache/key-health-reset/`，未重新打包或验证原生 MyGo WebView。
+
+## Key 熔断、冷却与恢复试探列表投影（2026-11-14后续）
+
+修复健康分归零后列表只显示 `0.0/10`、选择“冷却中”却消失的问题。根因是调度运行核心已经保存熔断、冷却、恢复试探和下次允许试探时间，但供应商列表投影原先只读取健康分，前端筛选也没有冷却分支。本次保持调度退避行为不变，将完整健康快照投影为 `normal / degraded / abnormal / cooldown / circuit / probing` 及 `recoverAt`：恢复试探优先，其次熔断、限流冷却和分数档位。
+
+详情页每秒按服务端恢复时间刷新文案，状态行每次只显示 `限流冷却 mm:ss`、`熔断中 mm:ss`、`等待恢复探测` 或 `恢复探测中` 之一，不附加“暂停调用”等解释文字；“冷却中”筛选同时保留限流冷却、熔断等待和恢复探测行。健康状态行固定高度，五列表头与对应内容使用相同列宽和对齐基准。需求已同步 `provider-management.md` 的 PM-R05、PM-A27 和 `ui-prototype.md` 的“Vela Key 健康度颜色与恢复操作”。
+
+验证：`go test ./... -count=1` 744 项通过；`go test -race ./internal/scheduling ./internal/providers ./internal/app -count=1` 336 项通过；`go test ./cmd/vela -count=1` 5 项通过；`go vet ./...` 通过。`npm run build` 生成 Apple Silicon `.app` 与 DMG，Svelte 检查 0 错误、0 警告，保留既有 Vite 大 chunk 提示。Ego 运行正式 App 与隔离 RPC，确认“冷却中”保留熔断、等待试探、冷却和试探中四行；熔断倒计时逐秒从 `09:47` 变为 `09:46`。1200×800 与 820×600 下五列表头和数据中心线偏差均为 0，页面、抽屉、内容区和表格横向溢出均为 0，浅深主题状态色正确；截图位于 `.cache/key-health-countdown/live-*.png`。未替换安装包或日常数据库，未验证原生 MyGo WebView。
+
+文案收敛后再次运行实际 App：四种状态依次显示为 `熔断中 10:01`、`等待恢复探测`、`限流冷却 05:01`、`恢复探测中`，每行仅有一个状态，未附加“暂停调用”等解释；820×600 下页面和表格无横向溢出且无浏览器错误。截图位于 `.cache/key-health-countdown/concise-light-820.png`。
+
+## 供应商健康聚合与准入状态分离（2026-11-14）
+
+修复供应商列表把“当前没有可调用 Key”误判为供应商健康“不可用”的问题。根因是旧聚合同时把首选 Key 缺失、Key 冷却/熔断/恢复试探和健康分档压进一个结果；Key 仍有 9 分以上时，只要暂时不可发请求，供应商健康也被改写为“不可用”。
+
+现在供应商健康只聚合已启用 Key 的原始健康分：均值不低于 8 为“正常”，不低于 5 且低于 8 为“降级”，大于 0 且低于 5 为“异常”，全部启用 Key 均为 0 分为“熔断”，没有启用 Key 才为“不可用”。供应商自身启停不改变健康分档；冷却、熔断和恢复试探只影响当前首选 Key 与真实准入，不再覆盖供应商健康。Key 列表另行显示 `normal / degraded / abnormal / cooldown / circuit / probing` 及恢复时刻，供应商列表不显示百分比，五类状态使用不同文字、语义色和熔断图标。
+
+请求记录同步区分“健康分”和“本次是否出站”：只有准入阶段零次真实出站才标记为“未发上游”，并保留实际阻断的供应商、Key、冷却/熔断原因及来源请求；上游已出站后的失败仍按真实尝试展示，不写成本地拦截。
+
+验证：`go test ./... -count=1` 744 项通过；`go test -race ./internal/providers ./internal/scheduling ./internal/app -count=1` 336 项通过；`go vet ./...` 通过；前端显示/路径回归 8 项通过。`npm run build` 生成 Apple Silicon `.app` 与 DMG，Svelte 检查 0 错误、0 警告。实际组件以正常、降级、异常、熔断、不可用及“停用但健康正常”六行核对供应商页，调度页复用同一结果；1200×800 与 820×600 无页面或表格横向溢出，截图位于 `.cache/provider-health-bands/providers-*.png`、`scheduling-1200.png`。真实日常数据库只读核对 Magpie 的唯一启用 Key 聚合为 10 分；未替换安装包或日常数据库。

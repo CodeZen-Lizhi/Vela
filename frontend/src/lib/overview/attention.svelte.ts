@@ -85,8 +85,8 @@ export async function refreshAttention(): Promise<void> {
       items.push({ id: `balance:${provider.id}`, kind: "balance", path: provider.name, title: "供应商余额不足", detail: `余额 ${formatUSD(balance.amount)} · 低于 ${formatUSD(settings.attention.balanceThreshold)}` });
     }
     if (summary.health.state !== "normal") {
-      const state = { degraded: "降级", abnormal: "异常", unavailable: "不可用" }[summary.health.state];
-      items.push({ id: `health:${provider.id}`, kind: "health", path: provider.name, title: "供应商健康异常", detail: summary.health.reason || `${state} · 健康度 ${summary.health.percent ?? "—"}%` });
+      const state = { degraded: "降级", abnormal: "异常", circuit: "熔断", unavailable: "不可用" }[summary.health.state];
+      items.push({ id: `health:${provider.id}`, kind: "health", path: provider.name, title: "供应商健康异常", detail: summary.health.reason || state });
     }
     for (const { key, models } of active) {
       const path = `${provider.name} / ${key.name}`;

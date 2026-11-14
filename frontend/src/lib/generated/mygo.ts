@@ -554,18 +554,18 @@ export interface ProviderDraft {
   request: RequestPolicy;
 }
 
-/** ProviderHealth 是供应商的健康汇总：已启用 Key 的健康分等权平均。 */
+/** ProviderHealth 是供应商的健康汇总：按启用 Key 中最高的健康分展示一个档位。 */
 export interface ProviderHealth {
   /** State 健康分档。 */
   state: ProviderHealthState;
-  /** Percent 平均健康度，0～100 的整数；不可用时为 nil。 */
+  /** Percent 为最高健康分换算的兼容百分比，0～100 的整数；不可用时为 nil，界面只显示档位。 */
   percent: number | null;
   /** Reason 不可用的原因；其他分档为空。 */
   reason: string;
 }
 
 /** ProviderHealthState 是供应商健康汇总的分档。 */
-export type ProviderHealthState = "normal" | "degraded" | "abnormal" | "unavailable";
+export type ProviderHealthState = "normal" | "degraded" | "abnormal" | "circuit" | "unavailable";
 
 /** ProviderKey 是一把上游 Key 的展示信息；密钥明文不随它返回。 */
 export interface ProviderKey {
@@ -601,6 +601,10 @@ export interface ProviderKey {
   allModels: boolean;
   /** HealthScore 健康分，0～10。 */
   healthScore: number;
+  /** HealthState 是当前可观察状态；调用可用性状态优先于分数分档。 */
+  healthState: ProviderKeyHealthState;
+  /** RecoverAt 是熔断下次允许试探或限流冷却结束时刻；零值表示无恢复倒计时。 */
+  recoverAt: string;
 }
 
 /** ProviderKeyDraft 是新增或编辑上游 Key 时可以提交的字段；启停和模型权限通过单独的操作修改。 */
@@ -626,6 +630,9 @@ export interface ProviderKeyDraft {
   /** Proxy 出口选择。 */
   proxy: ProxyChoice;
 }
+
+/** ProviderKeyHealthState 是 Key 列表用于筛选和着色展示的健康状态。 */
+export type ProviderKeyHealthState = "normal" | "degraded" | "abnormal" | "cooldown" | "circuit" | "probing";
 
 /** ProviderKeyQuery 保存每把 Key 的连接选择、独立来源和同步状态。 */
 export interface ProviderKeyQuery {
@@ -1317,6 +1324,10 @@ export const VelaService = {
   /** RequestTotals 查询独立于明细清理的长期日维度统计。 */
   requestTotals(q: Query): Promise<Aggregate[]> {
     return call("VelaService.RequestTotals", q);
+  },
+  /** ResetProviderKeyHealth 将当前凭据恢复为满分并立即持久化，不修改其他 Key 或调度配置。 */
+  resetProviderKeyHealth(keyID: string): Promise<void> {
+    return call("VelaService.ResetProviderKeyHealth", keyID);
   },
   /** RevealAccessKey 在用户主动查看时返回访问密钥。 */
   revealAccessKey(): Promise<string> {

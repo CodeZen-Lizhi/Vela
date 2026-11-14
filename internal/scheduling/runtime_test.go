@@ -60,6 +60,53 @@ func TestRuntimeHealthSequence(t *testing.T) {
 	}
 }
 
+// TestRuntimeManualHealthReset 验证手动恢复清除故障状态、隔离旧请求并在保存失败时可回滚。
+func TestRuntimeManualHealthReset(t *testing.T) {
+	r, _ := runtimeClock()
+	c := runtimeCandidate("a", 0, 0, nil)
+	finishRuntime(t, r, c, Outcome{Penalty: Heavy})
+	pending, err := r.Acquire(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishRuntime(t, r, c, Outcome{RateLimited: true, RetryAfterSet: true, RetryAfter: time.Minute})
+
+	if _, ok := r.resetHealth("a", "v2"); ok {
+		t.Fatal("旧凭据版本不能恢复健康")
+	}
+	previous, ok := r.resetHealth("a", "v1")
+	if !ok || previous.Score != 8 || previous.CooldownUntil.IsZero() {
+		t.Fatalf("恢复前状态 = %+v, ok=%v", previous, ok)
+	}
+	pending.Finish(Outcome{Penalty: Light})
+	health := r.Health("a", "v1")
+	if health.Score != 10 || health.ConsecutiveFailures != 0 || health.ConsecutiveRateLimits != 0 || !health.CooldownUntil.IsZero() || health.CircuitOpen || health.Inflight != 0 {
+		t.Fatalf("旧请求覆盖恢复状态: %+v", health)
+	}
+
+	finishRuntime(t, r, c, Outcome{Penalty: Unavailable})
+	if _, ok = r.resetHealth("a", "v1"); !ok {
+		t.Fatal("熔断状态不能恢复")
+	}
+	if health = r.Health("a", "v1"); health.Score != 10 || health.CircuitOpen || health.ProbeInterval != 0 || !health.NextProbe.IsZero() {
+		t.Fatalf("熔断状态未清除: %+v", health)
+	}
+	afterReset, acquireErr := r.Acquire(c)
+	if acquireErr != nil {
+		t.Fatalf("恢复后不能重新准入: %v", acquireErr)
+	}
+	afterReset.Finish(Outcome{})
+
+	previous = r.Health("a", "v1")
+	if _, ok = r.resetHealth("a", "v1"); !ok {
+		t.Fatal("可恢复状态丢失")
+	}
+	r.rollbackHealth("a", "v1", previous)
+	if health = r.Health("a", "v1"); health.Score != previous.Score || health.Generation <= previous.Generation {
+		t.Fatalf("回滚状态 = %+v，期望旧分数与新代次", health)
+	}
+}
+
 // TestRuntimeProbeBackoffAndRecovery 验证零分只由真实请求试探、失败直接重新熔断、默认和显式上限。
 func TestRuntimeProbeBackoffAndRecovery(t *testing.T) {
 	for _, limit := range []int{0, 1, 32} {

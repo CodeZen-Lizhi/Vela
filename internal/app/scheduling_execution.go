@@ -57,6 +57,8 @@ func (s *schedulingSource) Credential(ctx context.Context, c scheduling.Candidat
 type SchedulingExecution struct {
 	// Executor 是已连接持久化、真实供应商和HTTP执行的调度入口。
 	Executor *scheduling.Executor
+	// vendors 只用于解析当前凭据版本，不复用请求执行中的候选快照。
+	vendors *providers.Store
 	// mu 保护按出口地址复用的客户端集合；关闭应在宿主请求结束后执行。
 	mu      sync.Mutex
 	clients map[string]*http.Client
@@ -73,11 +75,19 @@ func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendo
 	if err := policy.RestoreRuntime(ctx, runtime); err != nil {
 		return nil, err
 	}
-	vendors.SetHealthLookup(func(id, version string) (float64, bool) {
+	vendors.SetHealthLookup(func(id, version string) providers.ProviderKeyHealthSnapshot {
 		health := runtime.Health(id, version)
-		return health.Score, health.Score > 0 && !health.CircuitOpen && !health.CooldownUntil.After(time.Now())
+		now := time.Now()
+		return providers.ProviderKeyHealthSnapshot{
+			Score:         health.Score,
+			Available:     health.Score > 0 && !health.CircuitOpen && !health.CooldownUntil.After(now) && !health.Probing,
+			CircuitOpen:   health.CircuitOpen,
+			Probing:       health.Probing,
+			CooldownUntil: health.CooldownUntil,
+			NextProbe:     health.NextProbe,
+		}
 	})
-	value := &SchedulingExecution{models: catalog, clients: map[string]*http.Client{}}
+	value := &SchedulingExecution{models: catalog, vendors: vendors, clients: map[string]*http.Client{}}
 	runner := scheduling.NewHTTPRunner()
 	runner.ClientFor = value.clientFor
 	value.Executor = &scheduling.Executor{Continuations: scheduling.NewContinuations(), Policies: policy, Runtime: runtime, Source: &schedulingSource{providers: vendors}, Runner: runner, Persist: func(ctx context.Context) error { return policy.SaveRuntime(ctx, runtime) }}
@@ -85,6 +95,18 @@ func NewSchedulingExecution(ctx context.Context, policy *scheduling.Store, vendo
 		value.Executor.Records = history[0]
 	}
 	return value, nil
+}
+
+// ResetKeyHealth 将指定 Key 的当前凭据恢复为满分，清除失败、熔断与冷却并立即保存。
+func (s *SchedulingExecution) ResetKeyHealth(ctx context.Context, keyID string) error {
+	if s == nil || s.vendors == nil || s.Executor == nil {
+		return errors.New("调度执行尚未初始化")
+	}
+	version, err := s.vendors.CredentialVersion(ctx, keyID)
+	if err != nil {
+		return err
+	}
+	return s.Executor.ResetHealth(ctx, keyID, version)
 }
 
 // clientFor 按Key→供应商→全局代理解析出口，客户端按地址复用，重定向不携带上游凭据。

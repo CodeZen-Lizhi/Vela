@@ -17,7 +17,7 @@
 
 .provider-actions { display:flex; justify-content:center; align-items:center; gap:2px; }
 .provider-row-actions { --row-action-size:2rem; }
-.provider-key-actions { --row-action-size:2rem; }
+.provider-key-actions { --row-action-size:1.625rem; gap:1px; }
 .provider-balance { display:inline-flex; align-items:baseline; gap:0; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .provider-balance.is-empty { color:var(--muted-foreground); font-weight:400; }
 .provider-currency-symbol { color:var(--primary); font-size:12px; font-weight:650; }
@@ -46,7 +46,7 @@
 /* 映射弹窗的搜索与范围筛选保持紧凑，不随弹窗宽度拉满整行。 */
 .provider-mapping-filters > [data-slot=input] { width:260px; max-width:260px; min-width:0; flex:1 1 260px; }
 .provider-mapping-filters > [data-slot=select-trigger] { width:160px; flex:0 0 160px; }
-/* 来源开关贴近倍率，Key 长名称截断，不挤压操作按钮。 */
+/* 倍率与健康度由多项组合，表头及整组内容共用居中基准；其余列保持各自文本对齐。 */
 .provider-key-identity { display:flex; align-items:center; gap:3px; }
 .provider-key-identity > span { max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; }
 .provider-multiplier { display:flex; align-items:center; flex-wrap:nowrap; gap:6px; }
@@ -55,7 +55,15 @@
 .provider-key-table { table-layout:fixed; }
 .provider-key-table th,.provider-key-table td { padding-left:8px; padding-right:8px; }
 .provider-key-table .provider-key-identity > span { min-width:0; flex:0 1 auto; }
-.provider-key-table .provider-health-bar { width:64px; max-width:100%; margin-left:auto; }
+.provider-key-table .provider-health-bar { width:64px; max-width:100%; margin-inline:auto; }
+.provider-key-table td[data-health] { --provider-health-color:var(--destructive); }
+.provider-key-table td[data-health=normal] { --provider-health-color:var(--positive); }
+.provider-key-table td[data-health=degraded] { --provider-health-color:var(--caution); }
+.provider-key-table .provider-health-bar { background:color-mix(in srgb,var(--provider-health-color) 16%,var(--muted)); }
+.provider-key-table .provider-health-bar [data-slot=progress-indicator] { background:var(--provider-health-color); }
+.provider-key-table .provider-health-value { margin-top:4px; color:var(--provider-health-color); font-weight:600; line-height:14px; }
+/* 倒计时和试探文案占用固定高度，秒数变化时表头与相邻列不跳动。 */
+.provider-key-table .provider-health-state { display:block; height:14px; margin-top:2px; color:var(--provider-health-color); font-size:10px; font-weight:600; line-height:14px; white-space:nowrap; }
 .provider-multiplier-error { display:block; height:14px; line-height:14px; margin-top:5px; font-size:10px; color:var(--destructive); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .provider-health-bar { width:80px; }
 

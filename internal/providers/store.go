@@ -61,7 +61,7 @@ type Store struct {
 	// vault 加解密上游密钥。
 	vault *vault
 	// healthLookup 在接收请求前注入整Key健康投影。
-	healthLookup func(string, string) (float64, bool)
+	healthLookup func(string, string) ProviderKeyHealthSnapshot
 	// documents 加密供应商和Key的完整配置文档。
 	documents *credentials.Store
 }
@@ -301,51 +301,48 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 
 // keyBrief 是汇总供应商概览时用到的 Key 信息。
 type keyBrief struct {
-	// enabled 是否启用；health 是健康分（0～10）；doc 提供名称、倍率与优先级。
+	// enabled 是否启用；health 是调度运行核心提供的健康快照；doc 提供名称、倍率与优先级。
 	enabled bool
-	health  float64
+	health  ProviderKeyHealthSnapshot
 	doc     keyDocument
-	// available 表示凭据与运行准入允许普通调用，不参与平均分分母筛选。
-	available bool
 }
 
 // summarize 由供应商启停与它的全部 Key（按创建顺序）得出首选 Key 与健康汇总。
-// 首选 Key 取已启用的 Key 中优先级数值最小的一把，优先级相同时取先创建的；健康汇总是已启用 Key 健康分的等权平均。
-// 已接执行层时通过healthLookup排除冷却、熔断或无凭据的Key，不用分数重新排列供应商。
+// 首选 Key 取可调用 Key 中优先级数值最小的一把，优先级相同时取先创建的；健康汇总取启用 Key 的最高健康分。
+// 首选 Key 排除冷却、熔断或无凭据的 Key；健康分档不受供应商启停或即时准入影响。
 func summarize(enabled bool, keys []keyBrief) (*PreferredKey, ProviderHealth) {
-	if !enabled {
-		return nil, ProviderHealth{State: ProviderHealthUnavailable, Reason: "供应商已停用"}
-	}
 	var preferred *keyDocument
-	var total float64
+	var bestScore float64
 	active := 0
 	for i := range keys {
 		if !keys[i].enabled {
 			continue
 		}
 		active++
-		total += keys[i].health
-		if keys[i].available && (preferred == nil || keys[i].doc.Priority < preferred.Priority) {
+		bestScore = max(bestScore, keys[i].health.Score)
+		if keys[i].health.Available && (preferred == nil || keys[i].doc.Priority < preferred.Priority) {
 			preferred = &keys[i].doc
 		}
 	}
-	if preferred == nil {
-		reason := "没有可调用的 Key"
-		if active == 0 {
-			reason = "没有已启用的 Key"
-		}
-		return nil, ProviderHealth{State: ProviderHealthUnavailable, Reason: reason}
+	if active == 0 {
+		return nil, ProviderHealth{State: ProviderHealthUnavailable, Reason: "没有已启用的 Key"}
 	}
-	// 健康分满分 10，换算为百分比后分档。
-	percent := int(math.Round(total / float64(active) * 10))
+	// 用最高原始分数分档；坏掉的备用 Key 不拉低好线路，舍入后的兼容百分比不参与判断。
+	percent := int(math.Round(bestScore * 10))
 	state := ProviderHealthAbnormal
 	switch {
-	case percent >= 80:
+	case bestScore >= 8:
 		state = ProviderHealthNormal
-	case percent >= 50:
+	case bestScore >= 5:
 		state = ProviderHealthDegraded
+	case bestScore == 0:
+		state = ProviderHealthCircuit
 	}
-	return &PreferredKey{Name: preferred.Name, Multiplier: preferred.Multiplier}, ProviderHealth{State: state, Percent: &percent}
+	health := ProviderHealth{State: state, Percent: &percent}
+	if !enabled || preferred == nil {
+		return nil, health
+	}
+	return &PreferredKey{Name: preferred.Name, Multiplier: preferred.Multiplier}, health
 }
 
 // Snapshot 读取供应商页需要的全部内容：供应商概览与表单默认值。
@@ -405,8 +402,8 @@ func (s *Store) keyBriefs(ctx context.Context) (map[string][]keyBrief, error) {
 	for rows.Next() {
 		var providerID, data, keyID string
 		var sealed []byte
-		// 没有调用结果可结算前，每把 Key 都是初始健康分。
-		brief := keyBrief{health: initialKeyHealth, available: true}
+		// 没有调用结果可结算前，每把 Key 都是初始满分且可用。
+		brief := keyBrief{health: ProviderKeyHealthSnapshot{Score: initialKeyHealth, Available: true}}
 		if err = rows.Scan(&keyID, &providerID, &brief.enabled, &sealed, &data); err != nil {
 			return nil, err
 		}
@@ -414,13 +411,15 @@ func (s *Store) keyBriefs(ctx context.Context) (map[string][]keyBrief, error) {
 			return nil, fmt.Errorf("上游 Key 的数据已损坏: %w", err)
 		}
 		if s.healthLookup != nil {
-			brief.health, brief.available = s.healthLookup(keyID, executionVersion(sealed))
-			brief.available = brief.available && sealed != nil
+			brief.health = s.healthLookup(keyID, executionVersion(sealed))
+			brief.health.Available = brief.health.Available && sealed != nil
 		}
 		result[providerID] = append(result[providerID], brief)
 	}
 	return result, rows.Err()
 }
 
-// SetHealthLookup 在宿主启动、接收请求之前注入整Key健康投影；回调必须可并发读取且不能再访问本数据库。
-func (s *Store) SetHealthLookup(lookup func(string, string) (float64, bool)) { s.healthLookup = lookup }
+// SetHealthLookup 在宿主启动、接收请求之前注入整Key健康快照；回调必须可并发读取且不能再访问本数据库。
+func (s *Store) SetHealthLookup(lookup func(string, string) ProviderKeyHealthSnapshot) {
+	s.healthLookup = lookup
+}

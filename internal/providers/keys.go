@@ -10,6 +10,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -90,8 +91,14 @@ func secretColumn(sealed []byte) any {
 	return sealed
 }
 
-// key 由独立列、文档和掩码组装对外的 Key 信息。
+// key 组装不读取调度运行时的 Key 信息，使用新 Key 的初始健康状态。
 func (doc keyDocument) key(id, providerID string, enabled, allModels bool, mask string, hasSecret bool) ProviderKey {
+	return doc.keyWithHealth(id, providerID, enabled, allModels, mask, hasSecret, ProviderKeyHealthSnapshot{Score: initialKeyHealth, Available: true}, time.Now())
+}
+
+// keyWithHealth 由独立列、文档、掩码和调度健康快照组装列表中的 Key 信息。
+func (doc keyDocument) keyWithHealth(id, providerID string, enabled, allModels bool, mask string, hasSecret bool, health ProviderKeyHealthSnapshot, now time.Time) ProviderKey {
+	state, recoverAt := health.presentation(now)
 	return ProviderKey{
 		ID:               id,
 		ProviderID:       providerID,
@@ -108,7 +115,27 @@ func (doc keyDocument) key(id, providerID string, enabled, allModels bool, mask 
 		ProbeMinutes:     doc.ProbeMinutes,
 		Proxy:            doc.Proxy,
 		AllModels:        allModels,
-		HealthScore:      initialKeyHealth,
+		HealthScore:      health.Score,
+		HealthState:      state,
+		RecoverAt:        recoverAt,
+	}
+}
+
+// presentation 按恢复试探、熔断、限流冷却和分数档位的优先级生成列表状态与恢复时刻。
+func (health ProviderKeyHealthSnapshot) presentation(now time.Time) (ProviderKeyHealthState, time.Time) {
+	switch {
+	case health.Probing:
+		return ProviderKeyHealthProbing, time.Time{}
+	case health.CircuitOpen:
+		return ProviderKeyHealthCircuit, health.NextProbe
+	case health.CooldownUntil.After(now):
+		return ProviderKeyHealthCooldown, health.CooldownUntil
+	case health.Score >= 8:
+		return ProviderKeyHealthNormal, time.Time{}
+	case health.Score >= 5:
+		return ProviderKeyHealthDegraded, time.Time{}
+	default:
+		return ProviderKeyHealthAbnormal, time.Time{}
 	}
 }
 
@@ -216,16 +243,30 @@ func (s *Store) Keys(ctx context.Context, providerID string) ([]ProviderKey, err
 			}
 			mask = maskSecret(secret)
 		}
-		key := row.doc.key(row.id, providerID, row.enabled, row.allModels, mask, row.sealed != nil)
+		health := ProviderKeyHealthSnapshot{Score: initialKeyHealth, Available: true}
 		if s.healthLookup != nil {
-			key.HealthScore, _ = s.healthLookup(row.id, executionVersion(row.sealed))
+			health = s.healthLookup(row.id, executionVersion(row.sealed))
 		}
+		key := row.doc.keyWithHealth(row.id, providerID, row.enabled, row.allModels, mask, row.sealed != nil, health, time.Now())
 		result = append(result, key)
 	}
 	slices.SortStableFunc(result, func(left, right ProviderKey) int {
 		return cmp.Compare(left.Priority, right.Priority)
 	})
 	return result, nil
+}
+
+// CredentialVersion 返回 Key 当前密文的稳定执行版本，不读取或返回明文；Key 不存在时提示刷新列表。
+func (s *Store) CredentialVersion(ctx context.Context, keyID string) (string, error) {
+	var sealed []byte
+	err := s.db.QueryRowContext(ctx, "SELECT secret FROM provider_keys WHERE id=?", keyID).Scan(&sealed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errKeyMissing
+	}
+	if err != nil {
+		return "", fmt.Errorf("读取上游 Key 凭据版本: %w", err)
+	}
+	return executionVersion(sealed), nil
 }
 
 // sealUnique 加密新密钥，并确认同一供应商的其他 Key 没有使用相同的密钥。

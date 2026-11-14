@@ -346,6 +346,84 @@ func TestSchedulingHealthSurvivesRuntimeRestart(t *testing.T) {
 	}
 }
 
+// TestSchedulingHealthProjectionIncludesCircuitRecovery 验证零分熔断会进入 Key 列表并带出真实下次试探时刻。
+func TestSchedulingHealthProjectionIncludesCircuitRecovery(t *testing.T) {
+	f := newExecutionFixture(t)
+	ctx := context.Background()
+	routes, err := f.vendors.ExecutionCandidates(ctx, "logical-model")
+	if err != nil || len(routes) == 0 {
+		t.Fatalf("候选 = %+v, %v", routes, err)
+	}
+	route := routes[0]
+	candidate := scheduling.Candidate{
+		Provider:          route.Provider,
+		Key:               route.Key,
+		Model:             route.Model,
+		CredentialVersion: route.Version,
+	}
+	attempt, err := f.execution.Executor.Runtime.Acquire(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt.Finish(scheduling.Outcome{Penalty: scheduling.Unavailable})
+	health := f.execution.Executor.Runtime.Health(route.Key.ID, route.Version)
+	keys, err := f.vendors.Keys(ctx, f.provider.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) == 0 || keys[0].HealthState != providers.ProviderKeyHealthCircuit || !keys[0].RecoverAt.Equal(health.NextProbe) {
+		t.Fatalf("熔断投影 = %+v，运行时恢复时刻 %v", keys, health.NextProbe)
+	}
+}
+
+// TestResetProviderKeyHealth 验证恢复按钮更新真实运行健康、失败回滚且新快照重启后仍为满分。
+func TestResetProviderKeyHealth(t *testing.T) {
+	f := newExecutionFixture(t)
+	ctx := context.Background()
+	f.fail = true
+	var out bytes.Buffer
+	if _, err := f.execution.Executor.Execute(ctx, f.request(), &out); err != nil {
+		t.Fatal(err)
+	}
+	routes, err := f.vendors.ExecutionCandidates(ctx, "logical-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyID := routes[0].Key.ID
+	version := routes[0].Version
+	if score := f.execution.Executor.Runtime.Health(keyID, version).Score; score != 6 {
+		t.Fatalf("故障后健康分 = %v", score)
+	}
+
+	originalPersist := f.execution.Executor.Persist
+	f.execution.Executor.Persist = func(context.Context) error { return errors.New("injected health save failure") }
+	service := NewVelaService(Options{Providers: f.vendors, Execution: f.execution})
+	if err = service.ResetProviderKeyHealth(ctx, keyID); err == nil {
+		t.Fatal("持久化失败必须返回错误")
+	}
+	if score := f.execution.Executor.Runtime.Health(keyID, version).Score; score != 6 {
+		t.Fatalf("保存失败应回滚健康分，实际 %v", score)
+	}
+
+	f.execution.Executor.Persist = originalPersist
+	if err = service.ResetProviderKeyHealth(ctx, keyID); err != nil {
+		t.Fatal(err)
+	}
+	health := f.execution.Executor.Runtime.Health(keyID, version)
+	if health.Score != 10 || health.CircuitOpen || !health.CooldownUntil.IsZero() || health.ConsecutiveFailures != 0 {
+		t.Fatalf("恢复后的运行状态 = %+v", health)
+	}
+
+	restored, err := NewSchedulingExecution(ctx, f.policy, f.vendors, f.catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	if score := restored.Executor.Runtime.Health(keyID, version).Score; score != 10 {
+		t.Fatalf("重启后的健康分 = %v", score)
+	}
+}
+
 // TestSchedulingStreamDeadlineDoesNotReset 验证切Key不重置真实总期限，超时不扣备用Key健康分。
 func TestSchedulingStreamDeadlineDoesNotReset(t *testing.T) {
 	f := newExecutionFixture(t)

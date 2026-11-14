@@ -253,6 +253,7 @@ func startApplication(dataDir string, isolated bool) error {
 		Accounts:     accounts,
 		Settings:     preferences,
 		Scheduling:   policies,
+		Execution:    execution,
 		Verification: verifier,
 		ModelTests:   modelTests,
 		Credentials:  secrets,

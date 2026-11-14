@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/models"
 )
@@ -165,7 +166,7 @@ func TestProviderLifecycle(t *testing.T) {
 	if got := snapshot.Providers[1].Provider; got != updated {
 		t.Fatalf("重读内容 = %+v，应为 %+v", got, updated)
 	}
-	if health := snapshot.Providers[1].Health; health.State != ProviderHealthUnavailable || health.Percent != nil || health.Reason != "供应商已停用" {
+	if health := snapshot.Providers[1].Health; health.State != ProviderHealthUnavailable || health.Percent != nil || health.Reason != "没有已启用的 Key" {
 		t.Fatalf("停用供应商的健康汇总 = %+v", health)
 	}
 
@@ -175,6 +176,158 @@ func TestProviderLifecycle(t *testing.T) {
 	expectError(t, s.Delete(ctx, first.ID), "不存在")
 	if snapshot, err = s.Snapshot(ctx); err != nil || len(snapshot.Providers) != 1 || snapshot.Providers[0].Provider.ID != second.ID {
 		t.Fatalf("删除后 = %+v, %v", snapshot.Providers, err)
+	}
+}
+
+// TestKeyHealthProjection 验证 Key 的运行状态与恢复时刻，并确保即时准入不抹去供应商健康档位。
+func TestKeyHealthProjection(t *testing.T) {
+	ctx := context.Background()
+	s, closeDB := openStore(t, filepath.Join(t.TempDir(), "vela.sqlite"), &memoryKeys{})
+	defer closeDB()
+	provider, err := s.Create(ctx, validDraft("Northstar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.CreateKey(ctx, provider.ID, keyDraft("主力", "health-projection-key", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recoverAt := time.Now().Add(2 * time.Minute).Truncate(time.Second)
+	cases := []struct {
+		name   string
+		health ProviderKeyHealthSnapshot
+		state  ProviderKeyHealthState
+		until  time.Time
+	}{
+		{name: "熔断倒计时", health: ProviderKeyHealthSnapshot{Score: 0, CircuitOpen: true, NextProbe: recoverAt}, state: ProviderKeyHealthCircuit, until: recoverAt},
+		{name: "限流冷却", health: ProviderKeyHealthSnapshot{Score: 9, CooldownUntil: recoverAt, NextProbe: recoverAt.Add(time.Hour)}, state: ProviderKeyHealthCooldown, until: recoverAt},
+		{name: "恢复试探", health: ProviderKeyHealthSnapshot{Score: 0, CircuitOpen: true, Probing: true, NextProbe: recoverAt}, state: ProviderKeyHealthProbing},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s.SetHealthLookup(func(id, version string) ProviderKeyHealthSnapshot {
+				if id != key.ID || version == "" {
+					t.Fatalf("健康查询身份 = %q/%q", id, version)
+				}
+				return tc.health
+			})
+			list, err := s.Keys(ctx, provider.ID)
+			if err != nil || len(list) != 1 {
+				t.Fatalf("Key 列表 = %+v, %v", list, err)
+			}
+			if list[0].HealthScore != tc.health.Score || list[0].HealthState != tc.state || !list[0].RecoverAt.Equal(tc.until) {
+				t.Fatalf("健康投影 = %+v，期望分数 %v、状态 %q、恢复时刻 %v", list[0], tc.health.Score, tc.state, tc.until)
+			}
+			snapshot, err := s.Snapshot(ctx)
+			if err != nil || len(snapshot.Providers) != 1 {
+				t.Fatalf("供应商概览 = %+v, %v", snapshot, err)
+			}
+			row := snapshot.Providers[0]
+			wantState := ProviderHealthAbnormal
+			if tc.health.Score >= 8 {
+				wantState = ProviderHealthNormal
+			} else if tc.health.Score == 0 {
+				wantState = ProviderHealthCircuit
+			}
+			if row.Health.State != wantState || row.Health.Percent == nil || *row.Health.Percent != int(tc.health.Score*10) || row.PreferredKey != nil {
+				t.Fatalf("临时不可调用仍须保留健康分档，且不提供首选 Key: %+v", row)
+			}
+			if err := s.SetEnabled(ctx, provider.ID, false); err != nil {
+				t.Fatal(err)
+			}
+			paused, err := s.Snapshot(ctx)
+			if err != nil || !reflect.DeepEqual(paused.Providers[0].Health, row.Health) || paused.Providers[0].PreferredKey != nil {
+				t.Fatalf("供应商停用不应改变健康分档: %+v, %v", paused, err)
+			}
+			if err := s.SetEnabled(ctx, provider.ID, true); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// TestProviderHealthBands 验证最好启用 Key 的四档边界、混合 Key 和供应商启停独立性。
+func TestProviderHealthBands(t *testing.T) {
+	cases := []struct {
+		// name、scores、want 分别描述样例、启用 Key 分数和预期健康状态。
+		name   string
+		scores []float64
+		want   ProviderHealthState
+	}{
+		{"正常边界", []float64{8}, ProviderHealthNormal},
+		{"低于正常边界", []float64{7.99}, ProviderHealthDegraded},
+		{"降级边界", []float64{5}, ProviderHealthDegraded},
+		{"低于降级边界", []float64{4.99}, ProviderHealthAbnormal},
+		{"微小正分仍为异常", []float64{0.01}, ProviderHealthAbnormal},
+		{"全部零分", []float64{0, 0}, ProviderHealthCircuit},
+		{"仍有一把健康Key", []float64{10, 0, 0}, ProviderHealthNormal},
+		{"正常异常熔断并存", []float64{10, 3, 0}, ProviderHealthNormal},
+		{"降级异常熔断并存", []float64{6, 3, 0}, ProviderHealthDegraded},
+		{"异常与熔断并存", []float64{3, 0, 0}, ProviderHealthAbnormal},
+		{"没有启用Key", nil, ProviderHealthUnavailable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 停用的满分 Key 不得抬高启用 Key 的健康分档或掩盖无启用 Key 的情况。
+			keys := []keyBrief{{health: ProviderKeyHealthSnapshot{Score: 10, Available: true}}}
+			for _, score := range tc.scores {
+				keys = append(keys, keyBrief{enabled: true, health: ProviderKeyHealthSnapshot{Score: score, Available: score > 0}})
+			}
+			_, active := summarize(true, keys)
+			preferred, paused := summarize(false, keys)
+			if active.State != tc.want || !reflect.DeepEqual(active, paused) || preferred != nil {
+				t.Fatalf("分档或供应商启停独立性错误: 启用=%+v，停用=%+v，期望=%s", active, paused, tc.want)
+			}
+		})
+	}
+}
+
+// TestProviderBestHealthSnapshot 验证真实概览按最好 Key 汇总，供应商停用和其他 Key 熔断均不拉低正常档位。
+func TestProviderBestHealthSnapshot(t *testing.T) {
+	ctx := context.Background()
+	s, closeDB := openStore(t, filepath.Join(t.TempDir(), "vela.sqlite"), &memoryKeys{})
+	defer closeDB()
+	provider, err := s.Create(ctx, validDraft("Mixed Health"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scores := make(map[string]float64)
+	for i, score := range []float64{10, 3, 0} {
+		name := []string{"正常Key", "异常Key", "熔断Key"}[i]
+		key, err := s.CreateKey(ctx, provider.ID, keyDraft(name, name+"-test-secret", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scores[key.ID] = score
+	}
+	s.SetHealthLookup(func(id, version string) ProviderKeyHealthSnapshot {
+		return ProviderKeyHealthSnapshot{Score: scores[id], Available: scores[id] > 0, CircuitOpen: scores[id] == 0}
+	})
+	for _, enabled := range []bool{true, false} {
+		if err := s.SetEnabled(ctx, provider.ID, enabled); err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := s.Snapshot(ctx)
+		if err != nil || len(snapshot.Providers) != 1 {
+			t.Fatalf("读取供应商概览失败: %+v, %v", snapshot, err)
+		}
+		row := snapshot.Providers[0]
+		if row.Health.State != ProviderHealthNormal || row.Health.Percent == nil || *row.Health.Percent != 100 {
+			t.Fatalf("正常 Key 不应被异常或熔断 Key 拉低: %+v", row.Health)
+		}
+		if enabled && (row.PreferredKey == nil || row.PreferredKey.Name != "正常Key") || !enabled && row.PreferredKey != nil {
+			t.Fatalf("首选 Key 仍须遵守供应商启停及原有优先级: %+v", row)
+		}
+		keys, err := s.Keys(ctx, provider.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range keys {
+			if key.HealthScore != scores[key.ID] {
+				t.Fatalf("汇总不得改变单 Key 健康分: %+v", key)
+			}
+		}
 	}
 }
 

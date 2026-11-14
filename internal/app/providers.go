@@ -110,6 +110,14 @@ func (s *VelaService) SetProviderKeyEnabled(ctx context.Context, keyID string, e
 	return store.SetKeyEnabled(ctx, keyID, enabled)
 }
 
+// ResetProviderKeyHealth 将当前凭据恢复为满分并立即持久化，不修改其他 Key 或调度配置。
+func (s *VelaService) ResetProviderKeyHealth(ctx context.Context, keyID string) error {
+	if s.execution == nil {
+		return errors.New("调度执行尚未初始化")
+	}
+	return s.execution.ResetKeyHealth(ctx, keyID)
+}
+
 // DeleteProviderKey 删除一把上游 Key 及其密钥，调用方先展示确认。
 func (s *VelaService) DeleteProviderKey(ctx context.Context, keyID string) error {
 	store, err := s.providerStore()

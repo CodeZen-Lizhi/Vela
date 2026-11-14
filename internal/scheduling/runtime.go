@@ -222,6 +222,37 @@ func (r *Runtime) Health(keyID, version string) KeyHealth {
 	return KeyHealth{Score: 10}
 }
 
+// resetHealth 将被手动恢复的当前凭据重置为满分，返回旧状态供持久化失败时回滚。
+// 熔断代次必须递增，恢复前准入的旧请求即使稍后完成也不能覆盖这次恢复。
+func (r *Runtime) resetHealth(keyID, version string) (KeyHealth, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.keys[keyID]
+	if s == nil || s.version != version {
+		return KeyHealth{}, false
+	}
+	previous := s.health
+	s.health = KeyHealth{Score: 10, Generation: previous.Generation + 1}
+	// 已取得的恢复试探仍会正常释放并发计数，但其结果不再属于新的健康代次。
+	s.probe = nil
+	return previous, true
+}
+
+// rollbackHealth 在恢复后的持久化失败时还原旧分数，并再次递增代次隔离期间的新请求。
+func (r *Runtime) rollbackHealth(keyID, version string, previous KeyHealth) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.keys[keyID]
+	if s == nil || s.version != version {
+		return
+	}
+	previous.Generation = max(previous.Generation+1, s.health.Generation)
+	previous.Inflight = 0
+	previous.Probing = false
+	s.health = previous
+	s.probe = nil
+}
+
 // ExportHealth 导出当前凭据的持久化快照；调用方负责 Finish 后串行保存，避免旧快照覆盖新状态。
 // 在途数及单探测资格只在当前进程有效，导出不会延长或释放它们。
 func (r *Runtime) ExportHealth() []HealthRecord {

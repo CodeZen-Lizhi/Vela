@@ -122,6 +122,28 @@ var ErrNoCandidates = errors.New("没有可用的调度候选")
 // ErrContinuation 表示连续请求无法核实原目标，入口应返回 HTTP 409。
 var ErrContinuation = errors.New("连续会话的原上游绑定无法验证")
 
+// ErrHealthMissing 表示当前凭据尚未建立可恢复的运行健康记录。
+var ErrHealthMissing = errors.New("Key 健康状态尚未建立")
+
+// ResetHealth 将当前凭据恢复为满分并立即持久化；保存失败时还原旧状态，避免界面与重启结果分叉。
+func (e *Executor) ResetHealth(ctx context.Context, keyID, version string) error {
+	if e == nil || e.Runtime == nil {
+		return errors.New("调度运行核心尚未初始化")
+	}
+	if e.Persist == nil {
+		return errors.New("调度健康持久化尚未初始化")
+	}
+	previous, ok := e.Runtime.resetHealth(keyID, version)
+	if !ok {
+		return ErrHealthMissing
+	}
+	if err := e.Persist(ctx); err != nil {
+		e.Runtime.rollbackHealth(keyID, version, previous)
+		return fmt.Errorf("保存恢复后的健康度: %w", err)
+	}
+	return nil
+}
+
 // Execute 按一次配置快照完成选路、有限重试和故障转移；写出结果后绝不重放。
 func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Writer) (result ExecutionResult, executionErr error) {
 	var finish func(error) error

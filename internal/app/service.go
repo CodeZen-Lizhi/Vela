@@ -31,6 +31,8 @@ type VelaService struct {
 	accounts   *providers.Accounts
 	settings   *settings.Store
 	scheduling *scheduling.Store
+	// execution 管理运行中的 Key 健康状态与持久化，不向模板代码暴露。
+	execution *SchedulingExecution
 	// modelTests 管理供应商模型主动联通诊断及最近结果。
 	modelTests *modeltest.Manager
 	// verification 管理独立固定目标的指纹检测，不参与调度健康。
@@ -57,6 +59,8 @@ type Options struct {
 	Settings *settings.Store
 	// Scheduling 是与模型模块共用数据库的调度策略模块。
 	Scheduling *scheduling.Store
+	// Execution 是已恢复健康状态的调度执行器，手动恢复 Key 健康必须复用同一运行核心。
+	Execution *SchedulingExecution
 	// ModelTests 是复用真实请求出口的模型主动诊断模块。
 	ModelTests *modeltest.Manager
 	// Verification 是与供应商共用数据库的模型验证管理器。
@@ -94,6 +98,7 @@ func NewVelaService(o Options) *VelaService {
 		accounts:     o.Accounts,
 		settings:     o.Settings,
 		scheduling:   o.Scheduling,
+		execution:    o.Execution,
 		verification: o.Verification,
 		modelTests:   o.ModelTests,
 		credentials:  o.Credentials,

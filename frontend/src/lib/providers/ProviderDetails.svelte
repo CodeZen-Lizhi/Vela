@@ -7,7 +7,7 @@
   import * as Tabs from "$lib/components/ui/tabs";
   import { Progress } from "$lib/components/ui/progress";
   import { onMount } from "svelte";
-  import { Plus, Pencil, Copy, Trash2, ShieldCheck } from "@lucide/svelte";
+  import { Plus, Pencil, Copy, Trash2, ShieldCheck, RotateCcw } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { Input } from "$lib/components/ui/input";
@@ -34,9 +34,29 @@
   /** Key 编辑器错误独立于详情读取与删除错误，取消弹窗时不得泄漏到父页面。 */
   let keyEditorError=$state("");
   let editorOpen=$state(false), selected=$state<ProviderKey|null>(null), deleting=$state<ProviderKey|null>(null), permissionKey=$state<ProviderKey|null>(null);
-  /** 冷却状态在网关未接入前为空，不使用原型模拟资源状态。 */
-  const filtered=$derived(keys.filter((key)=>(status==="all"||status==="enabled"&&key.enabled||status==="disabled"&&!key.enabled)&&key.name.toLowerCase().includes(query.toLowerCase())));
+  /** 每秒推进本地时钟，仅驱动服务端恢复时刻的倒计时，不伪造运行时状态。 */
+  let now=$state(Date.now());
+  /** 判断 Key 是否处于冷却、熔断或恢复试探，三类状态都从“冷却中”筛选呈现。 */
+  function isCooling(key:ProviderKey):boolean{return key.healthState==="cooldown"||key.healthState==="circuit"||key.healthState==="probing";}
+  /** 同时应用名称与互斥状态筛选，空结果保留真实数据来源。 */
+  const filtered=$derived(keys.filter((key)=>{
+    const matchesQuery=key.name.toLowerCase().includes(query.toLowerCase());
+    const matchesStatus=status==="all"||status==="enabled"&&key.enabled||status==="disabled"&&!key.enabled||status==="cooling"&&isCooling(key);
+    return matchesQuery&&matchesStatus;
+  }));
   const nextPriority=$derived(keys.reduce((value,key)=>Math.max(value,key.priority),0)+1);
+  /** 8 与 5 是已确认的绿、黄、红健康档位边界。 */
+  function healthTone(score:number):"normal"|"degraded"|"abnormal"{return score>=8?"normal":score>=5?"degraded":"abnormal";}
+  /** 状态行把服务端事实转换为可读倒计时，不改变健康分或调度准入。 */
+  function healthDetail(key:ProviderKey):string{
+    const recoverAt=Date.parse(key.recoverAt);
+    const remaining=Number.isFinite(recoverAt)?Math.max(0,Math.ceil((recoverAt-now)/1000)):0;
+    const clock=`${String(Math.floor(remaining/60)).padStart(2,"0")}:${String(remaining%60).padStart(2,"0")}`;
+    if(key.healthState==="probing")return "恢复探测中";
+    if(key.healthState==="circuit")return remaining>0?`熔断中 ${clock}`:"等待恢复探测";
+    if(key.healthState==="cooldown")return `限流冷却 ${clock}`;
+    return "";
+  }
   /** 读取 Key、模型、权限、倍率来源与最近测试；测试记录错误独立，来源失败禁止快捷切换。 */
   async function load():Promise<void>{
     error="";
@@ -56,10 +76,11 @@
   }
   onMount(()=>{
     let stopped=false;
-    let timer:ReturnType<typeof setTimeout>;
-    const poll=async()=>{await load();if(!stopped)timer=setTimeout(()=>{void poll();},refreshSeconds*1000);};
+    let pollTimer:ReturnType<typeof setTimeout>;
+    const clockTimer=setInterval(()=>{now=Date.now();},1000);
+    const poll=async()=>{await load();if(!stopped)pollTimer=setTimeout(()=>{void poll();},refreshSeconds*1000);};
     void poll();
-    return()=>{stopped=true;clearTimeout(timer);};
+    return()=>{stopped=true;clearTimeout(pollTimer);clearInterval(clockTimer);};
   });
   /** 子功能保存后刷新抽屉与列表摘要，不切换当前页签。 */
   async function updated():Promise<void>{await load();await onupdated();}
@@ -75,6 +96,14 @@
   }
   /** 启停即时落库，删除则由独立确认框完成。 */
   async function setEnabled(key:ProviderKey,value:boolean):Promise<void>{busy=true;try{await VelaService.setProviderKeyEnabled(key.id,value);await updated();notify(value?"Key 已启用":"Key 已停用");}catch(cause){notify(String(cause));}finally{busy=false;}}
+  /** 手动恢复当前凭据的满分健康状态并刷新列表，不修改其他 Key 或调度配置。 */
+  async function resetHealth(key:ProviderKey):Promise<void>{
+    if(busy||key.healthScore>=10)return;
+    busy=true;
+    try{await VelaService.resetProviderKeyHealth(key.id);await updated();notify(`${key.name} 健康度已恢复`);}
+    catch(cause){notify(cause instanceof Error?cause.message:String(cause));}
+    finally{busy=false;}
+  }
   /** 删除真实凭据、权限及查询配置，失败保留确认框。 */
   async function deleteKey():Promise<void>{if(!deleting)return;busy=true;error="";try{await VelaService.deleteProviderKey(deleting.id);deleting=null;await updated();notify("Key 已删除");}catch(cause){error=String(cause);}finally{busy=false;}}
   /** 完整密钥从后端直接写剪贴板，页面只接收操作结果。 */
@@ -119,12 +148,12 @@
   {#if error&&!editorOpen&&!deleting}<Alert.Root variant="inline-error"><Alert.Description>{error}<Button size="sm" variant="ghost" onclick={load}>重试</Button></Alert.Description></Alert.Root>{/if}
   {#if loading}<p class="text-xs text-muted-foreground">正在读取供应商配置…</p>{:else if tab==="keys"}
     <div class="provider-section-heading"><div class="provider-tools provider-key-filters"><Input class="max-w-56" aria-label="搜索 Key" placeholder="搜索 Key 名称" bind:value={query}/><div class="provider-key-status"><Choice bind:value={status} label="Key 状态" options={[{value:"all",label:"全部状态"},{value:"enabled",label:"已启用"},{value:"disabled",label:"已停用"},{value:"cooling",label:"冷却中"}]}/></div></div><Button variant="outline" size="sm" onclick={()=>{selected=null;keyEditorError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加 Key</Button></div>
-    <div class="provider-surface"><Table.Root class="provider-table provider-key-table"><colgroup><col style="width:24%"/><col style="width:27%"/><col style="width:13%"/><col style="width:12%"/><col style="width:24%"/></colgroup><Table.Header><Table.Row><Table.Head>Key</Table.Head><Table.Head>倍率</Table.Head><Table.Head>模型权限</Table.Head><Table.Head data-align="number">健康度</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as key(key.id)}{@const queryState=queries[key.id]}<Table.Row data-disabled={!key.enabled}>
+    <div class="provider-surface"><Table.Root class="provider-table provider-key-table"><colgroup><col style="width:21%"/><col style="width:27%"/><col style="width:13%"/><col style="width:12%"/><col style="width:27%"/></colgroup><Table.Header><Table.Row><Table.Head>Key</Table.Head><Table.Head data-align="control">倍率</Table.Head><Table.Head>模型权限</Table.Head><Table.Head data-align="control">健康度</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as key(key.id)}{@const queryState=queries[key.id]}{@const tone=healthTone(key.healthScore)}{@const healthLabel=tone==="normal"?"正常":tone==="degraded"?"警示":"异常"}{@const detail=healthDetail(key)}<Table.Row data-disabled={!key.enabled}>
       <Table.Cell class="provider-main" data-label="Key"><div class="provider-key-identity"><Hint text={key.name}>{#snippet children(props)}<span {...props}>{key.name}</span>{/snippet}</Hint>{#if key.hasSecret}<Button onclick={()=>copy(key)} size="icon-xs" variant="ghost"  aria-label={`复制 ${key.name} 完整密钥`} ><Copy/></Button>{/if}</div><code class="mt-1 block text-[11px] text-muted-foreground">{key.secretMask||"未设置"}</code></Table.Cell>
-      <Table.Cell data-label="倍率"><div class="provider-multiplier"><InlineMultiplier value={key.multiplier} editable={queryState?.multiplierSource==="manual"} disabled={busy} label={key.name} onsave={(value)=>saveMultiplier(key,value)}/>{#if queryState}<MultiplierSource value={queryState.multiplierSource} label={`${key.name} 倍率来源`} disabled={busy} onchange={(source)=>setMultiplierSource(key,source)}/>{:else}<span class="text-[10px] text-muted-foreground">来源未读取</span>{/if}</div><small  class="provider-multiplier-error" >{#if queryState?.multiplierSource==="upstream"&&queryState.multiplierStatus.state==="failed"}同步失败 · 保留当前值{/if}</small></Table.Cell>
+      <Table.Cell data-label="倍率" data-align="control"><div class="provider-multiplier"><InlineMultiplier value={key.multiplier} editable={queryState?.multiplierSource==="manual"} disabled={busy} label={key.name} onsave={(value)=>saveMultiplier(key,value)}/>{#if queryState}<MultiplierSource value={queryState.multiplierSource} label={`${key.name} 倍率来源`} disabled={busy} onchange={(source)=>setMultiplierSource(key,source)}/>{:else}<span class="text-[10px] text-muted-foreground">来源未读取</span>{/if}</div><small  class="provider-multiplier-error" >{#if queryState?.multiplierSource==="upstream"&&queryState.multiplierStatus.state==="failed"}同步失败 · 保留当前值{/if}</small></Table.Cell>
       <Table.Cell data-label="模型权限">{key.allModels?"全部模型":`已选 ${permissions[key.id]?.modelIds.length??0} 个`}</Table.Cell>
-      <Table.Cell data-label="健康度" data-align="number"><Progress value={key.healthScore} max={10} class="provider-health-bar" aria-label={`${key.name} 健康度`} /><small class="mt-1 block text-[10px] text-muted-foreground">{key.healthScore.toFixed(1)}/10</small></Table.Cell>
-      <Table.Cell data-label="操作" data-align="control"><div class="provider-actions provider-key-actions"><Button onclick={()=>permissionKey=key} size="row-action" variant="ghost"  aria-label={`${key.name} 模型权限`} ><ShieldCheck/></Button><Button onclick={()=>{selected=key;keyEditorError="";editorOpen=true;}} size="row-action" variant="ghost"  aria-label={`编辑 Key ${key.name}`} ><Pencil/></Button><Switch checked={key.enabled} disabled={busy} aria-label={`${key.enabled?"停用":"启用"} Key ${key.name}`} onCheckedChange={(value)=>setEnabled(key,value)}/><Button onclick={()=>{deleting=key;error="";}} size="row-action" variant="ghost"  aria-label={`删除 Key ${key.name}`} ><Trash2/></Button></div></Table.Cell>
+      <Table.Cell data-label="健康度" data-align="control" data-health={tone}><Progress value={key.healthScore} max={10} class="provider-health-bar" aria-label={`${key.name} 健康度${healthLabel}，${key.healthScore.toFixed(1)}/10${detail?`，${detail}`:""}`} /><small class="provider-health-value block text-[10px] text-muted-foreground">{key.healthScore.toFixed(1)}/10</small><small class="provider-health-state">{detail}</small></Table.Cell>
+      <Table.Cell data-label="操作" data-align="control"><div class="provider-actions provider-key-actions"><Button onclick={()=>resetHealth(key)} disabled={busy||key.healthScore>=10} size="row-action" variant="ghost" aria-label={`恢复 ${key.name} 健康度`}><RotateCcw/></Button><Button onclick={()=>permissionKey=key} size="row-action" variant="ghost"  aria-label={`${key.name} 模型权限`} ><ShieldCheck/></Button><Button onclick={()=>{selected=key;keyEditorError="";editorOpen=true;}} size="row-action" variant="ghost"  aria-label={`编辑 Key ${key.name}`} ><Pencil/></Button><Switch checked={key.enabled} disabled={busy} aria-label={`${key.enabled?"停用":"启用"} Key ${key.name}`} onCheckedChange={(value)=>setEnabled(key,value)}/><Button onclick={()=>{deleting=key;error="";}} size="row-action" variant="ghost"  aria-label={`删除 Key ${key.name}`} ><Trash2/></Button></div></Table.Cell>
     </Table.Row>{/each}</Table.Body></Table.Root>{#if !filtered.length}<Empty.Root>{keys.length?"没有符合条件的 Key":"尚无 Key，添加第一把 Key 开始配置。"}{#if keys.length}<Button variant="outline" size="sm" onclick={()=>{query="";status="all";}}>清空筛选</Button>{/if}</Empty.Root>{/if}</div>
   {:else}<ModelRelations providerID={provider.id} {models} {testResults} {testResultsError} mappingTab={tab==="mappings"} reload={updated} {notify}/>{/if}
 </Tabs.Content></div></Tabs.Root>

@@ -3,6 +3,8 @@
 // 导出类型会原样成为前端的类型名，因此统一带上 Provider 等前缀，避免与其他模块的类型重名。
 package providers
 
+import "time"
+
 // 请求配置的默认值；RequestPolicy 中对应字段为 0 时使用这里的值。
 const (
 	// defaultAttempts 是总尝试次数（含首次）。
@@ -95,21 +97,23 @@ type ProviderDraft struct {
 type ProviderHealthState string
 
 const (
-	// ProviderHealthNormal 平均健康度不低于 80%。
+	// ProviderHealthNormal 至少一把启用 Key 的健康分不低于 8 分。
 	ProviderHealthNormal ProviderHealthState = "normal"
-	// ProviderHealthDegraded 平均健康度不低于 50%。
+	// ProviderHealthDegraded 没有正常 Key，但至少一把启用 Key 的健康分不低于 5 分。
 	ProviderHealthDegraded ProviderHealthState = "degraded"
-	// ProviderHealthAbnormal 平均健康度低于 50%。
+	// ProviderHealthAbnormal 最好的启用 Key 健康分大于零且低于 5 分。
 	ProviderHealthAbnormal ProviderHealthState = "abnormal"
-	// ProviderHealthUnavailable 供应商停用或没有已启用的 Key，当前无法调用。
+	// ProviderHealthCircuit 所有启用 Key 的健康分均为零，处于熔断或恢复试探阶段。
+	ProviderHealthCircuit ProviderHealthState = "circuit"
+	// ProviderHealthUnavailable 没有已启用的 Key，无法计算健康分档；供应商自身启停不影响分档。
 	ProviderHealthUnavailable ProviderHealthState = "unavailable"
 )
 
-// ProviderHealth 是供应商的健康汇总：已启用 Key 的健康分等权平均。
+// ProviderHealth 是供应商的健康汇总：按启用 Key 中最高的健康分展示一个档位。
 type ProviderHealth struct {
 	// State 健康分档。
 	State ProviderHealthState `json:"state"`
-	// Percent 平均健康度，0～100 的整数；不可用时为 nil。
+	// Percent 为最高健康分换算的兼容百分比，0～100 的整数；不可用时为 nil，界面只显示档位。
 	Percent *int `json:"percent"`
 	// Reason 不可用的原因；其他分档为空。
 	Reason string `json:"reason"`
@@ -195,6 +199,45 @@ type ProviderKey struct {
 	AllModels bool `json:"allModels"`
 	// HealthScore 健康分，0～10。
 	HealthScore float64 `json:"healthScore"`
+	// HealthState 是当前可观察状态；调用可用性状态优先于分数分档。
+	HealthState ProviderKeyHealthState `json:"healthState"`
+	// RecoverAt 是熔断下次允许试探或限流冷却结束时刻；零值表示无恢复倒计时。
+	RecoverAt time.Time `json:"recoverAt"`
+}
+
+// ProviderKeyHealthState 是 Key 列表用于筛选和着色展示的健康状态。
+type ProviderKeyHealthState string
+
+const (
+	// ProviderKeyHealthNormal 表示分数不低于 8，当前未熔断或冷却。
+	ProviderKeyHealthNormal ProviderKeyHealthState = "normal"
+	// ProviderKeyHealthDegraded 表示分数不低于 5 且低于 8，当前未熔断或冷却。
+	ProviderKeyHealthDegraded ProviderKeyHealthState = "degraded"
+	// ProviderKeyHealthAbnormal 表示分数低于 5 且当前未熔断或冷却。
+	ProviderKeyHealthAbnormal ProviderKeyHealthState = "abnormal"
+	// ProviderKeyHealthCooldown 表示 Key 因限流或有效 Retry-After 正在冷却。
+	ProviderKeyHealthCooldown ProviderKeyHealthState = "cooldown"
+	// ProviderKeyHealthCircuit 表示零分 Key 已熔断，等待下一次真实恢复试探。
+	ProviderKeyHealthCircuit ProviderKeyHealthState = "circuit"
+	// ProviderKeyHealthProbing 表示当前真实请求正在占用该 Key 的唯一恢复试探资格。
+	ProviderKeyHealthProbing ProviderKeyHealthState = "probing"
+)
+
+// ProviderKeyHealthSnapshot 是调度运行核心提供给供应商列表的只读健康快照。
+// Available 表示当前允许普通调用；时间字段使用零值表示没有对应等待。
+type ProviderKeyHealthSnapshot struct {
+	// Score 是 0～10 分。
+	Score float64 `json:"score"`
+	// Available 是综合分数、熔断、冷却与恢复试探后的普通调用准入结果。
+	Available bool `json:"available"`
+	// CircuitOpen 表示零分熔断尚未由有效成功解除。
+	CircuitOpen bool `json:"circuitOpen"`
+	// Probing 表示一个真实请求正在占用唯一恢复试探资格。
+	Probing bool `json:"probing"`
+	// CooldownUntil 是限流冷却截止时刻。
+	CooldownUntil time.Time `json:"cooldownUntil"`
+	// NextProbe 是熔断到期后下一次允许恢复试探的时刻。
+	NextProbe time.Time `json:"nextProbe"`
 }
 
 // ProviderKeyDraft 是新增或编辑上游 Key 时可以提交的字段；启停和模型权限通过单独的操作修改。

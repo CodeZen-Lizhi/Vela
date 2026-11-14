@@ -3,7 +3,7 @@
   import { onDestroy, tick } from "svelte";
   import { flip } from "svelte/animate";
   import { prefersReducedMotion } from "svelte/motion";
-  import { ListOrdered } from "@lucide/svelte";
+  import { ListOrdered, ShieldAlert } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { VelaService, type ProviderOverview, type ProviderHealthState } from "$lib/generated/mygo";
@@ -19,7 +19,7 @@
 
   /** 健康分档只翻译后端结果，不根据百分比重新推导。 */
   const healthLabels: Record<ProviderHealthState, string> = {
-    normal: "正常", degraded: "降级", abnormal: "异常", unavailable: "不可用",
+    normal: "正常", degraded: "降级", abnormal: "异常", circuit: "熔断", unavailable: "不可用",
   };
   /** 换位缓出曲线：快速离开原位，末尾仅轻微回弹约 2%，避免机械感。 */
   function springSettle(t: number): number {
@@ -297,8 +297,8 @@
   <span class="order-copy">
     <strong>{item.provider.name}</strong>
     <span class="health" data-state={item.health.state}>
-      <Badge variant={item.health.state === "abnormal" ? "destructive" : "secondary"}>
-        {healthLabels[item.health.state]}{item.health.percent === null ? "" : ` ${item.health.percent}%`}
+      <Badge variant={item.health.state === "normal" ? "positive" : item.health.state === "degraded" ? "warning" : item.health.state === "abnormal" || item.health.state === "circuit" ? "negative" : "neutral"}>
+        {#if item.health.state === "circuit"}<ShieldAlert aria-hidden="true" />{/if}{healthLabels[item.health.state]}
       </Badge>
     </span>
     <Badge variant={item.provider.enabled ? "outline" : "secondary"}>{item.provider.enabled ? "启用" : "停用"}</Badge>
@@ -324,7 +324,7 @@
           data-dragging={activeRowID === item.provider.id}
           aria-disabled={saving}
           aria-describedby="provider-order-help"
-          aria-label={`${item.provider.name}，健康${healthLabels[item.health.state]}${item.health.percent === null ? '' : ` ${item.health.percent}%`}${item.health.reason ? `，${item.health.reason}` : ''}，${item.provider.enabled ? '启用' : '停用'}，第 ${index + 1} 位，共 ${ordered.length} 位`}
+          aria-label={`${item.provider.name}，健康${healthLabels[item.health.state]}${item.health.reason ? `，${item.health.reason}` : ''}，${item.provider.enabled ? '启用' : '停用'}，第 ${index + 1} 位，共 ${ordered.length} 位`}
           onpointerdown={(event) => start(event, item.provider.id)}
           onkeydown={(event) => keydown(event, item.provider.id)}>
           {@render providerRowContents(item, index)}
