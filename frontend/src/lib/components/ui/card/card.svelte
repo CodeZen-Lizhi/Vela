@@ -8,15 +8,19 @@
 		class: className,
 		children,
 		size = "default",
+		variant = "default",
 		...restProps
-	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & { size?: "default" | "sm" } = $props();
+	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+		/** size 控制现有指标卡密度。 */ size?: "default" | "sm";
+		/** path 为请求入口/结果的紧凑虚线卡，其外观统一在共享组件维护。 */ variant?: "default" | "path";
+	} = $props();
 </script>
 
 <div
 	bind:this={ref}
 	data-slot="card"
 	data-size={size}
-	class={cn("bg-card text-card-foreground border border-border rounded-2xl gap-4 overflow-hidden py-5 text-sm shadow-sm [--card-spacing:--spacing(5)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(5)] *:[img:first-child]:rounded-none *:[img:last-child]:rounded-none group/card flex flex-col", className)}
+	class={cn("bg-card text-card-foreground border border-border rounded-2xl gap-4 overflow-hidden py-5 text-sm shadow-sm [--card-spacing:--spacing(5)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(5)] *:[img:first-child]:rounded-none *:[img:last-child]:rounded-none group/card flex flex-col", variant === "path" && "min-h-[72px] justify-center gap-[5px] rounded-[13px] border-dashed py-0 shadow-none [--card-spacing:14px]", className)}
 	{...restProps}
 >
 	{@render children?.()}

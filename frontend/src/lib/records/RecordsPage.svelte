@@ -48,6 +48,7 @@
     date,
     emptyQuery,
     executionCounts,
+    recordTarget,
   } from "./display";
   import "./records.css";
   /** 使用记录工作台读取真实分页；浏览器预览不生成演示请求或伪造空数据库。 */
@@ -458,7 +459,7 @@
     </footer>
   </section>
 </div>
-<!-- 参数按原型自然换行；上游映射始终保留独立信息行，缺失时不猜测。 -->
+<!-- 参数紧随模型名且保持同一行；长名称省略，上游映射保留独立信息行。 -->
 {#snippet modelCell(row: RecordsRecord)}
   <div class="record-model-line">
     <Hint overflowOnly text={row.model || "未知模型"}>{#snippet children(hintProps4)}<strong {...hintProps4} class="record-model">{row.model || "未知模型"}</strong>{/snippet}</Hint>
@@ -467,14 +468,15 @@
   </div>
   <Hint overflowOnly text={`→ ${row.upstreamModel || "—"}`}>{#snippet children(hintProps5)}<small {...hintProps5} class="record-truncate" >→ {row.upstreamModel || "—"}</small>{/snippet}</Hint>
 {/snippet}
-<!-- 供应商名称与真实重试/转移次数同组，Key 名称固定在下方。 -->
+<!-- 执行供应商或已知本地阻断供应商与 Key 分两行展示，只有真实尝试才计算重试/转移。 -->
 {#snippet providerCell(row: RecordsRecord)}
   {@const activity = executionCounts(row)}
-  <div class="record-provider-line"><Hint overflowOnly text={row.providerName || (row.state === "local" ? "本地响应" : "未知供应商")}>{#snippet children(hintProps6)}<strong {...hintProps6} class="record-truncate">{row.providerName || (row.state === "local" ? "本地响应" : "未知供应商")}</strong>{/snippet}</Hint>
+  {@const target = recordTarget(row)}
+  <div class="record-provider-line"><Hint overflowOnly text={target.providerName}>{#snippet children(hintProps6)}<strong {...hintProps6} class="record-truncate">{target.providerName}</strong>{/snippet}</Hint>
     {#if activity.transfers}<Badge  variant="warning"  aria-label={`转移 ${activity.transfers} 次`}><Shuffle aria-hidden="true" />{activity.transfers}</Badge>{/if}
     {#if activity.retries}<Badge  variant="info"  aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/if}
   </div>
-  <Hint overflowOnly text={row.keyName || "—"}>{#snippet children(hintProps9)}<small {...hintProps9} class="record-truncate" >{row.keyName || "—"}</small>{/snippet}</Hint>
+  <Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<small {...hintProps9} class="record-truncate" >{target.keyName}</small>{/snippet}</Hint>
 {/snippet}
 <!-- 状态单独显示和筛选，进行中保留既定动画。 -->
 {#snippet stateCell(row: RecordsRecord)}
@@ -492,7 +494,7 @@
 {#snippet usageCell(row: RecordsRecord)}{#if row.state === "active"}<span
       class="text-muted-foreground"  aria-label="用量待请求结束后展示">—</span
     >{:else if row.state === "local"}<span
-      class="text-muted-foreground">— 无用量</span
+      class="text-muted-foreground" aria-label="未发上游，无上游用量">—</span
     >{:else if !row.usage}<span class="text-muted-foreground"  aria-label="用量未知">—</span
     >{:else if row.usage.unit}<strong>{number(row.usage.quantity)}
       {row.usage.unit === "image" ? "张" : "秒"}</strong
@@ -504,8 +506,7 @@
       <div><span class="record-input" class:record-missing={!row.usage} aria-label={`输入 ${row.usage?.input ?? "未知"} Token`}>{compact(row.usage?.input)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-output" class:record-missing={!row.usage} aria-label={`输出 ${row.usage?.output ?? "未知"} Token`}>{compact(row.usage?.output)}</span></div>
       <div><span class="record-cache" aria-label={`缓存读取 ${row.usage?.cacheRead ?? "未知"} Token`}>{compact(row.usage?.cacheRead)}</span><span class="record-separator" aria-hidden="true">/</span><span class="record-hit" class:record-missing={row.usage.context <= 0} aria-label={`缓存命中率 ${cache(row.usage)}`}>{cache(row.usage)}</span></div>
     </div>{/if}{/snippet}
-{#snippet timingCell(row: RecordsRecord)}{#if row.state === "local"}<span>本地响应</span
-    ><small>{seconds(row.durationMillis)}</small>{:else}<div class="record-timing-pair" >
-      <span class="record-first-byte">{seconds(row.firstByteMillis)}</span><span class="record-separator">/</span><span class="record-total-time">{seconds(row.state === "active" ? Math.max(0, clock.now - row.startedAt) : row.durationMillis)}</span>
-    </div>{#if row.state !== "active"}<span class="record-speed" class:record-missing={row.outputRate == null}>{row.outputRate == null ? "—" : `${compact(row.outputRate)} tps`}</span>{/if}{/if}{/snippet}
+{#snippet timingCell(row: RecordsRecord)}<div class="record-timing-pair" >
+      <span class="record-first-byte">{seconds(row.state === "local" ? null : row.firstByteMillis)}</span><span class="record-separator">/</span><span class="record-total-time">{seconds(row.state === "active" ? Math.max(0, clock.now - row.startedAt) : row.durationMillis)}</span>
+    </div>{#if row.state !== "active" && row.state !== "local"}<span class="record-speed" class:record-missing={row.outputRate == null}>{row.outputRate == null ? "—" : `${compact(row.outputRate)} tps`}</span>{/if}{/snippet}
 <Detail id={selected} onclose={() => (selected = "")} {notify} />

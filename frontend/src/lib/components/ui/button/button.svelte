@@ -16,8 +16,8 @@
 				subnavigation: "justify-start text-muted-foreground hover:text-foreground aria-[current=page]:bg-secondary aria-[current=page]:text-foreground aria-[current=page]:font-semibold",
 				/** 可拖动供应商整行入口使用统一布局和拖动状态。 */
 				row: "justify-start rounded-none border-0 bg-card text-left hover:bg-muted focus-visible:bg-muted active:translate-y-0 data-[dragging=true]:rounded-lg data-[dragging=true]:bg-accent data-[dragging=true]:shadow-lg data-[inactive=true]:opacity-60 aria-disabled:cursor-wait",
-                /** 请求尝试卡按 HTTP 结果使用语义边框，选中时保留统一主题反馈。 */
-                attempt: "border-border bg-card hover:bg-muted data-[result=success]:border-positive/30 data-[result=failed]:border-destructive/30 data-[selected=true]:ring-1 data-[selected=true]:ring-primary/40 data-[selected=true]:bg-accent",
+                /** 请求尝试卡统一维护状态色、分区表头和选中反馈；完整执行错误优先于 HTTP 状态。 */
+                attempt: "overflow-hidden rounded-[13px] border-border bg-card p-0 hover:bg-muted data-[result=success]:border-positive/40 data-[result=failed]:border-destructive/40 data-[result=local]:border-caution/40 data-[result=pending]:border-primary/40 data-[result=success]:[&_.record-attempt-head]:bg-positive/5 data-[result=success]:[&_.record-attempt-head]:text-positive data-[result=failed]:[&_.record-attempt-head]:bg-destructive/5 data-[result=failed]:[&_.record-attempt-head]:text-destructive data-[result=local]:[&_.record-attempt-head]:bg-caution/5 data-[result=local]:[&_.record-attempt-head]:text-caution data-[result=pending]:[&_.record-attempt-head]:bg-primary/5 data-[result=pending]:[&_.record-attempt-head]:text-primary data-[selected=true]:ring-2 data-[selected=true]:ring-primary/30",
 				/** 实时开关以主题色文字和边框强调启用状态。 */
 				live: "border-primary/30 bg-background text-primary hover:bg-accent",
 				/** 数值详情入口保持正文色，悬停与展开时使用主题强调色。 */
@@ -33,6 +33,8 @@
 				text: "text-muted-foreground hover:text-primary underline-offset-4 hover:underline",
 			},
 			size: {
+				/** 执行路径卡片由内容分区控制间距，表头与语义边框贴合。 */
+				attempt: "h-auto min-h-[88px] gap-0 p-0 whitespace-normal",
 				/** 侧栏与小型文字入口的尺寸统一维护。 */
 				navigation: "h-auto min-h-10 gap-3 px-[var(--sidebar-nav-inset,10px)] py-[11px] text-[13px] font-medium",
 				/** 设置子分类保留轻量选中状态。 */

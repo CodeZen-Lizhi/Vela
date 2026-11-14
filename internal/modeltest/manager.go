@@ -158,7 +158,7 @@ func (m *Manager) Run(ctx context.Context, request Request) (result Result, err 
 	return result, errors.Join(err, finish(cause))
 }
 
-// run 保留主动诊断的权限复核、取消、映射顺序及最近结果保存契约。
+// run 复核主动诊断权限并按映射顺序执行，支持取消，逐次脱敏响应后保存最近结果。
 func (m *Manager) run(ctx context.Context, request Request) (Result, error) {
 	request.ID = strings.TrimSpace(request.ID)
 	if request.ID == "" || len(request.ID) > 128 {
@@ -272,6 +272,7 @@ func (m *Manager) run(ctx context.Context, request Request) (Result, error) {
 		usedSecrets = append(usedSecrets, secret)
 		output := runHTTP(records.WithTarget(runCtx, records.Target{ProviderID: fresh.Provider.ID, ProviderName: fresh.Provider.Name, KeyID: key.Key.ID, KeyName: key.Key.Name, Multiplier: key.Key.Multiplier}), client, request, fresh.Provider.URL, attempt.RequestModel, secret)
 		attempt.Status = output.Status
+		attempt.ResponseBody = output.ResponseBody
 		attempt.DurationMillis = time.Since(attemptStarted).Milliseconds()
 		result.Status = output.Status
 		result.FirstByteMillis = output.FirstByteMillis
@@ -309,6 +310,7 @@ func (m *Manager) run(ctx context.Context, request Request) (Result, error) {
 		result.Error = redact(result.Error)
 		for i := range result.Attempts {
 			result.Attempts[i].Error = redact(result.Attempts[i].Error)
+			result.Attempts[i].ResponseBody = redact(result.Attempts[i].ResponseBody)
 		}
 	}
 	result.DurationMillis = time.Since(started).Milliseconds()

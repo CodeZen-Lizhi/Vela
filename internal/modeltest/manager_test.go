@@ -149,7 +149,7 @@ func (f *fixture) request(id string) Request {
 	return Request{ID: id, ProviderID: f.provider.ID, ModelID: f.model.ID, Protocol: "chat", Message: "hello"}
 }
 
-// TestDiagnosticOrderPersistenceAndCascade 验证停用对象仍可诊断、映射优先顺序、首成功停止、持久化及解除关联清理。
+// TestDiagnosticOrderPersistenceAndCascade 验证停用对象诊断、映射顺序、首成功停止、逐次响应脱敏持久化及解除关联清理。
 func TestDiagnosticOrderPersistenceAndCascade(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -175,6 +175,12 @@ func TestDiagnosticOrderPersistenceAndCascade(t *testing.T) {
 		if i < 3 && a.State != "failed" {
 			t.Fatalf("失败尝试丢失: %+v", a)
 		}
+		if i < 3 && a.ResponseBody != `{"error":{"message":"[REDACTED] [REDACTED]"}}` {
+			t.Fatalf("失败响应未逐次保留或脱敏: %q", a.ResponseBody)
+		}
+		if i == 3 && !strings.Contains(a.ResponseBody, `"content":"ok"`) || i > 3 && a.ResponseBody != "" {
+			t.Fatalf("响应归属错误: 尝试 %d，%q", i+1, a.ResponseBody)
+		}
 	}
 	raw, _ := json.Marshal(result)
 	for _, key := range []string{"key-a-secret", "key-b-secret"} {
@@ -191,6 +197,9 @@ func TestDiagnosticOrderPersistenceAndCascade(t *testing.T) {
 	saved, err := reopened.Results(ctx, f.provider.ID)
 	if err != nil || len(saved) != 1 || saved[0].ID != "order" {
 		t.Fatalf("回读: %+v %v", saved, err)
+	}
+	if !reflect.DeepEqual(saved[0].Attempts, result.Attempts) {
+		t.Fatal("回读丢失逐次响应快照")
 	}
 	if err = f.vendors.SaveModels(ctx, f.provider.ID, providers.ProviderModelsDraft{}); err != nil {
 		t.Fatal(err)

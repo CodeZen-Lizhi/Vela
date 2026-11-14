@@ -54,6 +54,13 @@ export interface Aggregate {
 
 /** Attempt 保留每次真正调用的目标、HTTP 状态及耗时；内容独立受保留期限控制。 */
 export interface Attempt {
+  /** ImageProgress 仅在图片请求或真实图片生成事件出现时采集；nil 表示未采集，不伪造进度。 */
+  imageProgress: ImageProgress | null;
+  /** CooldownUntil 为限流冷却截止时刻；NextProbe 为熔断下次允许探测时刻，零表示未知或不适用。 */
+  cooldownUntil: number;
+  nextProbe: number;
+  /** CircuitOpen 表示该次尝试结束或候选跳过时仍处于熔断。 */
+  circuitOpen: boolean;
   /** ProviderID、ProviderName、KeyID、KeyName 为稳定身份与当时名称。 */
   providerId: string;
   providerName: string;
@@ -67,6 +74,8 @@ export interface Attempt {
   /** Polling 标记视频任务状态查询；BillingPending 表示尚未完成的任务响应，不是另一笔消耗。 */
   polling: boolean;
   billingPending: boolean;
+  /** EndedAt 为网络尝试收尾时刻（Unix 毫秒），零表示尚未收尾或旧记录未采集。 */
+  endedAt: number;
   /** Status 为上游 HTTP 状态，零表示未收到响应；StartedAt、DurationMillis 为真实计时。 */
   status: number;
   startedAt: number;
@@ -105,6 +114,13 @@ export interface Candidate {
   keyName: string;
   /** Multiplier 未知时不能当作一倍，零倍率有效。 */
   multiplier: number | null;
+  /** CooldownUntil 为限流冷却截止时刻；NextProbe 为熔断下次允许探测时刻，零表示未知或不适用。 */
+  cooldownUntil: number;
+  nextProbe: number;
+  /** CircuitOpen 表示该次尝试结束或候选跳过时仍处于熔断。 */
+  circuitOpen: boolean;
+  /** CircuitSourceID 是此 Key 已知的熔断触发请求，空值表示来源未知。 */
+  circuitSourceId: string;
   /** Reason 非空表示该候选在准入或凭据复核处跳过。 */
   reason: string;
 }
@@ -257,6 +273,18 @@ export interface ImagePrice {
   price: number;
 }
 
+/** ImageProgress 保留图片生成的实际流事件进度，不保存图片二进制；零计数仅用于已启用观察的尝试。 */
+export interface ImageProgress {
+  /** Phase 为 connecting、streaming、completed 或 failed；完成必须由执行结果确认。 */
+  phase: string;
+  /** Frames 是收到的完整 SSE 数据事件数；PartialImages 是实际预览事件数。 */
+  frames: number;
+  partialImages: number;
+  /** LastEvent、LastEventAt 是最后一个上游事件类型与 Unix 毫秒时刻。 */
+  lastEvent: string;
+  lastEventAt: number;
+}
+
 /** KeyAggregate 表达真实出站次数和 Key 消耗，不能作为逻辑请求数累加到页面摘要。 */
 export interface KeyAggregate {
   /** Day、ProviderID、ModelID、Protocol、KeyID 为稳定归属维度。 */
@@ -342,7 +370,7 @@ export interface Model {
   overrides: string[];
 }
 
-/** Attempt 保存一次固定映射与 Key 组合的执行摘要，不保存明文认证。 */
+/** Attempt 保存一次固定映射与 Key 组合的执行结果及脱敏响应，不保存明文认证。 */
 export interface ModeltestAttempt {
   /** KeyID、KeyName、RequestModel 是实际尝试身份。 */
   keyId: string;
@@ -355,6 +383,8 @@ export interface ModeltestAttempt {
   durationMillis: number;
   /** Error 为脱敏后的失败说明，成功或未使用时为空。 */
   error: string;
+  /** ResponseBody 是该次尝试截断并脱敏后的上游正文；未收到或旧记录未保存时为空。 */
+  responseBody: string;
 }
 
 /** Option 为历史记录中的稳定身份与标签，删除资源后仍可筛选。 */
@@ -821,6 +851,9 @@ export interface Rate {
 
 /** Record 是单个逻辑请求事实；名字快照与价格不随资源改名或删除变化。 */
 export interface RecordsRecord {
+  /** Method、Path 为客户端请求入口快照；历史空值不推测为某个固定端点。 */
+  method: string;
+  path: string;
   /** CurrentProviderName、CurrentKeyName、CurrentModelName 为当前名称或已删除标记，仅用于详情。 */
   currentProviderName: string;
   currentKeyName: string;

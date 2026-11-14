@@ -93,6 +93,75 @@ func exchange(t *testing.T, s *Store, endpoint, protocol string, stream bool) (R
 	return r, finish
 }
 
+// TestKeyNameSurvivesRedaction 验证名称与客户端凭据重合时，收尾仍保留配置身份且诊断内容继续脱敏。
+func TestKeyNameSurvivesRedaction(t *testing.T) {
+	for name, cause := range map[string]error{"success": nil, "failed": errors.New("magpie upstream-secret")} {
+		t.Run(name, func(t *testing.T) {
+			s, _ := fixture(t)
+			ctx, finish, err := s.Begin(context.Background(), Input{ModelID: "m1", Protocol: "chat", Headers: http.Header{"Authorization": {"Bearer magpie"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := Target{ProviderID: "p-magpie", ProviderName: "Magpie", KeyID: "k-magpie", KeyName: "magpie"}
+			if err := Candidates(ctx, []Target{target}); err != nil {
+				t.Fatal(err)
+			}
+			ctx = WithTarget(ctx, target)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"message":"magpie upstream-secret"}`)
+			}))
+			defer upstream.Close()
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.URL, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer upstream-secret")
+			client := &http.Client{Transport: &Transport{Base: http.DefaultTransport}}
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, readErr := io.Copy(io.Discard, resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil || closeErr != nil {
+				t.Fatalf("读取上游响应失败: %v %v", readErr, closeErr)
+			}
+			page, err := s.Query(context.Background(), Query{})
+			if err != nil || len(page.Records) != 1 || page.Records[0].KeyName != target.KeyName {
+				t.Fatalf("进行中名称错误: %+v %v", page, err)
+			}
+			id := page.Records[0].ID
+			if err := finish(cause); err != nil {
+				t.Fatal(err)
+			}
+			page, err = s.Query(context.Background(), Query{})
+			if err != nil || len(page.Records) != 1 || page.Records[0].KeyName != target.KeyName {
+				t.Fatalf("结束后名称被脱敏: %+v %v", page, err)
+			}
+			r, err := s.Get(context.Background(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(r.Attempts) != 1 || len(r.Candidates) != 1 || r.Attempts[0].Payload == nil {
+				t.Fatal("缺少尝试、候选或响应快照")
+			}
+			for _, got := range []Target{r.Target, r.Attempts[0].Target, r.Candidates[0].Target} {
+				if got.ProviderName != target.ProviderName || got.ProviderID != target.ProviderID || got.KeyID != target.KeyID || got.KeyName != target.KeyName {
+					t.Fatalf("配置身份被脱敏改写: %+v", got)
+				}
+			}
+			wantError := ""
+			if cause != nil {
+				wantError = "[REDACTED] [REDACTED]"
+			}
+			if r.Error != wantError || r.Attempts[0].Payload.ResponseBody != `{"message":"[REDACTED] [REDACTED]"}` {
+				t.Fatalf("诊断内容未脱敏: %q %+v", r.Error, r.Attempts[0].Payload)
+			}
+		})
+	}
+}
+
 // TestHTTPRecordSnapshot 验证实际收包、用量、价格快照、脱敏及幂等结算。
 func TestHTTPRecordSnapshot(t *testing.T) {
 	s, catalog := fixture(t)

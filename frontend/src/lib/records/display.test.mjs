@@ -25,3 +25,17 @@ test("使用记录金额固定六位小数，其他页面仍使用两位", async
   assert.equal(recordMoney(undefined), "—");
   assert.equal(money(350.87), "$350.87");
 });
+
+/** 本地冷却旧摘要没有供应商时，展示已知阻断身份，不展示未参与准入的候选。 */
+test("本地拦截显示阻断供应商及 Key，旧记录摘要缺失仍可读", async () => {
+  const { recordTarget } = await import("./display.ts");
+  const row={state:"local",providerName:"",keyName:"",candidates:[
+    {providerName:"未使用供应商",keyName:"未使用 Key",reason:""},
+    {providerName:"Vela",keyName:"Key A",reason:"冷却"},
+    {providerName:"Vela",keyName:"Key B",reason:"熔断"},
+    {providerName:"Magpie",keyName:"Key C",reason:"冷却"},
+  ]};
+  assert.deepEqual(recordTarget(row),{providerName:"Vela、Magpie",keyName:"Key A、Key B、Key C"});
+  assert.deepEqual(recordTarget({...row,state:"success",providerName:"执行供应商",keyName:"执行 Key"}),{providerName:"执行供应商",keyName:"执行 Key"});
+  assert.deepEqual(recordTarget({state:"local",candidates:[]}),{providerName:"—",keyName:"—"});
+});

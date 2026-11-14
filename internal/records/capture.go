@@ -102,6 +102,9 @@ func PrepareStreamCapture(req *http.Request, forceStream bool) (func(*http.Respo
 	}
 	started := time.Now()
 	a := Attempt{Polling: strings.TrimPrefix(run.record.Protocol, "openai:") == "video" && req.Method == http.MethodGet, Target: target, Path: req.URL.EscapedPath(), StartedAt: started.UnixMilli(), Charges: []Charge{}}
+	if run.record.Type == "image" {
+		a.ImageProgress = &ImageProgress{Phase: "connecting"}
+	}
 	payload := Payload{RequestHeaders: safeHeaders(req.Header), RequestBody: sanitize(string(requestBody), secrets), BodyState: "available"}
 	if len(requestBody) > captureLimit {
 		payload.BodyState = "truncated"
@@ -157,6 +160,10 @@ func PrepareStreamCapture(req *http.Request, forceStream bool) (func(*http.Respo
 	if saveErr != nil {
 		return nil, &LocalError{Cause: saveErr}
 	}
+	if a.ImageProgress != nil {
+		progress := *a.ImageProgress
+		a.ImageProgress = &progress
+	}
 	b := &captureBody{run: run, attempt: a, payload: payload, started: started, secrets: secrets, specification: specification, quality: quality, stream: forceStream}
 	if forceStream {
 		b.eventLimit = 16*1024*1024 + 16
@@ -210,8 +217,10 @@ type captureBody struct {
 	raw      bytes.Buffer
 	jsonBody bytes.Buffer
 	// pending 与 event 分别保存未完成行和事件；超限后丢弃到对应边界，避免误解析残片。
-	pending      []byte
-	event        bytes.Buffer
+	pending []byte
+	event   bytes.Buffer
+	// eventType 保留 SSE event 行，仅用于无 JSON type 的图片进度事件。
+	eventType    string
 	lineDropped  bool
 	eventDropped bool
 	// responseIDs 仅用于 Realtime，去重同一连接已经结算的 response.done 快照。
@@ -227,6 +236,8 @@ type captureBody struct {
 	quality       string
 	truncated     bool
 	readErr       error
+	// lastProgressSave 限制图片活动快照最多每秒写入一次，终态不受此限制。
+	lastProgressSave time.Time
 }
 
 // Read 转发所有实际字节，首字按第一次非空正文计时；EOF 不替代上层协议终态判断。
@@ -300,6 +311,9 @@ func (b *captureBody) accept(line []byte) {
 		b.acceptEvent()
 		return
 	}
+	if kind, ok := bytes.CutPrefix(line, []byte("event:")); ok {
+		b.eventType = strings.TrimSpace(string(kind))
+	}
 	if data, ok := bytes.CutPrefix(line, []byte("data:")); ok {
 		data = bytes.TrimPrefix(data, []byte(" "))
 		limit := b.eventLimit
@@ -316,13 +330,60 @@ func (b *captureBody) accept(line []byte) {
 	}
 }
 
-// acceptEvent 只合并完整事件的累计用量，不逐事件相加；结束后清除事件状态。
+// acceptEvent 在完整 SSE 边界观察图片进度并合并累计用量；结束后清除事件状态。
 func (b *captureBody) acceptEvent() {
 	if !b.eventDropped {
+		b.observeImageProgress(b.event.Bytes())
 		b.observeUsage(b.event.Bytes())
 	}
 	b.event.Reset()
+	b.eventType = ""
 	b.eventDropped = false
+}
+
+// observeImageProgress 复用完整 SSE 事件边界提取图片阶段、帧数和预览数，不保留媒体内容。
+func (b *captureBody) observeImageProgress(data []byte) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return
+	}
+	var event struct {
+		// Type 为上游事件类型，保存前脱敏并限制长度。
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(data, &event)
+	if event.Type == "" {
+		event.Type = b.eventType
+	}
+	imageEvent := strings.Contains(event.Type, "image_generation") || strings.HasPrefix(event.Type, "image_edit.")
+	if b.attempt.ImageProgress == nil && !imageEvent {
+		return
+	}
+	if b.attempt.ImageProgress == nil {
+		b.attempt.ImageProgress = &ImageProgress{}
+	}
+	progress := b.attempt.ImageProgress
+	progress.Phase = "streaming"
+	progress.Frames++
+	progress.LastEvent = sanitize(event.Type, b.secrets)
+	if len(progress.LastEvent) > 256 {
+		progress.LastEvent = progress.LastEvent[:256]
+	}
+	progress.LastEventAt = time.Now().UnixMilli()
+	if strings.HasSuffix(event.Type, ".partial_image") {
+		progress.PartialImages++
+	}
+	if time.Since(b.lastProgressSave) < time.Second {
+		return
+	}
+	b.lastProgressSave = time.Now()
+	b.run.mu.Lock()
+	defer b.run.mu.Unlock()
+	snapshot := *progress
+	a := &b.run.record.Attempts[b.attempt.Number-1]
+	a.ImageProgress, a.Status, a.FirstByteMillis = &snapshot, b.attempt.Status, b.attempt.FirstByteMillis
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	b.run.writeErr = errors.Join(b.run.writeErr, b.run.store.save(ctx, b.run.record, false))
 }
 
 // observeUsage 普通流合并累计快照；Realtime 按独立 response.id 累加，重复终态不重复计费。
@@ -394,6 +455,7 @@ func (b *captureBody) complete() {
 				b.usage.Quality = b.quality
 			}
 		}
+		b.attempt.EndedAt = time.Now().UnixMilli()
 		b.attempt.DurationMillis = time.Since(b.started).Milliseconds()
 		if b.attempt.Status >= 400 && b.attempt.Error == "" {
 			b.attempt.Error = http.StatusText(b.attempt.Status)

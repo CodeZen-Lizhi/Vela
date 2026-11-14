@@ -170,3 +170,12 @@ export function pretty(text: string): string {
     return text;
   }
 }
+
+/** 本地拦截显示已知阻断供应商与 Key；兼容旧摘要缺失身份的记录，不把排序候选当成已执行。 */
+export function recordTarget(row: RecordsRecord): { providerName: string; keyName: string } {
+  const blocked = row.state === "local" ? (row.candidates ?? []).filter(candidate => candidate.reason) : [];
+  return {
+    providerName: [...new Set(blocked.map(candidate => candidate.providerName).filter(Boolean))].join("、") || row.providerName || (row.state === "local" ? "—" : "未知供应商"),
+    keyName: [...new Set(blocked.map(candidate => candidate.keyName).filter(Boolean))].join("、") || row.keyName || "—",
+  };
+}

@@ -15,6 +15,10 @@ import (
 // Candidate 记录本次排序快照及未执行原因，不能将候选枚举当作实际调用。
 type Candidate struct {
 	Target
+	// Protection 保留此次跳过时的本地保护快照；零值表示未采集。
+	Protection
+	// CircuitSourceID 是此 Key 已知的熔断触发请求，空值表示来源未知。
+	CircuitSourceID string `json:"circuitSourceId"`
 	// Reason 非空表示该候选在准入或凭据复核处跳过。
 	Reason string `json:"reason"`
 }
@@ -34,29 +38,61 @@ func Candidates(ctx context.Context, values []Target) error {
 }
 
 // Skipped 标记未准入原因，熔断时关联已知触发请求，不伪造上游响应。
-func Skipped(ctx context.Context, target Target, version, reason string, circuit bool) error {
+func Skipped(ctx context.Context, target Target, version, reason string, circuit bool, protection Protection) error {
 	run, _ := ctx.Value(sessionKey{}).(*session)
 	if run == nil {
 		return nil
 	}
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	for i := range run.record.Candidates {
-		if run.record.Candidates[i].KeyID == target.KeyID {
-			run.record.Candidates[i].Reason = reason
-		}
-	}
-	if circuit && len(run.record.Attempts) == 0 {
-		run.record.Target = target
-		var id string
+	var id string
+	if circuit {
 		err := run.store.db.QueryRowContext(ctx, `SELECT request_id FROM request_circuits WHERE key_id=? AND version=?`, target.KeyID, version).Scan(&id)
-		if err == nil {
-			run.record.CircuitSourceID = id
-		} else if !errors.Is(err, sql.ErrNoRows) {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 	}
+	for i := range run.record.Candidates {
+		candidate := &run.record.Candidates[i]
+		if candidate.KeyID == target.KeyID && candidate.ProviderID == target.ProviderID {
+			candidate.Reason = reason
+			candidate.Protection = protection
+			candidate.CircuitSourceID = id
+		}
+	}
+	// 所有准入跳过均保留首个真实阻断目标，不能只在熔断分支填写摘要身份。
+	if len(run.record.Attempts) == 0 && run.record.ProviderID == "" {
+		run.record.Target = target
+	}
+	if circuit && len(run.record.Attempts) == 0 && run.record.CircuitSourceID == "" {
+		run.record.CircuitSourceID = id
+	}
 	return run.store.save(ctx, run.record, false)
+}
+
+// Protection 是请求当时的保护事实，时间均为 Unix 毫秒；到期仅表示可重新准入或探测，不代表健康恢复。
+type Protection struct {
+	// CooldownUntil 为限流冷却截止时刻；NextProbe 为熔断下次允许探测时刻，零表示未知或不适用。
+	CooldownUntil int64 `json:"cooldownUntil"`
+	NextProbe     int64 `json:"nextProbe"`
+	// CircuitOpen 表示该次尝试结束或候选跳过时仍处于熔断。
+	CircuitOpen bool `json:"circuitOpen"`
+}
+
+// AttemptProtection 为当前实际出站尝试补写健康结果，不创建虚构网络尝试。
+func AttemptProtection(ctx context.Context, protection Protection) error {
+	run, _ := ctx.Value(sessionKey{}).(*session)
+	scope, _ := ctx.Value(attemptKey{}).(*attemptScope)
+	if run == nil || scope == nil {
+		return nil
+	}
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	if scope.number == 0 {
+		return nil
+	}
+	run.record.Attempts[scope.number-1].Protection = protection
+	return run.store.save(context.WithoutCancel(ctx), run.record, false)
 }
 
 // MarkCircuit 保存实际触发熔断的请求身份；同凭据后续本地拦截可定位此请求。
@@ -70,11 +106,11 @@ func MarkCircuit(ctx context.Context, key, version string) error {
 }
 
 // AttemptResult 在 Runner 返回且响应已关闭后补写协议执行错误，保留上游实际 HTTP 状态。
-// ctx 必须是该次 WithTarget 返回的 context；未真正出站或 cause 为 nil 时不改写任何尝试。
+// ctx 必须是该次 WithTarget 返回的 context；未真正出站时不改写尝试，图片进度仅在 Runner 返回后确认终态。
 func AttemptResult(ctx context.Context, cause error) error {
 	run, _ := ctx.Value(sessionKey{}).(*session)
 	scope, _ := ctx.Value(attemptKey{}).(*attemptScope)
-	if run == nil || scope == nil || cause == nil {
+	if run == nil || scope == nil {
 		return nil
 	}
 	run.mu.Lock()
@@ -82,7 +118,20 @@ func AttemptResult(ctx context.Context, cause error) error {
 	if scope.number == 0 {
 		return nil
 	}
-	run.record.Attempts[scope.number-1].Error = sanitize(cause.Error(), run.secrets)
+	attempt := &run.record.Attempts[scope.number-1]
+	if cause != nil {
+		attempt.Error = sanitize(cause.Error(), run.secrets)
+	}
+	if attempt.ImageProgress != nil {
+		if cause != nil || attempt.Error != "" || attempt.Status >= 400 {
+			attempt.ImageProgress.Phase = "failed"
+		} else {
+			attempt.ImageProgress.Phase = "completed"
+		}
+	}
+	if cause == nil && attempt.ImageProgress == nil {
+		return nil
+	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	err := run.store.save(saveCtx, run.record, false)

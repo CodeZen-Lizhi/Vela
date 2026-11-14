@@ -160,7 +160,11 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	}
 	if e.Records != nil && !records.HasSession(ctx) {
 		var err error
-		ctx, finish, err = e.Records.Begin(ctx, records.Input{ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: req.Type, Source: "business", Stream: req.Stream, Transport: requestTransport(req), Body: req.Body, Headers: req.Headers, ResourceQuery: (req.Method == http.MethodGet || req.Method == http.MethodDelete) && (req.Type == "video" || req.Type == "files" || req.Type == "interactions")})
+		method := req.Method
+		if method == "" {
+			method = http.MethodPost
+		}
+		ctx, finish, err = e.Records.Begin(ctx, records.Input{Method: method, Path: req.Path, ModelID: req.Request.Model, Protocol: req.Request.Protocol, Type: req.Type, Source: "business", Stream: req.Stream, Transport: requestTransport(req), Body: req.Body, Headers: req.Headers, ResourceQuery: (req.Method == http.MethodGet || req.Method == http.MethodDelete) && (req.Type == "video" || req.Type == "files" || req.Type == "interactions")})
 		if err != nil {
 			return result, err
 		}
@@ -254,7 +258,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	}
 	for _, c := range allCandidates {
 		if reason := e.Runtime.UnavailableReason(c); reason != nil {
-			if err := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, reason.Error(), errors.Is(reason, ErrCircuit)); err != nil {
+			if err := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, reason.Error(), errors.Is(reason, ErrCircuit), recordProtection(e.Runtime.Health(c.Key.ID, c.CredentialVersion))); err != nil {
 				return result, err
 			}
 		}
@@ -275,7 +279,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 			secret, checkErr := e.Source.Credential(ctx, c, req)
 			if checkErr != nil {
 				lastErr = checkErr
-				if recordErr := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, "候选配置或凭据已失效", false); recordErr != nil {
+				if recordErr := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, "候选配置或凭据已失效", false, records.Protection{}); recordErr != nil {
 					return result, recordErr
 				}
 				break
@@ -300,7 +304,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				}
 				if acquireErr != nil {
 					lastErr = acquireErr
-					if recordErr := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, acquireErr.Error(), errors.Is(acquireErr, ErrCircuit)); recordErr != nil {
+					if recordErr := records.Skipped(ctx, records.Target{ProviderID: c.Provider.ID, ProviderName: c.Provider.Name, KeyID: c.Key.ID, KeyName: c.Key.Name, Multiplier: c.Key.Multiplier}, c.CredentialVersion, acquireErr.Error(), errors.Is(acquireErr, ErrCircuit), recordProtection(e.Runtime.Health(c.Key.ID, c.CredentialVersion))); recordErr != nil {
 						return result, recordErr
 					}
 					break
@@ -335,6 +339,9 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				log.Printf("保存上游尝试结果失败: %v", recordErr)
 			}
 			attempt.Finish(outcome.Outcome)
+			if recordErr := records.AttemptProtection(attemptCtx, recordProtection(e.Runtime.Health(c.Key.ID, c.CredentialVersion))); recordErr != nil {
+				log.Printf("保存尝试保护状态失败: %v", recordErr)
+			}
 			result.Result = outcome
 			if e.Runtime.Health(c.Key.ID, c.CredentialVersion).CircuitOpen {
 				if err := records.MarkCircuit(ctx, c.Key.ID, c.CredentialVersion); err != nil {
@@ -375,4 +382,16 @@ func requestTransport(req ExecutionRequest) string {
 		return "stream"
 	}
 	return "standard"
+}
+
+// recordProtection 将运行时健康快照转换为历史诊断字段，零时刻不编码为负数。
+func recordProtection(health KeyHealth) records.Protection {
+	result := records.Protection{CircuitOpen: health.CircuitOpen}
+	if !health.CooldownUntil.IsZero() {
+		result.CooldownUntil = health.CooldownUntil.UnixMilli()
+	}
+	if !health.NextProbe.IsZero() {
+		result.NextProbe = health.NextProbe.UnixMilli()
+	}
+	return result
 }

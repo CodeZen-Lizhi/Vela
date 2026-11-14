@@ -40,7 +40,7 @@ type Options struct {
 	Mappings []string `json:"mappings"`
 }
 
-// Attempt 保存一次固定映射与 Key 组合的执行摘要，不保存明文认证。
+// Attempt 保存一次固定映射与 Key 组合的执行结果及脱敏响应，不保存明文认证。
 type Attempt struct {
 	// KeyID、KeyName、RequestModel 是实际尝试身份。
 	KeyID        string `json:"keyId"`
@@ -53,6 +53,8 @@ type Attempt struct {
 	DurationMillis int64 `json:"durationMillis"`
 	// Error 为脱敏后的失败说明，成功或未使用时为空。
 	Error string `json:"error"`
+	// ResponseBody 是该次尝试截断并脱敏后的上游正文；未收到或旧记录未保存时为空。
+	ResponseBody string `json:"responseBody"`
 }
 
 // Result 是一次诊断最终结果及脱敏快照，持久化最近一次已完成结果。

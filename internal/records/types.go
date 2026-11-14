@@ -9,6 +9,9 @@ import (
 
 // Input 是执行入口提供的请求身份，不能从前端任意创建历史记录。
 type Input struct {
+	// Method、Path 为入口实际动作及无认证查询参数的路径；空值表示旧调用方未采集。
+	Method string
+	Path   string
 	// ModelID 为统一模型稳定身份或真实统一调用名；来源为 business、modeltest 或 verification。
 	ModelID string
 	Source  string
@@ -73,8 +76,24 @@ type Charge struct {
 	Amount   float64 `json:"amount"`
 }
 
+// ImageProgress 保留图片生成的实际流事件进度，不保存图片二进制；零计数仅用于已启用观察的尝试。
+type ImageProgress struct {
+	// Phase 为 connecting、streaming、completed 或 failed；完成必须由执行结果确认。
+	Phase string `json:"phase"`
+	// Frames 是收到的完整 SSE 数据事件数；PartialImages 是实际预览事件数。
+	Frames        int64 `json:"frames"`
+	PartialImages int64 `json:"partialImages"`
+	// LastEvent、LastEventAt 是最后一个上游事件类型与 Unix 毫秒时刻。
+	LastEvent   string `json:"lastEvent"`
+	LastEventAt int64  `json:"lastEventAt"`
+}
+
 // Attempt 保留每次真正调用的目标、HTTP 状态及耗时；内容独立受保留期限控制。
 type Attempt struct {
+	// ImageProgress 仅在图片请求或真实图片生成事件出现时采集；nil 表示未采集，不伪造进度。
+	ImageProgress *ImageProgress `json:"imageProgress"`
+	// Protection 保留本次完成后触发的冷却或熔断，不读取当前 Key 状态覆盖历史。
+	Protection
 	Target
 	// Number 为从一开始的实际网络尝试顺序；Path 不包含认证查询参数。
 	Number int    `json:"number"`
@@ -82,6 +101,8 @@ type Attempt struct {
 	// Polling 标记视频任务状态查询；BillingPending 表示尚未完成的任务响应，不是另一笔消耗。
 	Polling        bool `json:"polling"`
 	BillingPending bool `json:"billingPending"`
+	// EndedAt 为网络尝试收尾时刻（Unix 毫秒），零表示尚未收尾或旧记录未采集。
+	EndedAt int64 `json:"endedAt"`
 	// Status 为上游 HTTP 状态，零表示未收到响应；StartedAt、DurationMillis 为真实计时。
 	Status         int   `json:"status"`
 	StartedAt      int64 `json:"startedAt"`
@@ -111,6 +132,9 @@ type Payload struct {
 
 // Record 是单个逻辑请求事实；名字快照与价格不随资源改名或删除变化。
 type Record struct {
+	// Method、Path 为客户端请求入口快照；历史空值不推测为某个固定端点。
+	Method string `json:"method"`
+	Path   string `json:"path"`
 	// CurrentProviderName、CurrentKeyName、CurrentModelName 为当前名称或已删除标记，仅用于详情。
 	CurrentProviderName string `json:"currentProviderName"`
 	CurrentKeyName      string `json:"currentKeyName"`

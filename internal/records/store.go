@@ -174,7 +174,8 @@ func (s *Store) Begin(ctx context.Context, in Input) (context.Context, func(erro
 	if _, err := rand.Read(key[:]); err != nil {
 		return ctx, nil, err
 	}
-	r := Record{ID: hex.EncodeToString(key[:]), StartedAt: s.now().UnixMilli(), ModelID: in.ModelID, Model: in.ModelID, Source: in.Source, Protocol: in.Protocol, Type: in.Type, Stream: in.Stream, Transport: in.Transport, State: "active", Execution: "direct", Attempts: []Attempt{}, Charges: []Charge{}}
+	path, _, _ := strings.Cut(in.Path, "?")
+	r := Record{Method: in.Method, Path: path, ID: hex.EncodeToString(key[:]), StartedAt: s.now().UnixMilli(), ModelID: in.ModelID, Model: in.ModelID, Source: in.Source, Protocol: in.Protocol, Type: in.Type, Stream: in.Stream, Transport: in.Transport, State: "active", Execution: "direct", Attempts: []Attempt{}, Charges: []Charge{}}
 	r.ProviderID = in.ProviderID
 	r.KeyID = in.KeyID
 	if in.ResourceQuery {
@@ -375,13 +376,26 @@ func (s *session) finish(cause error) error {
 			}
 		}
 	}
-	// 所有实际使用过的密钥均须清除，避免后续响应回显先前候选认证。
-	encoded, _ := json.Marshal(r)
-	for _, secret := range s.secrets {
-		encoded = []byte(redact(string(encoded), secret))
+	// 仅清理请求派生内容；整条 JSON 替换会误伤与凭据重合的配置名称、身份及字段名。
+	texts := []*string{&r.UpstreamModel, &r.Effort, &r.Tier, &r.Error}
+	usages := []*Usage{r.Usage}
+	for i := range r.Attempts {
+		a := &r.Attempts[i]
+		texts = append(texts, &a.Path, &a.Error)
+		usages = append(usages, a.Usage)
 	}
-	if err := json.Unmarshal(encoded, r); err != nil {
-		return err
+	for i := range r.Candidates {
+		texts = append(texts, &r.Candidates[i].Reason)
+	}
+	for _, usage := range usages {
+		if usage != nil {
+			texts = append(texts, &usage.Quality, &usage.Specification)
+		}
+	}
+	for _, text := range texts {
+		for _, secret := range s.secrets {
+			*text = redact(*text, secret)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

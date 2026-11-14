@@ -306,7 +306,7 @@
           <Tabs.List aria-label="请求详情分区" class="w-full justify-start">
             <Tabs.Trigger value="execution">执行链路</Tabs.Trigger><Tabs.Trigger value="payload">请求与响应</Tabs.Trigger><Tabs.Trigger value="headers">请求头</Tabs.Trigger><Tabs.Trigger value="billing">计费与上下文</Tabs.Trigger>
           </Tabs.List>
-          <Tabs.Content value="execution">{#key record.id}<ExecutionPath {record} bind:attempt onresponse={showResponse} />{/key}</Tabs.Content>
+          <Tabs.Content value="execution">{#key record.id}<ExecutionPath {record} bind:attempt onresponse={showResponse} onsource={openSource} />{/key}</Tabs.Content>
           <Tabs.Content value="billing" class="record-detail-billing">
         <DetailSection title="计费明细" description="价格、Token 与媒体费用">
           <p class="record-detail-note">按请求开始时价格快照和实际用量估算，非上游已对账扣款。</p>
@@ -322,7 +322,8 @@
           {#if record.charges.length}<Table.Root><Table.Header><Table.Row><Table.Head>计价维度</Table.Head><Table.Head>实际数量</Table.Head><Table.Head>美元单价</Table.Head><Table.Head>估算金额</Table.Head></Table.Row></Table.Header><Table.Body>
             {#each record.charges as charge}<Table.Row><Table.Cell>{rateNames[charge.key] ?? charge.key}</Table.Cell><Table.Cell>{number(charge.quantity)}</Table.Cell><Table.Cell>{money(charge.price)}<small>{unitLabel(rateUnit(charge.key))}</small></Table.Cell><Table.Cell>{money(charge.amount)}</Table.Cell></Table.Row>{/each}
           </Table.Body></Table.Root>{:else}<p class="record-detail-note">{record.cost == null ? "费用未知，未生成分项金额。" : "未记录费用分项。"}</p>{/if}
-          {#if record.pricing.base.length}<h4>开始时基础价格</h4><Table.Root><Table.Header><Table.Row><Table.Head>维度</Table.Head><Table.Head>价格</Table.Head><Table.Head>单位</Table.Head></Table.Row></Table.Header><Table.Body>
+          <!-- 未定价模型的历史快照可返回 null，不能让非当前计费页阻断整个详情。 -->
+          {#if record.pricing.base?.length}<h4>开始时基础价格</h4><Table.Root><Table.Header><Table.Row><Table.Head>维度</Table.Head><Table.Head>价格</Table.Head><Table.Head>单位</Table.Head></Table.Row></Table.Header><Table.Body>
             {#each record.pricing.base as rate}<Table.Row><Table.Cell>{rateNames[rate.key] ?? rate.key}</Table.Cell><Table.Cell>{money(rate.price)}</Table.Cell><Table.Cell>{unitLabel(rate.unit)}</Table.Cell></Table.Row>{/each}
           </Table.Body></Table.Root>{/if}
           <Collapsible.Root><Collapsible.Trigger>{#snippet child({ props })}<Button {...props} variant="text" size="inline">完整历史价格快照</Button>{/snippet}</Collapsible.Trigger><Collapsible.Content><pre>{JSON.stringify(record.pricing, null, 2)}</pre></Collapsible.Content></Collapsible.Root>

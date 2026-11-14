@@ -191,7 +191,7 @@
           ? "未使用"
           : "已取消";
   }
-  /** 轻量详情只展示排查结论，不展开请求头、请求体或响应正文。 */
+  /** 展示该次尝试的执行结论，具体上游原因由下方回复正文补充。 */
   function attemptDetail(attempt: TestAttempt): string {
     if (attempt.state === "success") return "响应有效，链路可用";
     if (attempt.state === "failed") return attempt.error || "供应商未返回有效响应";
@@ -201,6 +201,13 @@
   /** 读取当前展开的尝试，索引在结果更新后立即失效时返回空。 */
   function attemptAt(attempts: TestAttempt[], index: number): TestAttempt | null {
     return attempts[index] ?? null;
+  }
+  /** 优先读取逐次回复；旧记录仅可将已有的最后响应归给最后一次收到 HTTP 响应的尝试。 */
+  function attemptResponse(result: TestResult, index: number): string {
+    const attempt = result.attempts[index];
+    if (attempt?.responseBody) return attempt.responseBody;
+    if (!attempt?.status || result.attempts.slice(index + 1).some((item) => item.status > 0)) return "";
+    return result.responseBody;
   }
   /** 将服务端完成时间转为稳定的本地时间文本。 */
   function formatTime(value: string): string {
@@ -428,6 +435,17 @@
                         <div><dt>耗时</dt><dd>{attempt.durationMillis} ms</dd></div>
                       </dl>
                       <p>{attemptDetail(attempt)}</p>
+                      {#if attempt.state !== "unused"}
+                        {@const response = attemptResponse(result, selectedAttempt)}
+                        <section class="attempt-response" aria-label="上游回复">
+                          <h5>上游回复</h5>
+                          {#if response}
+                            <Textarea variant="outline" readonly value={response} aria-label="上游回复正文" class="attempt-response-body" />
+                          {:else}
+                            <p>未收到或未保存该次尝试的上游回复。</p>
+                          {/if}
+                        </section>
+                      {/if}
                     </div>
                   {/if}
                 {/if}
@@ -541,6 +559,8 @@
   .record-time { flex-shrink: 0; color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
   .config-content { display: grid; gap: 15px; padding: 16px; }
   .config-field { display: grid; min-width: 0; gap: 7px; }
+  /* 允许长 Key 与映射在所属网格内收缩，避免选择器按最小内容宽度覆盖相邻字段。 */
+  .config-field :global([data-slot="select-trigger"]) { min-width: 0; max-width: 100%; }
   .config-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .model-test-panel-message { display: grid; min-height: 170px; place-content: center; justify-items: center; gap: 10px; padding: 20px; color: var(--muted-foreground); font-size: 11px; text-align: center; }
   .config-summary { display: grid; gap: 2px; padding: 8px 16px 14px; }
@@ -610,6 +630,10 @@
   .attempt-inspector dt { color: var(--muted-foreground); font-size: 9px; }
   .attempt-inspector dd { margin-top: 2px; overflow-wrap: anywhere; font-size: 11px; font-weight: 600; }
   .attempt-inspector > p { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+  .attempt-response { min-width: 0; margin-top: 12px; }
+  .attempt-response h5 { margin-bottom: 6px; font-size: 11px; font-weight: 600; }
+  .attempt-response :global(.attempt-response-body) { min-height: 96px; max-height: 240px; overflow: auto; resize: none; }
+  .attempt-response p { color: var(--muted-foreground); font-size: 10px; }
   .attempt-empty { padding: 28px 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted-foreground); font-size: 11px; text-align: center; }
   .idle-stage { display: flex; min-height: 390px; flex: 1; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed var(--border); border-radius: 14px; background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 42%), radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--primary) 8%, transparent) .7px, transparent .8px); background-size: auto, 16px 16px; padding: 32px 20px; text-align: center; }
   .idle-flow { display: flex; align-items: center; gap: 4px; margin-bottom: 22px; }
