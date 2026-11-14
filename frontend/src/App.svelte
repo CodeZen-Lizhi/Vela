@@ -32,10 +32,6 @@
   let page = $state("总览");
   /** 设置子分类是否展开；已在设置页时由侧栏入口切换。 */
   let settingsExpanded = $state(false);
- /** 供应商最近调用携带的一次性记录入口。 */
- let recordsProvider=$state(""),recordsID=$state("");
- /** 进入记录页时保留目标身份，普通导航清除定向范围。 */
- function openRecords(providerID:string,recordID=""):void{recordsProvider=providerID;recordsID=recordID;page="使用记录";}
   /** 默认168、最大240；最小72并避让系统按钮组，分栏内部使用百分比。 */
   const sidebarMax = 240, sidebarDefault = 168;
   let sidebarMin = $state(72);
@@ -135,7 +131,7 @@
 
     </div>
     <nav aria-label="主导航" class="flex flex-col gap-1">
-      {#each navigation as item}<Hint side="right" overflowOnly={false} text={sidebarCollapsed ? item.name : undefined}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => {recordsProvider="";recordsID="";page = item.name;} })}
+      {#each navigation as item}<Hint side="right" overflowOnly={false} text={sidebarCollapsed ? item.name : undefined}>{#snippet children(hintProps0)}<Button {...mergeProps(hintProps0, { onclick: () => {page = item.name;} })}
           variant="navigation" size="navigation"
           class="nav-item"
           aria-label={item.name}
@@ -182,9 +178,9 @@
       </p>{/if}
     </header>
     <main class="app-main" class:list-workspace={["供应商", "模型", "使用记录", "模型验证"].includes(page)}>
-      {#if page === "总览"}<OverviewPage {notify} navigate={(target) => { if (target === "providers") page = "供应商"; else openSettings("connection"); }} />{:else if page === "供应商"}<ProvidersPage {notify} {openRecords} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
+      {#if page === "总览"}<OverviewPage {notify} navigate={(target) => { if (target === "providers") page = "供应商"; else openSettings("connection"); }} />{:else if page === "供应商"}<ProvidersPage {notify} />{:else if page === "模型"}<ModelsPage />{:else if page === "调度"}<SchedulingPage
           {notify}
-        />{:else if page === "使用记录"}<RecordsPage {notify} initialProvider={recordsProvider} initialRecord={recordsID} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
+        />{:else if page === "使用记录"}<RecordsPage {notify} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage
           section={settingsSection}
           {notify}
         />{/if}

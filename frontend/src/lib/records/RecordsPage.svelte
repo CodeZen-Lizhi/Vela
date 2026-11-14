@@ -53,12 +53,8 @@
   /** 使用记录工作台读取真实分页；浏览器预览不生成演示请求或伪造空数据库。 */
   let {
     notify,
-    initialProvider = "",
-    initialRecord = "",
   }: {
     /** 操作成功与失败的轻量反馈。 */ notify: (message: string) => void;
-    /** 从供应商最近调用带入的筛选和详情身份。 */ initialProvider?: string;
-    initialRecord?: string;
   } = $props();
   /** q 是唯一查询草稿；result 是最后一次成功快照，失败不清空。 */
   let q = $state<Query>(emptyQuery()),
@@ -213,8 +209,6 @@
     return () => clearTimeout(timer);
   });
   onMount(() => {
-    q.providerId = initialProvider;
-    selected = initialRecord;
     ready = true;
     void load(true);
     const active = setInterval(() => {
