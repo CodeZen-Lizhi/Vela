@@ -52,6 +52,14 @@
 {/if}
 
 <style>
+  /* 仅替换原生密码遮罩的字形；输入、选择与辅助技术仍使用真正的 password 控件。 */
+  @font-face {
+    font-family:"Vela Password Mask";
+    src:url("../../../assets/fonts/password-mask.woff2") format("woff2");
+    font-display:block;
+  }
+  input[type="password"] { font-family:"Vela Password Mask",system-ui,sans-serif; }
+
   /* 保留数字输入与原生校验，仅统一隐藏不适合紧凑表单的步进箭头。 */
   input[type="number"] { appearance:textfield; }
   input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }

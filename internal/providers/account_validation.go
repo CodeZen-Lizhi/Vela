@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -49,14 +50,20 @@ func (a *Accounts) accountDraftSnapshot(ctx context.Context, id string, d Provid
 }
 
 // ValidateProviderAccount 只用当前草稿查询余额，临时结果不写正式余额，也不查询 Key、签到或订阅。
+// 60 秒时限包含等待其他查询批次，避免前台排队期间没有超时。
 // 已保存连接的 Refresh Token 如被上游轮换，仍需独立保留新凭据，防止取消弹窗使原连接失效。
 func (a *Accounts) ValidateProviderAccount(ctx context.Context, id string, d ProviderAccountDraft) (ProviderAccountValidation, error) {
-	if err := a.beginQuery(ctx); err != nil {
+	qctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	if err := a.beginQuery(qctx); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return ProviderAccountValidation{}, fmt.Errorf("等待账户查询超时，请稍后重试: %w", err)
+		}
 		return ProviderAccountValidation{}, err
 	}
 	defer a.endQuery()
 	a.store.mu.Lock()
-	p, c, _, revision, err := a.accountDraftSnapshot(ctx, id, d)
+	p, c, _, revision, err := a.accountDraftSnapshot(qctx, id, d)
 	inputConfig := c
 	c = a.rotatedAccountDraft(id, c)
 	delete(a.validations, id)
@@ -64,8 +71,6 @@ func (a *Accounts) ValidateProviderAccount(ctx context.Context, id string, d Pro
 	if err != nil {
 		return ProviderAccountValidation{}, err
 	}
-	qctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 	result := ProviderAccountValidation{Balance: AccountBalance{Status: QueryStatus{State: "unknown"}}}
 	h, queryErr := a.connection(qctx, c, p.Request.Proxy)
 	if queryErr == nil {

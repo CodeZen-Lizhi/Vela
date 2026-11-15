@@ -76,15 +76,26 @@
 .provider-query-layout { display:grid; grid-template-columns:170px minmax(0,1fr); gap:20px; }
 .provider-methods { display:flex; flex-direction:column; gap:7px; }
 
-/* 各列按内容长度分配固定比例并随容器伸缩，短状态列收紧，名称和 Key 保留更多空间。 */
-.provider-table:not(.provider-key-table) th:nth-child(1) { width:20%; }
-.provider-table:not(.provider-key-table) th:nth-child(2) { width:11%; }
-.provider-table:not(.provider-key-table) th:nth-child(3) { width:16%; }
-.provider-table:not(.provider-key-table) th:nth-child(4) { width:8%; }
-.provider-table:not(.provider-key-table) th:nth-child(5) { width:9%; }
-.provider-table:not(.provider-key-table) th:nth-child(6) { width:13%; }
-.provider-table:not(.provider-key-table) th:nth-child(7) { width:7%; }
-.provider-table:not(.provider-key-table) th:nth-child(8) { width:16%; }
+@media(min-width:901px) {
+/* 列宽取当前内容的固有宽度并限制上下界；剩余空间留在表格末尾，不摊入短文字列。 */
+.provider-table:not(.provider-key-table) {
+ display:grid;
+ grid-template-columns:fit-content(240px) fit-content(144px) fit-content(220px) fit-content(120px) fit-content(96px) fit-content(260px) 64px 166px;
+}
+.provider-table:not(.provider-key-table) :is(thead,tbody,tr) {
+ display:grid;
+ grid-template-columns:subgrid;
+ grid-column:1/-1;
+}
+.provider-table:not(.provider-key-table) :is(th,td) { min-width:0; overflow:hidden; }
+.provider-table:not(.provider-key-table) :is(th,td):nth-child(1) { min-width:152px; }
+.provider-table:not(.provider-key-table) :is(th,td):nth-child(2) { min-width:88px; }
+.provider-table:not(.provider-key-table) :is(th,td):nth-child(3) { min-width:104px; }
+.provider-table:not(.provider-key-table) :is(th,td):nth-child(4) { min-width:72px; }
+.provider-table:not(.provider-key-table) :is(th,td):nth-child(5) { min-width:72px; }
+.provider-table:not(.provider-key-table) :is(th,td):nth-child(6) { min-width:144px; }
+.provider-table:not(.provider-key-table) td:nth-child(6) > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
 .provider-table td { white-space:normal; overflow-wrap:anywhere; }
 .provider-identity > a { flex-shrink:0; }
 /* 短内容列统一居中，避免余额靠右而健康靠左造成相邻列视觉拥挤。 */

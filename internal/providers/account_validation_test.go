@@ -3,12 +3,47 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 )
+
+// TestAccountValidationQueueTimeout 验证后台批次占用查询席位时，前台验证仍在总时限内返回，不无限锁住表单。
+func TestAccountValidationQueueTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a := &Accounts{queryMu: make(chan struct{}, 1)}
+		if err := a.beginQuery(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer func() {
+			cancel()
+			synctest.Wait()
+			a.endQuery()
+		}()
+		done := make(chan error, 1)
+		go func() {
+			_, err := a.ValidateProviderAccount(ctx, "queued-provider", ProviderAccountDraft{})
+			done <- err
+		}()
+		synctest.Wait()
+		time.Sleep(61 * time.Second)
+		synctest.Wait()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("验证应明确返回超时，实际为 %v", err)
+			}
+		default:
+			t.Fatal("排队超过验证总时限仍未返回，前台会一直显示正在验证")
+		}
+	})
+}
 
 // TestAccountValidationLifecycle 通过真实 HTTP 和 SQLite 核对保存零请求、临时验证、取消、草稿失效与一次性应用。
 func TestAccountValidationLifecycle(t *testing.T) {

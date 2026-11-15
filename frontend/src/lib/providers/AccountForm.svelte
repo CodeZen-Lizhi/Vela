@@ -19,7 +19,7 @@
     onclose: () => void;
     /** 重读父页面的本地账户与 Key 状态。 */
     onupdated: () => Promise<void>;
-    /** 加载、验证和保存期间保护父弹窗关闭入口。 */
+    /** 读取和保存期间保护关闭入口；验证期间允许离开，不应用迟到结果。 */
     onbusy?: (busy: boolean) => void;
   } = $props();
   /** 旧月配额与签到字段兼容保留；验证引用仅在提交保存时附加。 */
@@ -30,7 +30,7 @@
   let loading = $state(true);
   /** 当前操作；Key 后台同步不占用弹窗忙碌态。 */
   let pending = $state<"validate" | "save" | null>(null);
-  /** 验证和保存执行期间锁定输入与关闭入口。 */
+  /** 验证和保存期间锁定输入，关闭入口仅在读取和保存期间锁定。 */
   const saving = $derived(pending !== null);
   /** 本地读取、保存或无法执行验证时的错误。 */
   let error = $state("");
@@ -43,7 +43,7 @@
   /** 临时反馈只对当前输入生效。 */
   const feedbackCurrent = $derived(validation !== null && validatedFingerprint === fingerprint());
 
-  $effect(() => { onbusy?.(loading || saving); });
+  $effect(() => { onbusy?.(loading || pending === "save"); });
   $effect(() => {
     if (validation && validatedFingerprint !== fingerprint()) {
       releaseValidation(validation.id);
@@ -111,8 +111,8 @@
     } catch (cause) { if (active) error = `保存失败：${String(cause)}`; }
     finally { if (active) pending = null; }
   }
-  /** 取消不保存配置、余额或 Key，仅由卸载清除临时验证。 */
-  function close(): void { if (!loading && !saving) onclose(); }
+  /** 验证中也允许关闭；卸载及迟到响应均清除临时结果，不保存配置或余额。 */
+  function close(): void { if (!loading && pending !== "save") onclose(); }
 </script>
 
 <form class="account-form" onsubmit={save} aria-busy={loading || saving}>
@@ -132,7 +132,7 @@
     {/if}
     {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
     <footer>
-      <Button type="button" variant="outline" disabled={loading || saving} onclick={close}>{feedbackCurrent ? "关闭" : "取消"}</Button>
+      <Button type="button" variant="outline" disabled={loading || pending === "save"} onclick={close}>{feedbackCurrent ? "关闭" : "取消"}</Button>
       {#if !account && !loading}
         <Button type="button" variant="outline" onclick={() => void load()}>重新读取</Button>
       {:else}
