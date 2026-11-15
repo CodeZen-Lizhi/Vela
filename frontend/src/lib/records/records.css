@@ -248,21 +248,41 @@
 /* 高亮由现有单元格生成并相对整行定位；直接放在 tr 上会形成匿名列，挤乱表格。 */
 .record-row[data-record-state="active"] { position: relative; background: transparent; }
 .record-row[data-record-state="active"]:hover { background: transparent; }
+.record-row[data-record-state="active"] > td:last-child::before,
 .record-row[data-record-state="active"] > td:last-child::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  box-shadow: inset 0 0 20px 3px color-mix(in srgb, var(--primary) 23%, transparent), inset 0 0 5px color-mix(in srgb, var(--primary) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
-  opacity: .5;
+  background-size: 140% 100%;
+  filter: blur(7px);
+  clip-path: inset(0);
+  opacity: .65;
 }
-@keyframes record-row-diffuse {
-  0%, 100% { opacity: .14; }
-  48% { opacity: 1; }
+/* 两层疏密不同的边缘雾团错相漂移，中央留白，裁剪模糊避免染到相邻记录。 */
+.record-row[data-record-state="active"] > td:last-child::before {
+  background-image:
+    radial-gradient(ellipse 24% 46% at 16% 0%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 78%),
+    radial-gradient(ellipse 30% 40% at 68% 100%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 80%),
+    radial-gradient(ellipse 18% 34% at 90% 0%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 80%);
+}
+.record-row[data-record-state="active"] > td:last-child::after {
+  background-image:
+    radial-gradient(ellipse 28% 42% at 32% 100%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 80%),
+    radial-gradient(ellipse 22% 48% at 75% 0%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 78%),
+    radial-gradient(ellipse 16% 38% at 4% 60%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 80%);
+  background-position: 100% 50%;
+}
+@keyframes record-row-mist {
+  from { background-position: 0% 50%; opacity: .45; }
+  to { background-position: 100% 50%; opacity: .8; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .record-row[data-record-state="active"] > td:last-child::after { animation: record-row-diffuse 4.2s cubic-bezier(.45, 0, .55, 1) infinite; }
+  .record-row[data-record-state="active"] > td:last-child::before,
+  .record-row[data-record-state="active"] > td:last-child::after { animation: record-row-mist 8s ease-in-out infinite alternate; }
+  .record-row[data-record-state="active"] > td:last-child::after { animation-delay: -5s; animation-direction: alternate-reverse; }
+  .record-row[data-record-state="active"]:nth-child(even) > td:last-child::before { animation-delay: -3s; }
+  .record-row[data-record-state="active"]:nth-child(even) > td:last-child::after { animation-delay: -7s; }
 }
 .record-row[data-record-state="active"] .record-model { color: var(--primary); }
 .record-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
