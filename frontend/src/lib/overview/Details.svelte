@@ -88,7 +88,7 @@
       </Table.Row>{/each}</Table.Body>
     </Table.Root></div>
     <div class="overview-details-mobile">
-      <div class="overview-details-sort"><span>排序</span><ToggleGroup.Root spacing={1} type="single" variant="segmented" size="xs" value={sort ?? ""} onValueChange={value => { sort = value ? value as Sort : null; descending = true; }} aria-label="明细排序">{#each columns as column}<ToggleGroup.Item value={column.key}>{column.label}</ToggleGroup.Item>{/each}</ToggleGroup.Root><Button variant="ghost" size="icon-xs" aria-label={sort ? descending ? "改为升序" : "取消排序" : "未排序"} disabled={!sort} onclick={() => { if (sort) changeSort(sort); }}>{#if descending}<ArrowDown />{:else}<ArrowUp />{/if}</Button></div>
+      <div class="overview-details-sort"><span>排序</span><ToggleGroup.Root spacing={1} type="single" variant="segmented" size="xs" allowEmpty value={sort ?? ""} onValueChange={value => { sort = value ? value as Sort : null; descending = true; }} aria-label="明细排序">{#each columns as column}<ToggleGroup.Item value={column.key}>{column.label}</ToggleGroup.Item>{/each}</ToggleGroup.Root><Button variant="ghost" size="icon-xs" aria-label={sort ? descending ? "改为升序" : "取消排序" : "未排序"} disabled={!sort} onclick={() => { if (sort) changeSort(sort); }}>{#if descending}<ArrowDown />{:else}<ArrowUp />{/if}</Button></div>
       {#each groups as group}<article class="overview-detail-card"><header>{@render entity(group.name, group.detail)}</header><dl>{#each columns as column}<div><dt>{column.label}</dt><dd>{#if column.key === "tokens"}<TokenCell total={group.total} />{:else}{display(group.total, column.key)}{/if}</dd></div>{/each}</dl></article>{/each}
     </div>
   {:else}<p class="text-sm text-muted-foreground">当前范围暂无用量明细。</p>{/if}

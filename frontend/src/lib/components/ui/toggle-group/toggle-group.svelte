@@ -27,6 +27,8 @@
 		ref = $bindable(null),
 		value = $bindable(),
 		class: className,
+		onValueChange,
+		allowEmpty = false,
 		size = "default",
 		spacing = 0,
 		orientation = "horizontal",
@@ -34,9 +36,19 @@
 		...restProps
 	}: ToggleGroupPrimitive.RootProps &
 		ToggleVariants & {
+			/** 单选默认保留当前项；仅取消排序等业务允许主动清空。 */
+			allowEmpty?: boolean;
 			spacing?: number;
 			orientation?: "horizontal" | "vertical";
 		} = $props();
+
+	/** 在原始控件写入前拒绝取消必选项，不触发空值回调；多选仍按原规则切换。 */
+	function setValue(next: never): void {
+		if (restProps.type === "single" && next === "" && !allowEmpty) return;
+		value = next;
+		// 单选/多选由底层按 type 配对；never 仅兼容其联合类型绑定，不转换运行时值。
+		onValueChange?.(next);
+	}
 
 	setToggleGroupCtx({
 		get variant() {
@@ -54,12 +66,9 @@
 	});
 </script>
 
-<!--
-Discriminated Unions + Destructing (required for bindable) do not
-get along, so we shut typescript up by casting `value` to `never`.
--->
+<!-- 单选和多选的联合类型经解构后无法关联，绑定沿用 never 兼容；运行时值仍由 type 决定。 -->
 <ToggleGroupPrimitive.Root
-	bind:value={value as never}
+	bind:value={() => value as never, setValue}
 	bind:ref
 	{orientation}
 	data-slot="toggle-group"
