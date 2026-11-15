@@ -8,7 +8,7 @@
 				/** 紧凑圆角标签按语义着色：info 主信息、positive 计量、neutral 中性、negative 失败。 */
 				info: "h-5 rounded-md border border-primary/15 bg-primary/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-primary",
 				/** 记录业务类型使用淡紫色矩形标签，与同尺寸的传输标签上下对齐。 */
-				category: "h-5 rounded-md border border-parameter/25 bg-parameter/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-parameter",
+				category: "h-5 rounded-md border border-parameter/25 bg-parameter-soft px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-parameter",
 				positive: "h-5 rounded-md border border-positive/20 bg-positive/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-positive",
 				neutral: "h-5 rounded-md border border-border bg-muted/40 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-muted-foreground",
 				negative: "h-5 rounded-md border border-destructive/15 bg-destructive/5 px-1.5 py-0 text-[11px] font-medium normal-case tracking-normal text-destructive",
@@ -20,7 +20,7 @@
 				transport: "h-4 gap-1 rounded-md px-1.5 py-0 text-[11px] font-normal normal-case tracking-normal text-positive",
 				metadata: "h-4 gap-1 rounded-md px-1.5 py-0 text-[11px] font-normal normal-case tracking-normal text-muted-foreground",
 				/** 模型强度与层级沿原型使用淡紫色胶囊，不转换原始大小写。 */
-				parameter: "h-4 rounded-full border border-parameter/40 bg-parameter/10 px-1.5 py-0 text-[10px] font-semibold normal-case tracking-normal text-parameter",
+				parameter: "h-4 rounded-full border border-parameter/40 bg-parameter-soft px-1.5 py-0 text-[10px] font-semibold normal-case tracking-normal text-parameter",
 				default: "text-foreground [a]:hover:text-foreground/70",
 				secondary: "text-muted-foreground [a]:hover:text-foreground",
 				destructive: "text-destructive [a]:hover:text-destructive/70 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",

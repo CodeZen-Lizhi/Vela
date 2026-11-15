@@ -44,7 +44,7 @@
   --secondary: #f1f5f9;
   --secondary-foreground: #24334d;
   --muted: #f4f6f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #69707e;
   --accent: #eff6ff;
   --accent-foreground: #1d4ed8;
   --destructive: #b42332;
@@ -54,6 +54,8 @@
   --caution: #a65a13;
   /* 模型参数沿认可原型使用紫色，独立于运行状态与主操作色。 */
   --parameter: #5446b4;
+  /* 浅紫底独立于文字色，避免低比例混色使参数和供应商背景泛白。 */
+  --parameter-soft: #eae7fa;
   --border: #e2e8f0;
   --input: #d5dce6;
   --ring: #2563eb;
@@ -82,6 +84,7 @@
     --positive: #60cfb2;
     --caution: #efb36a;
     --parameter: #c7bdfa;
+    --parameter-soft: #38304f;
     --border: #28303c;
     --input: #343e4d;
     --ring: #6ea0ff;
@@ -108,10 +111,11 @@
   --color-positive: var(--positive);
   --color-caution: var(--caution);
   --color-parameter: var(--parameter);
+  --color-parameter-soft: var(--parameter-soft);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: "Vela Dollar", "Manrope Variable", sans-serif;
+  --font-sans: "Vela Dollar", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-serif: "Newsreader Variable", serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -129,7 +133,7 @@
   }
 
   body {
-    @apply min-h-screen bg-background font-sans text-foreground antialiased;
+    @apply min-h-screen bg-background font-sans text-foreground;
     margin: 0;
   }
 
