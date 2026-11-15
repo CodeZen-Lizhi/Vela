@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -224,19 +223,9 @@ func TestReportReplacementAndMappingInvalidation(t *testing.T) {
 	}
 }
 
-// TestLiveRoundScoring 经真实HTTP和固定上游样本观察真实排名、结论、重试与最近报告替换。
+// TestLiveRoundScoring 经真实HTTP和三条不同的固定上游样本观察真实排名、结论、重试与最近报告替换。
 func TestLiveRoundScoring(t *testing.T) {
-	var fixtureData struct {
-		Cases []struct{ Outputs []struct{ Text string } }
-	}
-	data, err := os.ReadFile("fingerprint/testdata/analyze-snapshot.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = json.Unmarshal(data, &fixtureData); err != nil {
-		t.Fatal(err)
-	}
-	text := fixtureData.Cases[0].Outputs[0].Text
+	outputs := scoringTestOutputs(t)
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer sk-fixture-0" {
@@ -247,6 +236,7 @@ func TestLiveRoundScoring(t *testing.T) {
 			http.Error(w, "temporary", 503)
 			return
 		}
+		text := outputs[(attempt-2)%3].Text
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": text}, "finish_reason": "stop"}}}); err != nil {
 			t.Error(err)

@@ -10,6 +10,7 @@
 
 - `go test ./...` 通过；受影响验证、应用及桌面包 race 与 vet 通过。核心按同提交上游 Python 独立期望验证评分，与 Go 被测算法分离。
 - `npm run check` 0 错误/0 警告；MyGo arm64 App/DMG 构建通过。
+
 - 隔离 MyGo 数据目录经真实 IPC 建立供应商/模型/Key，实际页面完成新建线路、手选协议、保存重读、立即检测及报告打开；可控本地上游恰好收到三次固定认证采样，内置算法返回 69 个候选，报告展示真实首候选与样本。复测后仍一份最新报告，定时锚点不变；实际退出隔离应用并重新启动后，计划及最近报告（三条样本、69 个候选）重读一致，未启动检测。临时证据位于 `.cache/verification-acceptance/`。
 
 - 完整自检发现并修复：失效线路仍可关闭自动运行；执行中 Key 停用或撤权时替换旧成功并显示本轮终止原因。对应真实 HTTP/SQLite 回归通过。报告抽屉已按真实桌面截图修正定位，候选默认前 8 个，可展开全部。
@@ -81,3 +82,10 @@
 - 模型名称与请求身份单行省略，模型名复用 Hint 查看全文，避免长名称占满相邻列；窄窗时间可按日期/时间换行。计划表沿用原五列及线路数呈现。
 - Ego 运行真实 VerificationPage，隔离快照覆盖短名称、长模型/Key 名称及计划切换；1440/1100/820px 无页面或表格横向溢出，表头及数据内边距一致。截图 `.cache/verification-toolbar/long-columns-1440.png`、`long-columns-820.png`。Svelte 检查零错误零警告；未实测桌面 WebView。
 - 需求同步至模型验证 MV-R01、MV-A16。
+
+## 重复证据判定与消融复核（2026-11-15）
+
+- 业务结论层增加重复数字序列检查，评分核心、排名和原始置信度保持上游语义。真实 HTTP → 固定目标采样 → 完整评分 → SQLite 保存及重新初始化重读，覆盖完全重放、两条仅格式不同的回答、同一序列的不同长度前缀，均为证据不足，保留 69 个候选及三条样本，每组恰好三次出站。
+- `TestLiveRoundScoring` 改用三条不同的上游 fixture 回答，继续覆盖接近、差异、未知参考身份、首次 503 重试、报告替换和复测。临时 Go overlay 移除新增判定后，三类重放用例全部在业务断言处失败；启用时全部通过。
+- `go test ./internal/verification/... -count=1`、`go vet ./internal/verification/...`、`go test -race ./internal/verification -run 'TestLiveRound(RepeatedEvidence|Scoring)$' -count=1` 通过。固定输入仍只用于回归与一致性，不代表独立模型识别准确率；未进行收费上游、原生窗口或容量性能验收。
+- 需求依据为[模型验证需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/model-verification.md) MV-R06～R07、MV-A26～A27；独立留出评估仍未完成。

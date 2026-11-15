@@ -49,6 +49,8 @@ func (d *Detector) Detect(ctx context.Context, config DetectConfig, options ...D
 
 注意：指定提交中原始 `sdk/conformance/analyze.json` 对应 `2026-10-25T10:04:10.682171+00:00` 数据，与该提交 bank/bin 不匹配。`testdata/conformance/` 完整保留原始 fixture；解析、请求、流和模板直接与之比较。评分使用原始 12 组固定输入，以同提交上游 Python SDK `_codec / _analysis / _ranker / _features` 及当前 bank/bin 独立重算，保存为 `testdata/analyze-snapshot.json`；没有使用本 Go 实现产生测试期望。
 
+这里的“独立”指期望值由另一语言实现生成，不代表独立评估样本。2026-11-15 离线消融中，六组完整评分输入的 18 条回答直方图均命中对应模型参考库；移除位置分支、或仅保留生产特征变换与七近邻时，六组首候选仍与固定期望一致。这只能说明该输入范围内的一致性，不能证明真实准确率、分支无用或复杂评分带来增益；有效性评估须按模块需求 MV-R06 / MV-A27 使用独立留出数据，变体不能沿用完整算法的置信度校准。重复回答的证据判定由 `verification` 业务层负责，本包继续保持固定版本上游算法一致。
+
 重算仅需 Python 与 NumPy（本次环境 NumPy 2.2.6），不载入上游网络/缓存模块：
 
 ```sh

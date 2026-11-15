@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -224,7 +225,24 @@ func (m *Manager) runRound(ctx context.Context, targets []VerificationTarget) {
 	}
 }
 
-// detect 保持固定请求与上游评分；按显式参考身份或原始模型 ID 比较，置信度不低于75%且三样本有效才给出比较结论。
+// repeatedSampleNumbers 检查实际评分序列是否重复，包括按不同题目长度截断的同一序列。
+// 仅在三条样本均通过上游评分校验后调用；较短序列全部相同时拒绝将其计为独立证据，不推断模型身份。
+func repeatedSampleNumbers(outputs []fingerprint.Output) bool {
+	parsed := make([][]int, 0, len(outputs))
+	for _, output := range outputs {
+		numbers := fingerprint.ParseNumbers(output.Text)
+		for _, previous := range parsed {
+			length := min(len(numbers), len(previous))
+			if length > 0 && slices.Equal(numbers[:length], previous[:length]) {
+				return true
+			}
+		}
+		parsed = append(parsed, numbers)
+	}
+	return false
+}
+
+// detect 保持固定请求与上游评分；三条样本有效且未发现重复序列、置信度不低于75%时，才比较预期身份。
 func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target VerificationTarget) VerificationReport {
 	report := VerificationReport{ID: identity(target), Target: target, AlgorithmVersion: "lm-detector/a7e9d3056e019827904dd50722c20b4a0c896738", DataVersion: d.BuiltAt(), Conclusion: "insufficient", State: "complete", Candidates: []VerificationCandidate{}, Samples: make([]VerificationSample, 3)}
 	challenges, err := fingerprint.GenerateChallenges(3)
@@ -271,7 +289,9 @@ func (m *Manager) detect(ctx context.Context, d *fingerprint.Detector, target Ve
 			for _, c := range analysis.Results {
 				report.Candidates = append(report.Candidates, VerificationCandidate{Model: c.Model, Name: c.DisplayName, Family: c.FamilyName, Score: c.Score, Probability: c.Probability})
 			}
-			if len(report.Candidates) > 0 && report.Candidates[0].Probability != nil && *report.Candidates[0].Probability >= 0.75 && analysis.Decision == "scored" && analysis.UsedOutputs == 3 {
+			if analysis.Decision == "scored" && analysis.UsedOutputs == 3 && repeatedSampleNumbers(outputs) {
+				report.Reason = "样本数字序列重复或仅长度不同，无法作为三份独立证据，请重新检测"
+			} else if len(report.Candidates) > 0 && report.Candidates[0].Probability != nil && *report.Candidates[0].Probability >= 0.75 && analysis.Decision == "scored" && analysis.UsedOutputs == 3 {
 				reference := target.ReferenceModel
 				if reference == "" {
 					reference = target.OriginalModel
