@@ -197,6 +197,22 @@ export interface CleanupPreview {
   count: number;
 }
 
+/** ConfigurationFile 是用户从系统对话框选中的加密文件；取消时两个字段均为空，不向页面暴露本机绝对路径。 */
+export interface ConfigurationFile {
+  /** Name 为展示用文件名；Content 为有体积上限的加密 JSON，不包含明文认证信息。 */
+  name: string;
+  content: string;
+}
+
+/** ConfigurationPreview 只向页面返回资源数量，不暴露解密后的认证信息。 */
+export interface ConfigurationPreview {
+  /** Models、Providers、Keys、Mappings 分别为包内模型、供应商、Key 和请求名映射数量，不是实际覆盖数量。 */
+  models: number;
+  providers: number;
+  keys: number;
+  mappings: number;
+}
+
 /** Create 提交创建草稿，目录资料由服务端读取，空来源表示手动创建。 */
 export interface Create {
   /** OriginalPricing 在线确认时看到的来源价格快照；手动创建或旧版提交可省略。 */
@@ -1330,6 +1346,14 @@ export const VelaService = {
   downloadApplicationUpdate(): Promise<void> {
     return call("VelaService.DownloadApplicationUpdate");
   },
+  /** ExportConfiguration 读取同一数据库快照并直接加密，页面只收到可跨机解密的配置包。 */
+  exportConfiguration(password: string): Promise<string> {
+    return call("VelaService.ExportConfiguration", password);
+  },
+  /** ExportConfigurationFile 生成密码加密配置并通过原生对话框保存；取消返回 false，写入失败保留已有目标文件。 */
+  exportConfigurationFile(password: string): Promise<boolean> {
+    return call("VelaService.ExportConfigurationFile", password);
+  },
   /** GlobalProxy 读取唯一的全局网络设置。 */
   globalProxy(): Promise<Proxy> {
     return call("VelaService.GlobalProxy");
@@ -1337,6 +1361,13 @@ export const VelaService = {
   /** HasAccessKey 报告是否已设置网关访问密钥，不返回密钥内容。 */
   hasAccessKey(): Promise<boolean> {
     return call("VelaService.HasAccessKey");
+  },
+  /**
+   * ImportConfiguration 在确认时重新校验包，原子合并模型、供应商、认证、映射和调度；失败全部回滚。
+   * mode 只能为 overwrite 或 preserve，两种模式均不删除本机独有配置或触碰请求记录、报告及累计统计。
+   */
+  importConfiguration(content: string, password: string, mode: string): Promise<ConfigurationPreview> {
+    return call("VelaService.ImportConfiguration", content, password, mode);
   },
   /** ListModels 读取本地模型完整配置。 */
   listModels(): Promise<Model[]> {
@@ -1353,6 +1384,10 @@ export const VelaService = {
   /** Overview 返回长期小时汇总，通过供应商模块解密解析当前 Key 名称，不在统计 SQL 中读取配置密文。 */
   overview(): Promise<OverviewSnapshot> {
     return call("VelaService.Overview");
+  },
+  /** PreviewConfiguration 解密并校验整包结构、规则和关联，仅返回数量，不写入任何数据或凭据。 */
+  previewConfiguration(content: string, password: string): Promise<ConfigurationPreview> {
+    return call("VelaService.PreviewConfiguration", content, password);
   },
   /** PreviewRequestCleanup 预览已结束请求清理数量与固定截止时刻。 */
   previewRequestCleanup(days: number): Promise<CleanupPreview> {
@@ -1393,6 +1428,10 @@ export const VelaService = {
   /** Providers 一次读取供应商页需要的内容：供应商概览与表单默认值。 */
   providers(): Promise<ProviderSnapshot> {
     return call("VelaService.Providers");
+  },
+  /** ReadConfigurationFile 通过原生对话框选择文件，仅读取有界的普通文件；取消不影响现有配置。 */
+  readConfigurationFile(): Promise<ConfigurationFile> {
+    return call("VelaService.ReadConfigurationFile");
   },
   /** RefreshProviderAccounts 主动查询指定供应商，空 ID 查询全部（包括只有 Key 独立连接的供应商）。 */
   refreshProviderAccounts(providerID: string): Promise<ProviderAccountRefresh> {

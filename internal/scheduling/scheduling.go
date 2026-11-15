@@ -80,6 +80,50 @@ func (s *Store) Policy(ctx context.Context) (SchedulingPolicy, error) {
 	return p, tx.Commit()
 }
 
+// ExportConfiguration 在调用方事务内读取完整策略，供配置文件获得同一时刻的资源和顺序。
+func (s *Store) ExportConfiguration(ctx context.Context, tx *sql.Tx) (SchedulingPolicy, error) {
+	return readPolicy(ctx, tx)
+}
+
+// ImportConfiguration 在整包事务内应用调度；保留模式保留已保存的策略和原有顺序，新增供应商按来源顺序追加。
+// 覆盖模式将导入供应商排在来源顺序，再追加本机独有项；不导入外部修订号或运行健康状态。
+func (s *Store) ImportConfiguration(ctx context.Context, tx *sql.Tx, incoming SchedulingPolicy, providerIDs map[string]string, previous SchedulingPolicy, overwrite bool) error {
+	if err := incoming.Strategy.Validate(); err != nil {
+		return err
+	}
+	strategy := incoming.Strategy
+	if !overwrite {
+		var saved bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM scheduling_policy WHERE id=1)").Scan(&saved); err != nil {
+			return err
+		}
+		if saved {
+			strategy = previous.Strategy
+		}
+	}
+	order, seen := []string{}, map[string]bool{}
+	if !overwrite {
+		for _, id := range previous.ProviderOrder {
+			order, seen[id] = append(order, id), true
+		}
+	}
+	for _, sourceID := range incoming.ProviderOrder {
+		id, ok := providerIDs[sourceID]
+		if !ok {
+			return errors.New("调度顺序引用了未导入的供应商")
+		}
+		if !seen[id] {
+			order, seen[id] = append(order, id), true
+		}
+	}
+	for _, id := range previous.ProviderOrder {
+		if !seen[id] {
+			order, seen[id] = append(order, id), true
+		}
+	}
+	return writeConfiguration(ctx, tx, strategy, order, true)
+}
+
 // readPolicy 在调用方事务内同时读取策略、完整顺序和修订号，避免组合两个版本的配置。
 func readPolicy(ctx context.Context, tx *sql.Tx) (SchedulingPolicy, error) {
 	p := SchedulingPolicy{Strategy: DefaultStrategy, ProviderOrder: []string{}}
@@ -143,6 +187,18 @@ func (s *Store) saveConfiguration(ctx context.Context, strategy *SchedulingStrat
 	if strategy == nil {
 		strategy = &p.Strategy
 	}
+	if err = writeConfiguration(ctx, tx, *strategy, ids, replaceOrder); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// writeConfiguration 复用配置保存与整包导入的完整集合校验和修订更新，提交由调用方负责。
+func writeConfiguration(ctx context.Context, tx *sql.Tx, strategy SchedulingStrategy, ids []string, replaceOrder bool) error {
+	p, err := readPolicy(ctx, tx)
+	if err != nil {
+		return err
+	}
 	if replaceOrder {
 		rows, err := tx.QueryContext(ctx, "SELECT id FROM providers")
 		if err != nil {
@@ -174,10 +230,12 @@ func (s *Store) saveConfiguration(ctx context.Context, strategy *SchedulingStrat
 	} else {
 		ids = p.ProviderOrder
 	}
-	if *strategy == p.Strategy && slices.Equal(ids, p.ProviderOrder) {
-		return tx.Commit()
+	if strategy == p.Strategy && slices.Equal(ids, p.ProviderOrder) {
+		// 默认策略也需要保存为本机选择，后续“保留原有”导入才能区分已有策略与全新实例。
+		_, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO scheduling_policy(id,strategy) VALUES(1,?)", strategy)
+		return err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO scheduling_policy(id,strategy) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET strategy=excluded.strategy", *strategy); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO scheduling_policy(id,strategy) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET strategy=excluded.strategy", strategy); err != nil {
 		return fmt.Errorf("保存调度策略: %w", err)
 	}
 	if !slices.Equal(ids, p.ProviderOrder) {
@@ -193,5 +251,5 @@ func (s *Store) saveConfiguration(ctx context.Context, strategy *SchedulingStrat
 	if _, err = tx.ExecContext(ctx, "UPDATE scheduling_meta SET revision=revision+1 WHERE id=1"); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
