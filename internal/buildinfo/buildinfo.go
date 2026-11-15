@@ -4,4 +4,4 @@
 package buildinfo
 
 // Version 是运行时、前端与安装包共用的发布版本。
-const Version = "0.1.0-beta.3"
+const Version = "0.1.0-beta.4"
