@@ -23,5 +23,6 @@ subsetter.subset(font)
 # 派生字体另取名称，保留原作者版权和许可信息。
 for name_id, value in {1: "Vela Password Mask", 2: "Regular", 3: "VelaPasswordMask-Regular", 4: "Vela Password Mask", 6: "VelaPasswordMask-Regular"}.items():
     font["name"].setName(value, name_id, 3, 1, 0x409)
+font.recalcTimestamp = False
 font.flavor = "woff2"
 font.save(root / "frontend/src/lib/assets/fonts/password-mask.woff2")

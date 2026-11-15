@@ -220,7 +220,7 @@
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <InputGroup.Root class="min-w-0 flex-1">
-              <InputGroup.Input id="gateway-access-key" readonly aria-label="访问密钥" value={keyError && keySet === null ? "读取失败" : keySet === null ? "正在读取…" : !keySet ? "尚未设置" : revealed || "••••••••••••••••"} />
+              <InputGroup.Input id="gateway-access-key" readonly aria-label="访问密钥" value={keyError && keySet === null ? "读取失败" : keySet === null ? "正在读取…" : !keySet ? "尚未设置" : revealed || "****************"} />
               {#if keySet}
                 <InputGroup.Addon align="inline-end">
                   <InputGroup.Button size="icon-xs" aria-label={revealed ? "隐藏访问密钥" : "显示访问密钥"} aria-pressed={!!revealed} onclick={() => void toggleReveal()}>{#if revealed}<EyeOff />{:else}<Eye />{/if}</InputGroup.Button>
