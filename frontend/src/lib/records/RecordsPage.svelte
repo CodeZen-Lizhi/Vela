@@ -75,6 +75,8 @@
     ready = false,
     refreshing = false,
     activeReading = false;
+  /** 当前分页查询是否由实时轮询发起；关闭开关时只使这类查询失效。 */
+  let realtimeLoading = false;
   /** 每页条数沿用用户当前选择，筛选变化时保留。 */
   let pageSize = $state("20");
   /** 当前页共享逐帧展示时钟，实际记录查询仍按原周期进行。 */
@@ -127,22 +129,27 @@
     } else query.start = 0;
     return query;
   }
-  /** 读取分页及摘要，较旧响应不能覆盖筛选或翻页后的结果。 */
-  async function load(reset = false): Promise<void> {
+  /** 读取分页及摘要；实时查询可在关闭时失效，成功前保留当前插入顺序快照。 */
+  async function load(reset = false, automatic = false): Promise<void> {
     if (!desktop || disposed) return;
-    if (reset) q.before = 0;
+    const request = query();
+    if (reset) request.before = 0;
     const version = ++generation;
+    realtimeLoading = automatic;
     loading = true;
     error = "";
     try {
-      const next = await VelaService.requestRecords(query());
+      const next = await VelaService.requestRecords(request);
       if (disposed || version !== generation) return;
       result = next;
       q.before = next.before;
     } catch (cause) {
       if (!disposed && version === generation) error = errorMessage(cause);
     } finally {
-      if (!disposed && version === generation) loading = false;
+      if (!disposed && version === generation) {
+        loading = false;
+        realtimeLoading = false;
+      }
     }
   }
   /** 后续页只同步已展示活跃身份，不能被新请求挤动；摘要按相同快照重读。 */
@@ -194,12 +201,17 @@
     q.page = page;
     void load(page === 1);
   }
-  /** 先持久化用户选择，再同步按钮与轮询；写入失败保留原开关并反馈。 */
+  /** 先持久化开关；关闭时废弃在途实时查询并保留列表，保存失败仍维持原状态。 */
   function toggleRealtime(): void {
     try {
       const next = !realtime;
       localStorage.setItem(realtimeStorageKey, String(next));
       realtime = next;
+      if (!next && realtimeLoading) {
+        generation++;
+        loading = false;
+        realtimeLoading = false;
+      }
     } catch (cause) {
       notify(`实时设置保存失败：${errorMessage(cause)}`);
     }
@@ -236,7 +248,7 @@
     }, 1000);
     const live = setInterval(() => {
       if (realtime && q.page === 1 && !document.hidden && !loading)
-        void load(true);
+        void load(true, true);
     }, 3000);
     const visible = () => {
       if (!document.hidden) void refresh();
