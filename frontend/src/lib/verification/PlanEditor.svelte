@@ -1,9 +1,9 @@
 <script lang="ts">
   import * as Alert from "$lib/components/ui/alert";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
-  import { Trash2 } from "@lucide/svelte";
+  import { Plus, Trash2 } from "@lucide/svelte";
   import * as Field from "$lib/components/ui/field";
   import Choice from "./Choice.svelte";
   import type {
@@ -60,12 +60,12 @@
   let enabled = $state(untrack(() => plan?.enabled ?? false)),
     hours = $state(untrack(() => String(plan?.hours ?? 6)));
   let lines = $state<Draft[]>(
-    untrack(() => [
-      ...(plan?.lines.map((line) => ({ ...line, id: crypto.randomUUID() })) ??
-        []),
-      blank(),
-    ]),
+    untrack(() => plan
+      ? plan.lines.map((line) => ({ ...line, id: crypto.randomUUID() }))
+      : [blank()]),
   );
+  /** 编辑器节点用于新增后聚焦本表单中的模型选择。 */
+  let form: HTMLFormElement;
   let validation = $state("");
   /** 当前供应商可选目标和已完整配置的固定组合。 */
   const scope = $derived(
@@ -121,7 +121,7 @@
       ).values(),
     );
   }
-  /** 模型改变时清 Key 和参考选择，沿用同模型强度；末行选 Key 后保留空白尾行。 */
+  /** 模型改变时清 Key 和参考选择，沿用同模型强度；选择不新增线路。 */
   function change(
     line: Draft,
     field: "modelId" | "keyId" | "protocol" | "effort" | "referenceModel",
@@ -135,7 +135,13 @@
           ?.effort ?? "auto";
     }
     line[field] = value;
-    if (lines.at(-1)?.keyId) lines = [...lines, blank()];
+  }
+  /** 显式添加空白线路，并在渲染完成后聚焦该行模型选择。 */
+  async function add(): Promise<void> {
+    lines = [...lines, blank()];
+    validation = "";
+    await tick();
+    form.querySelector<HTMLButtonElement>(`[aria-label="第 ${lines.length} 行模型"]`)?.focus();
   }
   /** 新建时切换供应商清空草稿，避免跨供应商提交绑定。 */
   function changeProvider(value: string): void {
@@ -143,11 +149,10 @@
     lines = [blank()];
     validation = "";
   }
-  /** 移除线路后始终保留可继续输入的一行。 */
+  /** 移除指定草稿行，允许删空，由添加入口重新建立线路。 */
   function remove(id: string): void {
     lines = lines.filter((line) => line.id !== id);
-    if (!lines.some((line) => !line.modelId && !line.keyId && !line.protocol))
-      lines = [...lines, blank()];
+    validation = "";
   }
   /** 校验完整性、协议、重复和实时兼容关系，再提交显式线路。 */
   async function submit(event: SubmitEvent): Promise<void> {
@@ -156,12 +161,16 @@
     const configured = lines.filter(
       (line) => line.modelId || line.keyId || line.protocol,
     );
-    if (
-      !configured.length ||
-      configured.some((line) => !line.modelId || !line.keyId || !line.protocol)
-    ) {
-      validation =
-        "请完成至少一条线路；有内容的行需选完模型、Key 和请求协议，或移除该行。";
+    if (!configured.length) {
+      validation = "请完成至少一条线路。";
+      return;
+    }
+    const incomplete = configured.find((line) => !line.modelId || !line.keyId || !line.protocol);
+    if (incomplete) {
+      const row = lines.indexOf(incomplete) + 1;
+      validation = `请补齐第 ${row} 行的模型、Key 和请求协议，或移除该行。`;
+      const field = !incomplete.modelId ? "模型" : !incomplete.keyId ? "Key" : "请求协议";
+      form.querySelector<HTMLButtonElement>(`[aria-label="第 ${row} 行 ${field}"]`)?.focus();
       return;
     }
     const identities = configured.map(
@@ -200,7 +209,7 @@
   }
 </script>
 
-<form class="v-editor" onsubmit={submit}>
+<form bind:this={form} class="v-editor" onsubmit={submit}>
   <div class="v-editor-body">
     <Field.Set disabled={busy} class="v-fieldset">
       <section class="v-editor-scope" aria-label="运行范围">
@@ -316,7 +325,6 @@
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                disabled={!line.modelId && !line.keyId && !line.protocol}
                 aria-label={`移除第 ${index + 1} 行`}
 
                 ><Trash2 /></Button
@@ -324,6 +332,9 @@
             </div>
           {/each}
         </div>
+        <Button type="button" variant="ghost" size="sm" onclick={add}>
+          <Plus />{lines.length ? "添加线路" : "添加第一条线路"}
+        </Button>
         <div class="v-math" aria-live="polite">
           {#each [{ name: "执行模型", value: models }, { name: "Key 绑定", value: complete.length }, { name: "固定组合", value: complete.length }, { name: "每轮样本", value: complete.length * 3 }] as item}<div
             >

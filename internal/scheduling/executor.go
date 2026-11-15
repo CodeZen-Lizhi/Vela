@@ -78,6 +78,8 @@ type AttemptResult struct {
 	ResourceIDs []string
 	// Warmup 表示 generate:false 的有效协议预热，不将无生成内容误判失败，也不给模型健康回分。
 	Warmup bool
+	// compactions 仅包含完整成功响应的原生压缩摘要，用于复用已有短期绑定，不保存密文。
+	compactions []string
 }
 
 // AttemptRunner 实际执行一次同格式上游调用，不负责重试、准入与健康结算。
@@ -144,7 +146,7 @@ func (e *Executor) ResetHealth(ctx context.Context, keyID, version string) error
 	return nil
 }
 
-// Execute 按一次配置快照完成选路、有限重试和故障转移；写出结果后绝不重放。
+// Execute 按一次配置快照完成选路、有限重试和故障转移；流式空闲由实际读取判断，写出结果后绝不重放。
 func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Writer) (result ExecutionResult, executionErr error) {
 	var finish func(error) error
 	defer func() {
@@ -173,7 +175,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	if e.Policies == nil || e.Runtime == nil || e.Source == nil || e.Runner == nil {
 		return result, errors.New("调度执行依赖尚未初始化")
 	}
-	accepted := time.Now()
 	var input map[string]json.RawMessage
 	if err := json.Unmarshal(req.Body, &input); err != nil || input == nil {
 		return result, errors.New("调用正文必须是 JSON 对象")
@@ -202,6 +203,10 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	candidates, err := e.Source.Candidates(ctx, req)
 	if err != nil {
 		return result, err
+	}
+	compactionBound := false
+	if e.Continuations != nil && (req.Request.Protocol == "openai:responses" || req.Request.Protocol == "responses" || req.Request.Protocol == "openai:responses:compact") {
+		candidates, compactionBound = e.Continuations.resolveCompactions(req, candidates)
 	}
 	if req.WebSocket != nil {
 		candidates, err = req.WebSocket.filter(req, candidates)
@@ -234,7 +239,7 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 	}
 	allCandidates := candidates
 	candidates = e.Runtime.Rank(policy, req.Request, candidates)
-	if req.PreviousResponseID != "" && len(candidates) == 0 {
+	if (req.PreviousResponseID != "" || compactionBound) && len(candidates) == 0 {
 		return result, ErrContinuation
 	}
 	targets := make([]records.Target, 0, len(candidates))
@@ -264,7 +269,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 		}
 	}
 
-	deadlineSet := false
 	lastErr := error(ErrNoCandidates)
 	for _, c := range candidates {
 		attempts := c.Provider.Request.Attempts
@@ -310,22 +314,6 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 					break
 				}
 			}
-			if req.Stream && !deadlineSet {
-				duration := time.Duration(c.Provider.Request.RequestSeconds) * time.Second
-				if duration == 0 {
-					duration = 300 * time.Second
-				}
-				if req.Stream {
-					duration = time.Duration(c.Provider.Request.StreamTotalMillis) * time.Millisecond
-					if duration == 0 {
-						duration = 120 * time.Second
-					}
-				}
-				bounded, boundedCancel := context.WithDeadline(ctx, accepted.Add(duration))
-				defer boundedCancel()
-				ctx = bounded
-				deadlineSet = true
-			}
 			result.ProviderID = c.Provider.ID
 			result.KeyID = c.Key.ID
 			result.Attempts++
@@ -369,6 +357,9 @@ func (e *Executor) Execute(ctx context.Context, req ExecutionRequest, w io.Write
 				return result, lastErr
 			}
 		}
+	}
+	if compactionBound && result.Attempts == 0 {
+		return result, ErrContinuation
 	}
 	return result, lastErr
 }

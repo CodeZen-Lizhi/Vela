@@ -68,6 +68,8 @@
     error = $state(""),
     realtime = $state(false),
     selected = $state("");
+  /** 本机实时刷新偏好；未设置时默认关闭，切页或重启后恢复。 */
+  const realtimeStorageKey = "vela-records-realtime";
   let generation = 0,
     disposed = false,
     ready = false,
@@ -192,6 +194,16 @@
     q.page = page;
     void load(page === 1);
   }
+  /** 先持久化用户选择，再同步按钮与轮询；写入失败保留原开关并反馈。 */
+  function toggleRealtime(): void {
+    try {
+      const next = !realtime;
+      localStorage.setItem(realtimeStorageKey, String(next));
+      realtime = next;
+    } catch (cause) {
+      notify(`实时设置保存失败：${errorMessage(cause)}`);
+    }
+  }
   /** 完整行点击进入对应详情，选中文本及行内操作不触发跳转。 */
   function openRecord(event: MouseEvent, id: string): void {
     if (event.defaultPrevented || event.button !== 0 || window.getSelection()?.toString().trim()) return;
@@ -210,6 +222,13 @@
     return () => clearTimeout(timer);
   });
   onMount(() => {
+    if (desktop) {
+      try {
+        realtime = localStorage.getItem(realtimeStorageKey) === "true";
+      } catch (cause) {
+        notify(`实时设置读取失败：${errorMessage(cause)}`);
+      }
+    }
     ready = true;
     void load(true);
     const active = setInterval(() => {
@@ -300,7 +319,7 @@
             size="sm"
             disabled={!desktop}
             aria-pressed={realtime}
-            onclick={() => (realtime = !realtime)}
+            onclick={toggleRealtime}
             ><Activity aria-hidden="true" />实时</Button
           ><Button
             variant="outline"

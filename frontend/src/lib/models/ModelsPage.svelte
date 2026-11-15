@@ -167,7 +167,7 @@
         error = `部分模型未更新：${result.failures.join("；")}`;
         notify(`价格同步部分失败：${result.updated} 个模型同步成功，${result.failures.length} 个失败，原因见页面提示`);
       } else {
-        notify("价格同步成功，已检查上游并同步来源价格，本地修改已保留");
+        notify("价格同步成功");
       }
     } catch (e) {
       error = `价格同步失败：${message(e)}`;

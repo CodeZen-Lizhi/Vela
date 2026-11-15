@@ -9,7 +9,7 @@ import "time"
 const (
 	// defaultAttempts 是总尝试次数（含首次）。
 	defaultAttempts = 1
-	// defaultStreamTotalMillis 是流式请求总超时，单位毫秒。
+	// defaultStreamTotalMillis 是流式空闲超时，单位毫秒；保留旧名称以兼容已有配置。
 	defaultStreamTotalMillis = 120_000
 	// defaultFirstByteSeconds 是首次响应超时，单位秒。
 	defaultFirstByteSeconds = 30
@@ -53,7 +53,7 @@ type ProxyChoice struct {
 type RequestPolicy struct {
 	// Attempts 总尝试次数（含首次），1～99；0 表示使用默认值。
 	Attempts int `json:"attempts"`
-	// StreamTotalMillis 流式请求总超时，单位毫秒，1000～1200000；0 表示使用默认值。
+	// StreamTotalMillis 流式空闲超时，单位毫秒，1000～1200000；0 使用默认值，沿用旧字段兼容配置。
 	StreamTotalMillis int `json:"streamTotalMillis"`
 	// FirstByteSeconds 首次响应超时，单位秒，1～300；0 表示使用默认值。
 	FirstByteSeconds int `json:"firstByteSeconds"`
@@ -145,7 +145,7 @@ type ProviderOverview struct {
 type ProviderDefaults struct {
 	// Attempts 总尝试次数（含首次）。
 	Attempts int `json:"attempts"`
-	// StreamTotalMillis 流式请求总超时，单位毫秒。
+	// StreamTotalMillis 流式空闲超时，单位毫秒；沿用旧字段兼容配置。
 	StreamTotalMillis int `json:"streamTotalMillis"`
 	// FirstByteSeconds 首次响应超时，单位秒。
 	FirstByteSeconds int `json:"firstByteSeconds"`

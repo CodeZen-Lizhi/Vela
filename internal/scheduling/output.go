@@ -56,8 +56,10 @@ func responsesItemOutput(item map[string]any) bool {
 	switch item["type"] {
 	case "message":
 		return outputParts(item["content"])
-	case "reasoning", "compaction":
+	case "reasoning":
 		return outputParts(item["summary"]) || outputParts(item["content"]) || nonemptyText(item["encrypted_content"])
+	case "compaction":
+		return nonemptyText(item["encrypted_content"])
 	case "function_call":
 		return nonemptyText(item["name"]) && nonemptyText(item["arguments"])
 	case "custom_tool_call":

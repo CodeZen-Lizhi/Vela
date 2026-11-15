@@ -7,7 +7,6 @@
 .provider-filter { width:160px; }
 .provider-toolbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
 .provider-table { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; font-size:12px; }
-.provider-table th { background:var(--muted); color:var(--muted-foreground); font-size:11px; font-weight:500; padding:12px 16px; white-space:nowrap; }
 .provider-table td { padding:18px 16px; border-top:1px solid var(--border); vertical-align:middle; }
 .provider-table tr[data-disabled=true] td { color:var(--muted-foreground); }
 .provider-table tbody tr { transition:background .15s; }
@@ -93,14 +92,14 @@
 
 /* 默认窗口或较宽侧栏下按剩余空间收紧表格留白，给状态和验证摘要留出文字宽度。 */
 @container workspace (max-width:1000px) {
- .provider-table th,.provider-table td { padding-inline:6px; }
+ .provider-table th,.provider-table td { --table-head-inset:6px; padding-inline:6px; }
  .provider-identity { gap:6px; }
 }
 
 .provider-key-table code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:1100px) {
  .provider-toolbar { padding:14px 16px; }
- .provider-table th,.provider-table td { padding:12px 6px; }
+ .provider-table th,.provider-table td { --table-head-inset:6px; padding:12px 6px; }
  .provider-identity { gap:6px; }
  .provider-key-summary { gap:4px; }
  .provider-drawer-heading { padding-left:20px; }

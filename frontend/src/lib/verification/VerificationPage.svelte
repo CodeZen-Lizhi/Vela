@@ -338,7 +338,7 @@
         验证数据尚未读取成功，请重试。
       </Empty.Root>{:else if tab === "results"}
       <Table.Root class="v-table"
-        ><Table.Header
+        ><Table.Header variant="list"
           ><Table.Row
             >{#each ["供应商", "执行模型", "执行 Key", "结论", "候选置信度", "最近检测", "操作"] as title}<Table.Head data-align={title==="操作"?"control":title==="候选置信度"?"number":undefined}
                 >{title}</Table.Head
@@ -355,7 +355,7 @@
                   ><Hint overflowOnly text={report.target.providerName}>{#snippet children(hintProps0)}<strong {...hintProps0}>{report.target.providerName}</strong>{/snippet}</Hint>
                 </div></Table.Cell
               ><Table.Cell
-                ><strong>{report.target.modelName}</strong><small
+                ><Hint overflowOnly text={report.target.modelName}>{#snippet children(modelHint)}<strong {...modelHint} class="v-result-model">{report.target.modelName}</strong>{/snippet}</Hint><small class="v-result-model" title={`${report.target.requestModel} · 思考${effort(report.target.effort)}`}
                   >{report.target.requestModel} · 思考{effort(
                     report.target.effort,
                   )}</small
@@ -420,8 +420,8 @@
         </Empty.Root>{/if}
     {:else}
       <Table.Root class="v-table v-plan-table">
-        <Table.Header><Table.Row>
-          <Table.Head>供应商</Table.Head><Table.Head>检测范围</Table.Head>
+        <Table.Header variant="list"><Table.Row>
+          <Table.Head>供应商</Table.Head><Table.Head>检测线路</Table.Head>
           <Table.Head>执行方式</Table.Head><Table.Head>最近执行</Table.Head>
           <Table.Head data-align="control">操作</Table.Head>
         </Table.Row></Table.Header>
@@ -429,12 +429,9 @@
           {#each scopedPlans as plan (plan.providerId)}
             {@const executable = executableLines(plan)}
             {@const name = providerOptions.find((item) => item.value === plan.providerId)?.label || snapshot?.targets.find((target) => target.providerId === plan.providerId)?.providerName || plan.providerId}
-            {@const modelIds = [...new Set(plan.lines.map((line) => line.modelId))]}
-            {@const keyCount = new Set(plan.lines.map((line) => line.keyId)).size}
-            {@const firstModel = snapshot?.targets.find((target) => target.providerId === plan.providerId && target.modelId === modelIds[0])}
             <Table.Row>
               <Table.Cell><div class="v-identity"><span class="v-avatar">{name.slice(0, 1)}</span><Hint overflowOnly text={name}>{#snippet children(hintProps4)}<strong {...hintProps4}>{name}</strong>{/snippet}</Hint></div></Table.Cell>
-              <Table.Cell><strong>{firstModel?.modelName || modelIds[0] || "未配置线路"}{modelIds.length > 1 ? ` 等 ${modelIds.length} 个模型` : ""}</strong><small>{modelIds.length} 个模型 · {plan.lines.length} 条线路 · {keyCount} 把 Key</small></Table.Cell>
+              <Table.Cell>{plan.lines.length} 条线路</Table.Cell>
               <Table.Cell><div class="v-identity"><Switch checked={plan.enabled} disabled={busy || !desktop} aria-label={`${name} 自动运行`} onCheckedChange={(enabled) => toggle(plan, enabled)} /><span>{plan.enabled ? `每 ${plan.hours} 小时` : "手动执行"}</span></div></Table.Cell>
               <Table.Cell>{time(plan.lastAt)}</Table.Cell>
               <Table.Cell data-align="control"><div class="v-actions">

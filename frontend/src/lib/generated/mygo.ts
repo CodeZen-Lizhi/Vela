@@ -570,7 +570,7 @@ export interface ProviderAccountValidation {
 export interface ProviderDefaults {
   /** Attempts 总尝试次数（含首次）。 */
   attempts: number;
-  /** StreamTotalMillis 流式请求总超时，单位毫秒。 */
+  /** StreamTotalMillis 流式空闲超时，单位毫秒；沿用旧字段兼容配置。 */
   streamTotalMillis: number;
   /** FirstByteSeconds 首次响应超时，单位秒。 */
   firstByteSeconds: number;
@@ -952,7 +952,7 @@ export interface Request {
 export interface RequestPolicy {
   /** Attempts 总尝试次数（含首次），1～99；0 表示使用默认值。 */
   attempts: number;
-  /** StreamTotalMillis 流式请求总超时，单位毫秒，1000～1200000；0 表示使用默认值。 */
+  /** StreamTotalMillis 流式空闲超时，单位毫秒，1000～1200000；0 使用默认值，沿用旧字段兼容配置。 */
   streamTotalMillis: number;
   /** FirstByteSeconds 首次响应超时，单位秒，1～300；0 表示使用默认值。 */
   firstByteSeconds: number;

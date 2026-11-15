@@ -424,8 +424,8 @@ func TestResetProviderKeyHealth(t *testing.T) {
 	}
 }
 
-// TestSchedulingStreamDeadlineDoesNotReset 验证切Key不重置真实总期限，超时不扣备用Key健康分。
-func TestSchedulingStreamDeadlineDoesNotReset(t *testing.T) {
+// TestSchedulingStreamFailoverIdleTimeout 验证切 Key 后按当前上游空闲计时，不因累计耗时中断正常备用输出。
+func TestSchedulingStreamFailoverIdleTimeout(t *testing.T) {
 	f := newExecutionFixture(t)
 	ctx := context.Background()
 	f.fail = true
@@ -442,12 +442,12 @@ func TestSchedulingStreamDeadlineDoesNotReset(t *testing.T) {
 	var out bytes.Buffer
 	started := time.Now()
 	result, err := f.execution.Executor.Execute(ctx, req, &out)
-	if !errors.Is(err, context.DeadlineExceeded) || result.Attempts != 2 || out.Len() != 0 || time.Since(started) > 1800*time.Millisecond {
-		t.Fatalf("切Key重置总期限: %+v %v elapsed=%s", result, err, time.Since(started))
+	if err != nil || result.Attempts != 2 || !result.Result.Outcome.Success || out.String() != f.stream || time.Since(started) < time.Second {
+		t.Fatalf("累计耗时不应中断备用流: %+v %v elapsed=%s", result, err, time.Since(started))
 	}
 	keys, _ := f.vendors.Keys(ctx, f.provider.ID)
 	if keys[0].HealthScore != 8 || keys[1].HealthScore != 10 {
-		t.Fatalf("本地总期限不能扣健康分: %+v", keys)
+		t.Fatalf("备用成功不应扣健康分: %+v", keys)
 	}
 }
 

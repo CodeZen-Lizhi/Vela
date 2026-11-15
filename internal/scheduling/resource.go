@@ -20,10 +20,18 @@ func (e *Executor) ResourceModel(principal, protocol, id string) (string, bool) 
 	return binding.model, true
 }
 
-// rememberResources 将完整成功的响应及列表资源登记到实际原目标，失败尝试不产生可用绑定。
+// rememberResources 将完整成功的响应、原生压缩摘要及列表资源登记到实际原目标，失败不建立绑定。
 func (e *Executor) rememberResources(req ExecutionRequest, c Candidate, outcome AttemptResult) {
 	if e.Continuations == nil {
 		return
+	}
+	if len(outcome.compactions) > 0 && (req.Request.Protocol == "openai:responses" || req.Request.Protocol == "responses" || req.Request.Protocol == "openai:responses:compact") {
+		compactReq := req
+		// 原生密文不依赖 HTTP/WS 传输方式；compact 附属操作与后续 Responses 使用同一归属。
+		compactReq.Request.Protocol, compactReq.WebSocket = "openai:responses", nil
+		for _, ref := range outcome.compactions {
+			e.Continuations.remember(compactReq, c, ref)
+		}
 	}
 	if req.Request.Protocol != "openai:responses" && req.Request.Protocol != "responses" && req.Type != "video" && req.Type != "files" && req.Type != "interactions" {
 		return

@@ -145,7 +145,7 @@
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0">
-    <Table.Root class="provider-table"><Table.Header><Table.Row><Table.Head>供应商</Table.Head><Table.Head data-align="number">余额</Table.Head><Table.Head>首选 Key</Table.Head><Table.Head data-align="control">倍率</Table.Head><Table.Head>健康</Table.Head><Table.Head>模型验证</Table.Head><Table.Head data-align="control">状态</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
+    <Table.Root class="provider-table"><Table.Header variant="list"><Table.Row><Table.Head>供应商</Table.Head><Table.Head data-align="number">余额</Table.Head><Table.Head>首选 Key</Table.Head><Table.Head data-align="control">倍率</Table.Head><Table.Head>健康</Table.Head><Table.Head>模型验证</Table.Head><Table.Head data-align="control">状态</Table.Head><Table.Head data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body>{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
       <!-- 名称按钮提供键盘入口，整行点击仅扩展鼠标命中区域。 -->
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
       <Table.Row data-disabled={!provider.enabled} onclick={(event)=>openRow(event,provider.id)}>

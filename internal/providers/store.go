@@ -164,7 +164,7 @@ func normalizeRequest(p RequestPolicy) (RequestPolicy, error) {
 	case p.Attempts != 0 && (p.Attempts < 1 || p.Attempts > 99):
 		return p, errors.New("总尝试次数需为 1～99 的整数")
 	case p.StreamTotalMillis != 0 && (p.StreamTotalMillis < 1000 || p.StreamTotalMillis > 1_200_000):
-		return p, errors.New("流式请求总超时需在 1～1200 秒之间")
+		return p, errors.New("流式空闲超时需在 1～1200 秒之间")
 	case p.FirstByteSeconds != 0 && (p.FirstByteSeconds < 1 || p.FirstByteSeconds > 300):
 		return p, errors.New("首次响应超时需为 1～300 秒的整数")
 	case p.RequestSeconds != 0 && (p.RequestSeconds < 1 || p.RequestSeconds > 1200):

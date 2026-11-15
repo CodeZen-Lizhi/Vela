@@ -78,7 +78,7 @@ func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); delete(s.webSocketClients, client); s.mu.Unlock(); close(client.done) }()
 	body, _ := json.Marshal(map[string]string{"model": model})
-	// Realtime 使用连接总期限；不启用 HTTP SSE 的逐次 StreamTotalMillis 限时。
+	// Realtime 使用连接总期限，不套用聊天 SSE 的 StreamTotalMillis 空闲超时。
 	_, err = s.executor.Execute(ctx, scheduling.ExecutionRequest{
 		Request: scheduling.Request{Model: model, Protocol: "openai:realtime"},
 		Type:    "realtime", Method: http.MethodGet, Path: "/v1/realtime?" + query.Encode(),

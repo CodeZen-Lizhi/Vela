@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -41,7 +42,7 @@ func (r *HTTPRunner) Close() {
 	}
 }
 
-// Run 完成同格式请求兼容、模型映射与上游认证；SSE 逐事件验证，提交后失败不透明重放。
+// Run 完成同格式请求兼容、模型映射与上游认证；SSE 按读取空闲超时，提交后失败不透明重放。
 func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest, secret string, w io.Writer) (AttemptResult, error) {
 	if req.Type == "realtime" {
 		return r.runRealtime(ctx, c, req, secret, w)
@@ -91,10 +92,14 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	}
 	attemptCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	compaction := isCompactionRequest(req)
 	if !req.Stream {
 		seconds := c.Provider.Request.RequestSeconds
 		if seconds == 0 {
 			seconds = 300
+		}
+		if compaction {
+			seconds = compactionWaitSeconds(c)
 		}
 		bounded, boundedCancel := context.WithTimeout(attemptCtx, time.Duration(seconds)*time.Second)
 		defer boundedCancel()
@@ -134,7 +139,10 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	if first == 0 {
 		first = 30
 	}
-	// 首次响应以最终上游头为界，正文读取继续受逻辑请求期限约束。
+	if compaction {
+		first = compactionWaitSeconds(c)
+	}
+	// 首次响应以最终上游头为界，之后每段正文按空闲时间等待。
 	var timer *time.Timer
 	if req.Stream {
 		timer = time.AfterFunc(time.Duration(first)*time.Second, cancel)
@@ -162,6 +170,13 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		return result, errors.New("上游连接或首次响应失败")
 	}
 	defer response.Body.Close()
+	if req.Stream {
+		idleMillis := c.Provider.Request.StreamTotalMillis
+		if compaction {
+			idleMillis = compactionWaitSeconds(c) * 1000
+		}
+		response.Body = &streamIdleReader{ReadCloser: response.Body, timeoutMillis: idleMillis, cancel: cancel}
+	}
 	result.Status = response.StatusCode
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		// 错误正文读断不抹去已经确认的 HTTP 状态与 Retry-After；完整信封仍可补充结构化分类。
@@ -181,7 +196,7 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	}
 	result.Outcome.RetryAfter, result.Outcome.RetryAfterSet = parseRetryAfter(response.Header.Get("Retry-After"), time.Now())
 	if !req.Stream && strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
-		return aggregateSSE(ctx, response.Body, w, req.Request.Protocol, result)
+		return aggregateSSE(ctx, response.Body, w, req.Request.Protocol, result, compaction)
 	}
 	if req.Stream {
 		if !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
@@ -189,7 +204,7 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 			result.Retryable = true
 			return result, errors.New("上游未返回有效 SSE 响应")
 		}
-		return forwardSSE(ctx, response.Body, w, req.Request.Protocol, result)
+		return forwardEventStream(ctx, response.Body, w, req.Request.Protocol, result, streamTerminal{compaction: compaction})
 	}
 	// 非流式 JSON 必须完整解析后才提交，限制只作用于非流式响应，不截断长流输出。
 	data, err = io.ReadAll(io.LimitReader(response.Body, maxHTTPPayloadBytes+1))
@@ -208,7 +223,15 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	if len(data) > maxHTTPPayloadBytes {
 		return result, errors.New("非流式响应超过 128 MiB")
 	}
-	if !validJSONTerminal(req.Request.Protocol, data) {
+	result.compactions = responseCompactions(data)
+	var completion struct {
+		// Status 用于禁止把非流式压缩的 incomplete 当成可用检查点。
+		Status string `json:"status"`
+	}
+	if compaction {
+		_ = json.Unmarshal(data, &completion)
+	}
+	if !validJSONTerminal(req.Request.Protocol, data) || compaction && (len(result.compactions) == 0 || completion.Status != "" && completion.Status != "completed") {
 		result.Outcome = classifyHTTP(200, data)
 		if result.Outcome.Penalty == Neutral {
 			result.Outcome.Penalty = Heavy
@@ -304,17 +327,10 @@ func validJSONTerminal(protocol string, data []byte) bool {
 	case "openai:responses:compact":
 		var object string
 		_ = json.Unmarshal(body["object"], &object)
-		var output []map[string]any
-		_ = json.Unmarshal(body["output"], &output)
 		if object != "response.compaction" {
 			return false
 		}
-		for _, item := range output {
-			if responsesItemOutput(item) {
-				return true
-			}
-		}
-		return false
+		return len(responseCompactions(data)) > 0
 	case "openai:responses", "responses":
 		terminal, useful := responsesEnvelope(data)
 		return terminal && useful
@@ -389,6 +405,10 @@ type streamTerminal struct {
 	// commitSetup 使 WebSocket response.created 的公开状态立即成为不可重放边界；allowEmpty 仅用于明确 generate:false 的预热。
 	commitSetup bool
 	allowEmpty  bool
+	// compaction 要求完整 completed 与有效压缩项；HTTP 在校验完成前有界缓冲，不交付残缺检查点。
+	compaction bool
+	// compactions 保存 output_item.done 或最终 output 中的压缩摘要，同一密文只登记一次。
+	compactions []string
 }
 
 // observe 按协议识别终态，返回此事件是否已包含不可替换的模型/工具状态。
@@ -457,6 +477,16 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 				s.useful = s.useful || useful
 				s.finished = terminal
 				s.done = s.finished
+				for _, ref := range responseCompactions(raw) {
+					if !slices.Contains(s.compactions, ref) {
+						s.compactions = append(s.compactions, ref)
+					}
+				}
+				if s.compaction {
+					document, _ := response.(map[string]any)
+					s.finished = terminal && document["status"] == "completed" && kind != "response.incomplete" && len(s.compactions) > 0
+					s.done, s.useful = s.finished, s.finished
+				}
 			}
 			if !s.finished {
 				s.failed = true
@@ -471,6 +501,15 @@ func (s *streamTerminal) observe(protocol, event, data string) bool {
 		if s.commitSetup && kind == "response.cancelled" {
 			s.failed = true
 			s.done = true
+		}
+		if kind == "response.output_item.done" {
+			item, _ := body["item"].(map[string]any)
+			if ref := compactionReference(item); ref != "" && !slices.Contains(s.compactions, ref) {
+				s.compactions = append(s.compactions, ref)
+			}
+		}
+		if s.compaction {
+			return s.commitSetup && (kind == "response.created" || kind == "response.in_progress")
 		}
 		useful := responsesEventOutput(kind, body)
 		s.useful = s.useful || useful
@@ -532,7 +571,7 @@ func forwardSSE(ctx context.Context, body io.Reader, w io.Writer, protocol strin
 	return forwardEventStream(ctx, body, w, protocol, result, streamTerminal{})
 }
 
-// forwardEventStream 共享事件校验和输出提交，WebSocket 允许明确的无生成预热并沿用其 16 MiB 消息上限。
+// forwardEventStream 共享事件校验和输出提交，空闲超时归为轻故障；WebSocket 保留预热与 16 MiB 消息上限。
 func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protocol string, result AttemptResult, state streamTerminal) (AttemptResult, error) {
 	// maxEventBytes 限制单行和单事件；预读预算只决定提交时机，不用于判定 Responses 上游失败。
 	maxEventBytes := maxHTTPPayloadBytes
@@ -567,18 +606,21 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 	flush := func() error {
 		if len(data) > 0 {
 			meaningful := state.observe(protocol, event, strings.Join(data, "\n"))
-			if meaningful || state.finished && (state.useful || state.allowEmpty) {
+			if !state.failed && (meaningful || state.finished && (state.useful || state.allowEmpty)) {
 				result.Committed = true
 			}
 		}
 		prefetchEvents++
 		// Aether 的传输帧在此读取器中不可见，以完整 SSE 事件限制小前奏的等待次数。
-		if responses && !state.failed && prefetchEvents >= responsesPrefetchEvents {
+		if responses && !state.compaction && !state.failed && prefetchEvents >= responsesPrefetchEvents {
 			result.Committed = true
 		}
 		eventBytes = 0
 		event = ""
 		data = nil
+		if state.compaction && state.failed && !state.failureEvent {
+			pending.Reset()
+		}
 		if err := writePending(); err != nil {
 			return err
 		}
@@ -589,7 +631,7 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 		line := scanner.Text()
 		eventBytes += len(line) + 1
 		// 单事件始终有界；其他协议的提交前缓冲同样受载荷边界约束。
-		if eventBytes > maxEventBytes || (!responses && !result.Committed && pending.Len()+len(line)+1 > maxHTTPPayloadBytes) {
+		if eventBytes > maxEventBytes || ((!responses || state.compaction) && !result.Committed && pending.Len()+len(line)+1 > maxHTTPPayloadBytes) {
 			result.Outcome.Penalty = Heavy
 			result.Retryable = !result.Committed
 			return result, errors.New("上游SSE单事件或前奏过长")
@@ -612,7 +654,7 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 			}
 		}
 		// 达到分类预算只结束预读，不能把仍在传输的正常前奏误判为失败；允许在事件中途提交。
-		if responses && !result.Committed && pending.Len() >= responsesPrefetchBytes {
+		if responses && !state.compaction && !result.Committed && pending.Len() >= responsesPrefetchBytes {
 			result.Committed = true
 		}
 		if responses {
@@ -620,6 +662,14 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 				return result, err
 			}
 		}
+	}
+	if errors.Is(scanner.Err(), errStreamIdleTimeout) {
+		result.Outcome.Penalty = Light
+		result.Retryable = !result.Committed
+		if !result.Committed {
+			result.Status = http.StatusGatewayTimeout
+		}
+		return result, errStreamIdleTimeout
 	}
 	if ctx.Err() != nil {
 		return result, ctx.Err()
@@ -644,6 +694,7 @@ func forwardEventStream(ctx context.Context, body io.Reader, w io.Writer, protoc
 		result.Outcome.Success = false
 	}
 	result.ResponseID = state.responseID
+	result.compactions = state.compactions
 	return result, nil
 }
 

@@ -18,7 +18,7 @@ import (
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
-// runSpecialized 复用调度准入和真实记录，发送向量、媒体及原生资源请求，不强套聊天终态。
+// runSpecialized 复用调度准入和真实记录；Interactions SSE 按读取空闲超时，其余原生操作保留独立总期限。
 func (r *HTTPRunner) runSpecialized(ctx context.Context, c Candidate, req ExecutionRequest, secret string, w io.Writer) (AttemptResult, error) {
 	var result AttemptResult
 	method := req.Method
@@ -46,7 +46,13 @@ func (r *HTTPRunner) runSpecialized(ctx context.Context, c Candidate, req Execut
 	if seconds == 0 {
 		seconds = 300
 	}
-	bounded, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
+	var bounded context.Context
+	var cancel context.CancelFunc
+	if req.Type == "interactions" && req.Stream {
+		bounded, cancel = context.WithCancel(ctx)
+	} else {
+		bounded, cancel = context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
+	}
 	defer cancel()
 	call, err := http.NewRequestWithContext(bounded, method, strings.TrimRight(c.Provider.URL, "/")+path.String(), bytes.NewReader(data))
 	if err != nil {
@@ -75,7 +81,7 @@ func (r *HTTPRunner) runSpecialized(ctx context.Context, c Candidate, req Execut
 	if first == 0 {
 		first = 30
 	}
-	// 原生媒体也执行供应商首次响应期限；收到最终响应头后只保留该次请求总期限。
+	// 首次响应以最终响应头为界；Interactions 后续按空闲等待，其余操作保留独立总期限。
 	firstResponse := time.AfterFunc(time.Duration(first)*time.Second, cancel)
 	response, err := client.Do(call)
 	firstResponse.Stop()
@@ -97,6 +103,9 @@ func (r *HTTPRunner) runSpecialized(ctx context.Context, c Candidate, req Execut
 		return result, errors.New("上游连接失败")
 	}
 	defer response.Body.Close()
+	if req.Type == "interactions" && req.Stream {
+		response.Body = &streamIdleReader{ReadCloser: response.Body, timeoutMillis: c.Provider.Request.StreamTotalMillis, cancel: cancel}
+	}
 	result.Status = response.StatusCode
 	if result.Status < 200 || result.Status >= 300 {
 		errorBody, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))

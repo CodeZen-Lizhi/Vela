@@ -686,8 +686,8 @@ func TestWebSocketValidationAndOverlap(t *testing.T) {
 	}
 }
 
-// TestWebSocketTurnDeadline 验证真实无终态连接受供应商单轮总期限约束，并向客户端明确报告中断。
-func TestWebSocketTurnDeadline(t *testing.T) {
+// TestWebSocketTurnIdleTimeout 验证真实连接停止返回数据后按空闲期限中断，并向客户端明确报告失败。
+func TestWebSocketTurnIdleTimeout(t *testing.T) {
 	f := newExecutionFixture(t)
 	f.provider.Request.StreamTotalMillis = 1000
 	enableWebSocket(t, f, true)
@@ -714,6 +714,6 @@ func TestWebSocketTurnDeadline(t *testing.T) {
 		t.Fatal("期限未中断生成")
 	}
 	if elapsed := time.Since(started); elapsed < 800*time.Millisecond || elapsed > 2500*time.Millisecond {
-		t.Fatal("单轮期限未生效", elapsed)
+		t.Fatal("单轮空闲超时未生效", elapsed)
 	}
 }

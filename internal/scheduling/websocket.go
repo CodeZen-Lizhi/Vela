@@ -92,8 +92,11 @@ func (s *WebSocketSession) discard(uncommitted bool) {
 	}
 }
 
-// runWebSocket 复用标准 Responses 事件校验、记录和代理客户端；HTTP/SSE 客户端不会进入此路径。
+// runWebSocket 复用标准 Responses 事件校验、记录与代理，单轮按上游数据空闲超时。
 func (r *HTTPRunner) runWebSocket(ctx context.Context, c Candidate, req ExecutionRequest, call *http.Request, client *http.Client, w io.Writer) (AttemptResult, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	compaction := isCompactionRequest(req)
 	var result AttemptResult
 	session := req.WebSocket
 	finish, err := records.PrepareStreamCapture(call, true)
@@ -133,6 +136,9 @@ func (r *HTTPRunner) runWebSocket(ctx context.Context, c Candidate, req Executio
 		first := c.Provider.Request.FirstByteSeconds
 		if first == 0 {
 			first = 30
+		}
+		if compaction {
+			first = compactionWaitSeconds(c)
 		}
 		dialCtx, cancel := context.WithTimeout(ctx, time.Duration(first)*time.Second)
 		var response *http.Response
@@ -216,7 +222,11 @@ func (r *HTTPRunner) runWebSocket(ctx context.Context, c Candidate, req Executio
 	}
 	_ = json.Unmarshal(data, &options)
 	warmup := options.Generate != nil && !*options.Generate
-	result, err = forwardEventStream(ctx, response.Body, w, "openai:responses", result, streamTerminal{commitSetup: true, allowEmpty: warmup})
+	idleMillis := c.Provider.Request.StreamTotalMillis
+	if compaction {
+		idleMillis = compactionWaitSeconds(c) * 1000
+	}
+	result, err = forwardEventStream(ctx, &streamIdleReader{ReadCloser: response.Body, timeoutMillis: idleMillis, cancel: cancel}, w, "openai:responses", result, streamTerminal{commitSetup: true, allowEmpty: warmup && !compaction, compaction: compaction})
 	if err != nil {
 		if ctx.Err() == nil && events.failureStatus > 0 {
 			result.Status = events.failureStatus
@@ -281,7 +291,7 @@ type WebSocketEventWriter struct {
 	OnTerminal func()
 }
 
-// Write 将完整事件转发给客户端，写入等待上限沿用 Aether 的 30 秒，并受本轮总期限约束。
+// Write 将完整事件转发给客户端，写入等待上限沿用 Aether 的 30 秒，并响应本轮取消。
 func (w *WebSocketEventWriter) Write(data []byte) (int, error) {
 	w.pending = append(w.pending, data...)
 	for {

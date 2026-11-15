@@ -89,9 +89,9 @@
     settingsSections.find((section) => section.id === settingsSection)?.name,
   );
 
-  /** 全应用共用官方通知组件，连续操作更新同一条反馈，3.5秒后自动关闭。 */
+  /** 全应用共用顶部轻量消息，带信息图标；连续操作更新同一条反馈，3.5秒后自动关闭。 */
   function notify(message: string): void {
-    toast(message, { id: "vela-feedback", duration: 3500 });
+    toast.info(message, { id: "vela-feedback", duration: 3500 });
   }
 
   /** 点击“设置”进入常规并展开子分类；已在设置页时再次点击切换收起或展开。 */
@@ -190,6 +190,6 @@
   </Resizable.PaneGroup>
   {/if}
 </div>
-<Toaster position="bottom-center" />
+<Toaster position="top-center" />
 
 </TooltipProvider>

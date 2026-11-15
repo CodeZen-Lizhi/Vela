@@ -26,8 +26,8 @@ func (b *boundedAggregate) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 
-// aggregateSSE 复用真实流式终态校验，再按原协议聚合输出和用量；聚合期间没有客户端提交，允许安全回退。
-func aggregateSSE(ctx context.Context, body io.Reader, w io.Writer, protocol string, result AttemptResult) (outcome AttemptResult, aggregateErr error) {
+// aggregateSSE 复用流式及压缩完整性校验，再按原协议聚合；客户端提交前失败允许安全回退。
+func aggregateSSE(ctx context.Context, body io.Reader, w io.Writer, protocol string, result AttemptResult, compaction bool) (outcome AttemptResult, aggregateErr error) {
 	defer func() {
 		if aggregateErr != nil {
 			outcome.Outcome.Success = false
@@ -40,7 +40,7 @@ func aggregateSSE(ctx context.Context, body io.Reader, w io.Writer, protocol str
 		}
 	}()
 	var raw boundedAggregate
-	result, err := forwardSSE(ctx, body, &raw, protocol, result)
+	result, err := forwardEventStream(ctx, body, &raw, protocol, result, streamTerminal{compaction: compaction})
 	result.Committed = false
 	if err != nil {
 		result.Retryable = true

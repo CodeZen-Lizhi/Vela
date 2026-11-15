@@ -112,7 +112,7 @@ func TestProviderLifecycle(t *testing.T) {
 		"站点根地址":     func(d *ProviderDraft) { d.URL = "https://api.example.com/openai" },
 		"主站链接":      func(d *ProviderDraft) { d.Website = "ftp://example.com" },
 		"总尝试次数":     func(d *ProviderDraft) { d.Request.Attempts = 100 },
-		"流式请求总超时":   func(d *ProviderDraft) { d.Request.StreamTotalMillis = 999 },
+		"流式空闲超时":    func(d *ProviderDraft) { d.Request.StreamTotalMillis = 999 },
 		"首次响应超时":    func(d *ProviderDraft) { d.Request.FirstByteSeconds = 301 },
 		"非流式请求超时":   func(d *ProviderDraft) { d.Request.RequestSeconds = -1 },
 		"请选择网络代理方式": func(d *ProviderDraft) { d.Request.Proxy.Mode = ProxyProvider },
