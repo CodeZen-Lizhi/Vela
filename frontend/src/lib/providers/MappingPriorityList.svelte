@@ -4,12 +4,19 @@
   import { onDestroy, tick, untrack, type Snippet } from "svelte";
   import { flip } from "svelte/animate";
   import { prefersReducedMotion } from "svelte/motion";
-  import { Portal } from "bits-ui";
   import { GripVertical, Trash2 } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import type { ProviderModelMapping } from "$lib/generated/mygo";
   import { errorMessage } from "$lib/settings/sections";
+  import {
+    clampDragOffset,
+    dragTargetIndex,
+    neighborWaveOffset,
+    settleTiming,
+    slotShiftForRow,
+    type SortRowGeometry,
+  } from "$lib/ordering/wave-sort";
 
   /** 当前模型的映射列表：拖柄改序，松手提交；失败及取消均恢复操作前快照。 */
   let { mappings, disabled = false, oncommit, editable = false, nameEditor }: {
@@ -44,13 +51,13 @@
   let announcement = $state("");
   /** 稳定的指针捕获容器，不随列表改序替换。 */
   let list: HTMLDivElement;
-  /** 换位缓出曲线：快速离开原位，末尾仅轻微回弹约 2%，避免机械感。 */
+  /** 键盘换位缓出曲线：快速离开原位，末尾仅轻微回弹约 2%。 */
   function springSettle(t: number): number {
     if (t <= 0) return 0;
     if (t >= 1) return 1;
     return 1 - Math.exp(-9 * t) * Math.cos(5.5 * t);
   }
-  /** 拖动会话，记录原顺序、浮动预览起点与当前指针位置，取消时恢复。 */
+  /** 拖动会话只记录纵向位移；真实行留在列表流中并直接跟手移动。 */
   type DragSession = {
     /** 拖动映射的稳定身份。 */
     id: number;
@@ -58,56 +65,39 @@
     pointerID: number;
     /** 拖动开始前的完整顺序。 */
     before: Row[];
-    /** 原行在窗口中的初始坐标与宽度，单位为像素。 */
-    left: number; top: number; width: number;
-    /** 起始及当前指针坐标，单位为窗口像素。 */
-    startX: number; startY: number; x: number; y: number;
+    /** 原行及列表在拖动开始时的纵向布局，单位为像素。 */
+    geometry: SortRowGeometry[];
+    /** 拖动开始时的指针纵坐标，单位为窗口像素。 */
+    startY: number;
+    /** 当前相对原位的纵向位移，单位为像素。 */
+    offset: number;
+    /** 最近一次位移和近似甩动速度，用于松手落位时长。 */
+    lastOffset: number; flick: number;
   };
   let drag = $state<DragSession | null>(null);
-  /** 松手吸附阶段：保持预览到目标槽位，再与真实行交叉淡变。 */
-  type SettleSession = {
-    /** 正在落位的映射身份。 */
-    id: number;
-    /** 原浮动行的窗口坐标、宽度与松手时的指针位置。 */
-    left: number; top: number; width: number; x: number; y: number; startX: number; startY: number;
-    /** 目标槽位的窗口坐标，单位为像素。 */
-    targetLeft: number; targetTop: number;
-    /** 是否已从松手位置切换到目标位置，用于触发 CSS 过渡。 */
-    arrived: boolean;
-    /** 是否开始淡出，供真实行同步淡入。 */
-    leaving: boolean;
-  };
-  let settling = $state<SettleSession | null>(null);
+  /** 松手落位的映射身份；保留到过渡结束后再允许下一次拖动。 */
+  let settlingID = $state(-1);
+  /** 本次落位的时长与曲线，由松手前的近似速度决定。 */
+  let settleDuration = $state(140);
+  let settleEase = $state("cubic-bezier(0.25, 0.8, 0.3, 1)");
   /** 指针更新合并到下一绘制帧，避免高频 pointermove 造成重复布局与抖动。 */
   let pointerFrame = 0;
-  let pendingPointer: { x: number; y: number } | null = null;
-  /** 落位过渡的淡出与清理定时器，取消或卸载时统一释放。 */
-  let settleFrame = 0;
-  let settleFadeTimer = 0;
-  let settleDoneTimer = 0;
-  /** 浮动预览对应的映射与当前落位编号。 */
-  const previewID = $derived(drag?.id ?? settling?.id ?? -1);
-  const dragItem = $derived(rows.find((item) => item.id === previewID));
-  const dragIndex = $derived(rows.findIndex((item) => item.id === previewID));
-  /** 松手淡出期间先把真实行内容放出来，与预览同步交叉过渡。 */
-  const activeRowID = $derived(drag?.id ?? (settling && !settling.leaving ? settling.id : -1));
-  /** 浮动预览跟随指针双向位移；正常动效下加入轻微倾斜和放大。 */
-  const dragPreviewStyle = $derived.by(() => {
-    const current = drag ?? settling;
-    if (!current) return "";
-    const dx = current.x - current.startX;
-    const dy = current.y - current.startY;
-    let transform: string;
-    if (settling?.arrived) {
-      const targetX = settling.targetLeft - settling.left;
-      const targetY = settling.targetTop - settling.top;
-      transform = `perspective(900px) translate3d(${targetX}px, ${targetY}px, 0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1)`;
-    } else if (!prefersReducedMotion.current) {
-      transform = `perspective(900px) translate3d(${dx}px, ${dy}px, 0) rotateX(1.5deg) rotateY(${Math.max(-3, Math.min(3, dx * 0.02))}deg) rotateZ(${Math.max(-1.8, Math.min(1.8, dx * 0.012))}deg) scale(1.025)`;
-    } else {
-      transform = `translate3d(${dx}px, ${dy}px, 0)`;
-    }
-    return `left:${current.left}px;top:${current.top}px;width:${current.width}px;transform:${transform}`;
+  let pendingPointerY: number | null = null;
+  /** 落位清理定时器，取消或卸载时统一释放。 */
+  let settleTimer = 0;
+  /** 当前目标槽位由被拖行中心与原始行中心共同计算，支持高度不同的映射行。 */
+  const dragTarget = $derived(drag
+    ? dragTargetIndex(drag.geometry, rows.findIndex((item) => item.id === drag?.id), drag.offset)
+    : -1);
+  /** 目标顺序只用于拖动中的优先级显示，实际列表在松手后才提交。 */
+  const visualOrder = $derived.by(() => {
+    if (!drag || dragTarget < 0) return rows.map((row) => row.id);
+    const ids = rows.map((row) => row.id);
+    const source = ids.indexOf(drag.id);
+    if (source < 0 || source === dragTarget) return ids;
+    const [id] = ids.splice(source, 1);
+    if (id !== undefined) ids.splice(dragTarget, 0, id);
+    return ids;
   });
   /** 父级禁用、内部保存和指针拖动时均禁止其他编辑。 */
   let locked = $derived(disabled || saving);
@@ -193,18 +183,69 @@
     return true;
   }
 
+  /** 返回映射行在当前拖动帧中的位移与过渡；静止时完全恢复列表原样。 */
+  function rowMotion(index: number, id: number): { transform: string; transition: string } {
+    if (!drag) {
+      if (settlingID !== id) return { transform: "", transition: "" };
+      return {
+        transform: "translate3d(0, 0, 0) scale(1)",
+        transition: `transform ${settleDuration}ms ${settleEase}, box-shadow 130ms ease`,
+      };
+    }
+
+    const source = rows.findIndex((row) => row.id === drag?.id);
+    const target = dragTarget;
+    const active = source === index;
+    const followed = active && Math.abs(drag.offset) > 0.5;
+    if (active) {
+      return {
+        transform: `translate3d(0, ${drag.offset.toFixed(1)}px, 0) scale(${followed ? "1.018" : "1"})`,
+        transition: settlingID === id && !prefersReducedMotion.current
+          ? `transform ${settleDuration}ms ${settleEase}, box-shadow 130ms ease`
+          : "none",
+      };
+    }
+
+    const sourceGeometry = drag.geometry[source];
+    const nextGeometry = drag.geometry[source + 1];
+    const pitch = sourceGeometry
+      ? sourceGeometry.height + Math.max(0, (nextGeometry?.top ?? sourceGeometry.top + sourceGeometry.height) - sourceGeometry.top - sourceGeometry.height)
+      : 0;
+    const shifted = slotShiftForRow(source, target, index, pitch);
+    const wave = shifted === 0 ? neighborWaveOffset(source, index, drag.offset) : { value: 0, delay: 0 };
+    const y = shifted + wave.value;
+    return {
+      transform: y === 0 ? "" : `translate3d(0, ${y.toFixed(1)}px, 0)`,
+      transition: prefersReducedMotion.current
+        ? "none"
+        : `transform 130ms cubic-bezier(0.25, 0.8, 0.3, 1) ${wave.delay}ms, box-shadow 130ms ease`,
+    };
+  }
+
   /** 仅拖柄启动拖动，触屏拖动不会触发页面滚动。 */
   function start(event: PointerEvent, id: number): void {
-    if (event.button !== 0 || !event.isPrimary || locked || drag || settling) return;
+    if (event.button !== 0 || !event.isPrimary || locked || drag || settlingID >= 0) return;
     event.preventDefault();
     const handle = event.currentTarget as HTMLButtonElement;
     handle.focus({ preventScroll: true });
     const row = handle.closest<HTMLElement>("[data-mapping-row]");
     if (!row) return;
-    const rect = row.getBoundingClientRect();
-    drag = { id, pointerID: event.pointerId, before: [...rows],
-      left: rect.left, top: rect.top, width: rect.width,
-      startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
+    const listRect = list.getBoundingClientRect();
+    const geometry = Array.from(list.querySelectorAll<HTMLElement>(":scope > [data-mapping-row]"))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top - listRect.top, height: rect.height };
+      });
+    drag = {
+      id,
+      pointerID: event.pointerId,
+      before: [...rows],
+      geometry,
+      startY: event.clientY,
+      offset: 0,
+      lastOffset: 0,
+      flick: 0,
+    };
     list.setPointerCapture(event.pointerId);
   }
 
@@ -212,29 +253,21 @@
   function pointermove(event: PointerEvent): void {
     if (!drag || event.pointerId !== drag.pointerID) return;
     event.preventDefault();
-    pendingPointer = { x: event.clientX, y: event.clientY };
+    pendingPointerY = event.clientY;
     if (!pointerFrame) pointerFrame = requestAnimationFrame(applyPointerFrame);
   }
 
   /** 每帧只读取一次布局并更新落点，指针位置和列表让位共享同一绘制节奏。 */
   function applyPointerFrame(): void {
     pointerFrame = 0;
-    const point = pendingPointer;
-    pendingPointer = null;
-    if (!drag || !point) return;
-    drag.x = point.x;
-    drag.y = point.y;
-    const elements = Array.from(list.children) as HTMLElement[];
-    const listTop = list.getBoundingClientRect().top;
+    const pointerY = pendingPointerY;
+    pendingPointerY = null;
+    if (!drag || pointerY === null) return;
     const source = rows.findIndex((item) => item.id === drag?.id);
-    let target = source;
-    for (const [index, row] of elements.entries()) {
-      if (index === source) continue;
-      const midpoint = listTop + row.offsetTop + row.offsetHeight / 2;
-      if (index < source && point.y < midpoint) { target = index; break; }
-      if (index > source && point.y > midpoint) target = index;
-    }
-    move(drag.id, target);
+    const next = clampDragOffset(drag.geometry, source, pointerY - drag.startY);
+    drag.flick = drag.flick * 0.55 + Math.abs(next - drag.lastOffset) * 0.45;
+    drag.lastOffset = next;
+    drag.offset = next;
   }
 
   /** 在松手前补结算最后一帧，避免快速抬手时漏掉最后一个落点。 */
@@ -248,58 +281,56 @@
   function clearPointerFrame(): void {
     if (pointerFrame) cancelAnimationFrame(pointerFrame);
     pointerFrame = 0;
-    pendingPointer = null;
+    pendingPointerY = null;
   }
 
-  /** 清理松手吸附定时器，保存失败或组件卸载时立即结束合成过渡。 */
+  /** 清理松手落位定时器，保存失败或组件卸载时立即结束过渡状态。 */
   function clearSettle(): void {
-    if (settleFrame) cancelAnimationFrame(settleFrame);
-    if (settleFadeTimer) clearTimeout(settleFadeTimer);
-    if (settleDoneTimer) clearTimeout(settleDoneTimer);
-    settleFrame = 0;
-    settleFadeTimer = 0;
-    settleDoneTimer = 0;
-    settling = null;
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = 0;
+    settlingID = -1;
   }
 
-  /** 松手后让浮动行落到目标槽位，再与真实行内容交叉淡变。 */
-  function startSettle(origin: DragSession, id: number): void {
-    if (prefersReducedMotion.current) return;
-    const target = Array.from(list.querySelectorAll<HTMLElement>("[data-mapping-row]"))
-      .find((row) => Number(row.dataset.mappingRow) === id)?.getBoundingClientRect();
-    if (!target) return;
-    settling = {
-      id,
-      left: origin.left, top: origin.top, width: origin.width,
-      x: origin.x, y: origin.y, startX: origin.startX, startY: origin.startY,
-      targetLeft: target.left, targetTop: target.top,
-      arrived: false, leaving: false,
-    };
-    settleFrame = requestAnimationFrame(() => {
-      settleFrame = 0;
-      if (settling) settling.arrived = true;
-    });
-    settleFadeTimer = window.setTimeout(() => {
-      settleFadeTimer = 0;
-      if (settling) settling.leaving = true;
-    }, 170);
-    settleDoneTimer = window.setTimeout(() => {
-      settleDoneTimer = 0;
-      settling = null;
-    }, 270);
+  /** 开始一次带速度的落位过渡；真实 DOM 在下一帧重排，让当前画面先保留到过渡属性生效。 */
+  function beginSettle(id: number, flick: number): void {
+    const timing = settleTiming(flick);
+    settlingID = id;
+    settleDuration = prefersReducedMotion.current ? 0 : Math.round(timing.duration);
+    settleEase = timing.easing;
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = window.setTimeout(() => {
+      settleTimer = 0;
+      settlingID = -1;
+    }, settleDuration + 40);
   }
 
-  /** 松手才保存；先等最后落点进入 DOM，再让浮动行吸附到目标槽位。 */
+  /** 松手才保存；先让落位过渡属性生效，再重排真实列表并保存。 */
   async function pointerup(event: PointerEvent): Promise<void> {
     if (!drag || drag.pointerID !== event.pointerId) return;
     flushPointerFrame();
-    const origin = { ...drag };
-    const { before, id } = origin;
+    const session = drag;
+    const target = dragTarget;
+    const moved = Math.abs(session.offset) > 3;
+    const before = session.before;
+    const id = session.id;
+
+    if (!moved) {
+      release();
+      void retainFocus(id);
+      return;
+    }
+
+    beginSettle(id, session.flick);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const source = rows.findIndex((row) => row.id === id);
+    if (source >= 0 && target >= 0 && source !== target) {
+      const next = [...rows];
+      const [row] = next.splice(source, 1);
+      if (row) next.splice(target, 0, row);
+      rows = next;
+    }
     release();
     await tick();
-    if (Math.hypot(origin.x - origin.startX, origin.y - origin.startY) >= 4) {
-      startSettle(origin, id);
-    }
     void retainFocus(id);
     if (rows.some((row, index) => row.id !== before[index]?.id)) void commit(before);
   }
@@ -308,7 +339,7 @@
   function keydown(event: KeyboardEvent, id: number): void {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
     event.preventDefault();
-    if (locked || drag || settling) return;
+    if (locked || drag || settlingID >= 0) return;
     const before = [...rows];
     const source = rows.findIndex((row) => row.id === id);
     if (move(id, source + (event.key === "ArrowUp" ? -1 : 1))) void commit(before);
@@ -316,7 +347,7 @@
 
   /** 删除一条映射，确认策略由父级提交回调决定。 */
   function remove(id: number): void {
-    if (locked || drag || settling) return;
+    if (locked || drag || settlingID >= 0) return;
     const before = [...rows];
     rows = rows.filter((row) => row.id !== id);
     void commit(before);
@@ -324,7 +355,7 @@
 
   /** 管理弹窗结束输入后提交新请求名，失败保留原名。 */
   function rename(id: number, value: string): void {
-    if (locked || drag || settling) return;
+    if (locked || drag || settlingID >= 0) return;
     const before = [...rows];
     const row = rows.find((item) => item.id === id);
     if (!row || row.mapping.requestName === value) return;
@@ -340,9 +371,14 @@
 
 <div class="mapping-priority-list" bind:this={list} role="list" aria-label="映射优先级" aria-busy={saving} onlostpointercapture={cancel}>
   {#each rows as row, index (row.id)}
-    <div class="mapping-priority-row" data-mapping-row={row.id} data-dragging={activeRowID === row.id}
-      animate:flip={{ duration: prefersReducedMotion.current || activeRowID === row.id ? 0 : 240, easing: springSettle }} role="listitem">
-      <span class="priority">P{index + 1}</span>
+    {@const motion = rowMotion(index, row.id)}
+    <div class="mapping-priority-row" data-mapping-row={row.id}
+      data-lifted={drag?.id === row.id && Math.abs(drag.offset) > 0.5}
+      data-settling={settlingID === row.id}
+      style:transform={motion.transform}
+      style:transition={motion.transition}
+      animate:flip={{ duration: prefersReducedMotion.current || settlingID >= 0 ? 0 : 240, easing: springSettle }} role="listitem">
+      <span class="priority">P{visualOrder.indexOf(row.id) + 1}</span>
       <Button {...{ onpointerdown: (event: PointerEvent) => start(event, row.id), onkeydown: (event: KeyboardEvent) => keydown(event, row.id) }} variant="ghost" size="icon-xs" class="touch-none cursor-grab"
         disabled={locked} data-mapping-handle={row.id} aria-label={`拖动 ${row.mapping.requestName || '映射'} 调整优先级，或按上下方向键`}
           >
@@ -350,15 +386,15 @@
       </Button>
       <div class="request-name">
         {#if editable && nameEditor}
-          {@render nameEditor(row.mapping.requestName, rows.filter((item) => item.id !== row.id).map((item) => item.mapping.requestName), locked || !!drag || !!settling, (name) => rename(row.id, name))}
+          {@render nameEditor(row.mapping.requestName, rows.filter((item) => item.id !== row.id).map((item) => item.mapping.requestName), locked || !!drag || settlingID >= 0, (name) => rename(row.id, name))}
         {:else if editable}
-          <Input value={row.mapping.requestName} disabled={locked || !!drag} aria-label={`优先级 P${index + 1} 的请求名`}
+          <Input value={row.mapping.requestName} disabled={locked || !!drag} aria-label={`优先级 P${visualOrder.indexOf(row.id) + 1} 的请求名`}
             onchange={(event) => rename(row.id, event.currentTarget.value)} />
         {:else}
           <Hint overflowOnly text={row.mapping.requestName}>{#snippet children(hintProps1)}<code {...hintProps1} >{row.mapping.requestName}</code>{/snippet}</Hint>
         {/if}
       </div>
-      <Button onclick={() => remove(row.id)} variant="ghost" size="icon-xs" disabled={locked || !!drag}
+      <Button onclick={() => remove(row.id)} variant="ghost" size="icon-xs" disabled={locked || !!drag || settlingID >= 0}
         aria-label={`删除映射 ${row.mapping.requestName}`}  >
         <Trash2 aria-hidden="true" />
       </Button>
@@ -366,81 +402,36 @@
   {/each}
 </div>
 
-{#if dragItem && dragIndex >= 0}
-  <Portal>
-    <div class="drag-preview" data-settling={settling !== null} data-leaving={settling?.leaving} style={dragPreviewStyle} aria-hidden="true">
-      <div class="mapping-priority-row drag-preview-surface">
-        <span class="priority">P{dragIndex + 1}</span>
-        <span class="preview-icon"><GripVertical /></span>
-        <div class="request-name">
-          {#if editable}<Input value={dragItem.mapping.requestName} readonly tabindex={-1} />
-          {:else}<code>{dragItem.mapping.requestName}</code>{/if}
-        </div>
-        <span class="preview-icon"><Trash2 /></span>
-      </div>
-    </div>
-  </Portal>
-{/if}
 {#if failure}<Alert.Root variant="inline-error" class="mt-2"><Alert.Description>{failure}</Alert.Description></Alert.Root>{/if}
 <p class="sr-only" role="status" aria-live="polite">{announcement}</p>
 
 <style>
   .mapping-priority-list { position: relative; display: grid; gap: 6px; min-width: 0; }
-  .mapping-priority-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--background); }
-  .mapping-priority-row[data-dragging="true"] { background: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, var(--border)); }
-  .priority { flex-shrink: 0; color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .request-name { flex: 1; min-width: 0; }
-  .request-name code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-  .drag-preview {
-    position: fixed;
-    z-index: 80;
-    pointer-events: none;
-    transform-origin: center;
-    will-change: transform;
-    transition: opacity 90ms ease;
-  }
-  .drag-preview[data-settling="true"] {
-    transition:
-      transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
-      opacity 90ms ease;
-  }
-  .drag-preview[data-leaving="true"] {
-    opacity: 0;
-  }
-  .drag-preview-surface {
+  .mapping-priority-row {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 38px;
-    box-sizing: border-box;
+    min-width: 0;
     padding: 6px 10px;
-    border: 1px solid color-mix(in srgb, var(--primary) 68%, var(--border));
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--card) 90%, var(--accent));
+    background: var(--background);
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+  .mapping-priority-row[data-lifted="true"] {
+    z-index: 3;
     box-shadow:
-      0 22px 42px -18px color-mix(in srgb, var(--primary) 48%, transparent),
-      0 12px 20px -14px var(--foreground);
-    color: var(--foreground);
-    animation: drag-preview-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
-    transition: box-shadow 180ms ease;
+      0 14px 26px color-mix(in srgb, var(--foreground) 13%, transparent),
+      0 3px 8px color-mix(in srgb, var(--foreground) 5%, transparent);
   }
-  .drag-preview[data-settling="true"] .drag-preview-surface {
-    box-shadow:
-      0 12px 26px -18px color-mix(in srgb, var(--primary) 34%, transparent),
-      0 6px 14px -12px var(--foreground);
-  }
-  @keyframes drag-preview-in {
-    from {
-      opacity: 0.55;
-      box-shadow: 0 8px 18px -14px color-mix(in srgb, var(--primary) 30%, transparent);
-      transform: scale(0.985);
-    }
-  }
-  .mapping-priority-row > * { transition: opacity 130ms ease; }
-  .mapping-priority-row[data-dragging="true"] > * { opacity: 0; }
-  .preview-icon { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; }
-  .preview-icon :global(svg) { width: 12px; height: 12px; }
+  .mapping-priority-row[data-settling="true"] { z-index: 2; }
+  .priority { flex-shrink: 0; color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .request-name { flex: 1; min-width: 0; }
+  .request-name code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
   @media (prefers-reduced-motion: reduce) {
-    .mapping-priority-row > *, .drag-preview, .drag-preview-surface { transition: none; animation: none; }
+    .mapping-priority-row { transition: none; }
   }
 </style>

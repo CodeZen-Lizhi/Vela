@@ -130,11 +130,17 @@ Key 健康度按 8 与 5 的边界显示绿、黄、红三档，进度条、轨�
 
 - 按已认可的紧凑预览实现：映射新增及改名共用搜索输入与候选浮层，优先选择真实上游模型，列表外名称显式手动添加；错误在对应控件或浮层内展示。使用现有 InputGroup、Popover 和官方 shadcn-svelte Command，无新增依赖。
 - 新增 `ProviderUpstreamModels` 应用入口：复用实际连接池与 Key 出口，对启用且有凭据的 Key 查询 OpenAI、Anthropic、Gemini 模型列表并处理分页、聚合去重。缓存按有效配置和凭据隔离五分钟；强刷失败不覆盖成功缓存，部分失败返回警告，查询不修改关联、映射或权限。多 Key 共用供应商配置的请求超时，未配置时采用二十秒总预算。
-- 两处共用 MappingPriorityList，拖柄启动的浮起倾斜、跟随指针、240ms FLIP 让位、松手吸附与调度页一致；支持减少动画。详情松手保存当前模型，工作台只改草稿；键盘、Esc 取消、失败回退和焦点保留继续有效。
+- 两处排序共用 `ordering/wave-sort.ts` 的竖向位移模型：按下后真实行跟手，不使用浮层副本、左右位移、描边或换色；相邻行越过中线后快速让出完整槽位，让位前由紧邻上下行形成同向、幅度衰减且启动错开的竖向波，松手按近似甩动速度滑入槽位。调度与映射列表使用同一参数，并尊重减少动画；详情松手保存当前模型，工作台只改草稿；键盘、Esc 取消、失败回退和焦点保留继续有效。
 - 实际浏览器经隔离 HTTP 桥调用真实 VelaService、SQLite 与本地受控上游，验证上游候选选择、手填、重复名拒绝、保存前数据库不变、保存及重开重读、旧名称保留、强刷失败仍可手填、数据库失败保留草稿、两处拖动、键盘改序、Esc 取消、详情失败回退、其他模型保持、0 映射不可展开及删除最后一条展开区消失。补修候选 Portal 的键盘事件归属及底部浮层裁切，验证方向键/Enter 选择、Esc 只收起候选、向上避让、浅/深色和 820×600 无横向溢出。
 - 验证：前端 svelte-check 零错误零警告及 Vite 构建通过；上游查询及映射相关 Go race 测试、受影响包 vet、差异格式检查通过。真实 HTTP 测试覆盖鉴权、分页、聚合、强刷失败、缓存隔离、配置失效、重定向、取消及总预算。
 - 权威需求同步至 Aether `provider-management.md` PM-R10、PM-A13/PM-A18 及历史冲突表，入口 `plan.md` F02 和调度引用同步。操作范围沿用已删除结论，不恢复。
 - 证据位于 `.cache/mapping-acceptance/evidence`；验收只替换 MyGo IPC 传输，不修改日常数据库。未重启原生桌面应用、未请求真实外部供应商；本机可控上游通过不代表全部站点兼容。
+
+### 竖向波排序复核（2026-11-15）
+
+按用户提供的 `wave-list.html` 交互稿复核两处拖动。开发版 WebView 使用隔离凭据与隔离 SQLite：调度供应商从第 1 位拖到第 2 位后，页面序号与 `scheduling_provider_order` 同时更新并持久化；映射 `magpie/primary` 从 P1 拖到 P3 后，其余行连续重排，映射文档保存为 `magpie/fast / backup-a / primary / backup-b / last-resort` 的 P1～P5，随后再拖回 P2，最终截图为 `fast / primary / backup-a / backup-b / last-resort`。未读取或修改日常数据库。
+
+静态检查：Svelte `0 errors, 0 warnings`；新增 4 项位移模型 Node 测试通过，覆盖不等高行目标计算、边界、整格让位、邻近波方向/衰减/延迟和落位时长；`git diff --check` 通过。界面结果由最终开发版 WebView 截图确认，证据为 `.cache/wave-sort/scheduling-final.png` 与 `.cache/wave-sort/mapping-final.png`；未替换 `/Applications/Vela.app`，减少动画只由代码与样式核对，未单独切换系统偏好实测。
 
 
 ## 2026-11-15：窗口恢复后的页面刷新
