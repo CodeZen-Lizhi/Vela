@@ -1,11 +1,10 @@
 /** 设置分类统一供侧栏、面包屑与内容面板使用。 */
 export const settingsSections = [
   { id: "general", name: "常规" },
-  { id: "connection", name: "接入与访问" },
-  { id: "account", name: "账户" },
-  { id: "network", name: "网络代理" },
-  { id: "attention", name: "总览提醒" },
-  { id: "records", name: "记录管理" },
+  { id: "connection", name: "网关与网络" },
+  { id: "refresh", name: "刷新与同步" },
+  { id: "attention", name: "提醒" },
+  { id: "records", name: "数据管理" },
 ] as const;
 
 /** 分类身份只表示界面位置，不改变各表单独立保存的边界。 */

@@ -5,17 +5,20 @@
   import { Switch } from "$lib/components/ui/switch";
   import * as ToggleGroup from "$lib/components/ui/toggle-group";
   import { VelaService, type GeneralSettings } from "$lib/generated/mygo";
-  import { errorMessage } from "./sections";
+  import { errorMessage, type SettingsSection } from "./sections";
 
   /** 外观选项的稳定取值与界面名称，共享分段控件只提交有效选项。 */
   const appearances = [{value:"light",label:"浅色"},{value:"dark",label:"深色"},{value:"system",label:"跟随系统"}];
-  /** 常规设置逐行排列，每次选择立即保存并在桌面宿主生效；失败时保留原设置。 */
+  /** 常规与刷新偏好共享一份保存状态，切换分类不卸载表单；修改成功后才更新已保存值。 */
   let {
     saved = $bindable(),
     openAtLogin = $bindable(),
     desktop,
+    section,
   }: {
-    /** 已保存的常规设置。 */
+    /** 当前分类，仅控制面板可见性。 */
+    section: SettingsSection;
+    /** 已保存的应用及刷新偏好。 */
     saved: GeneralSettings;
     /** 系统登录项的实际状态。 */
     openAtLogin: boolean;
@@ -86,6 +89,7 @@
   }
 </script>
 
+<div hidden={section !== "general"}>
 <section class="settings-card" aria-label="常规设置">
   <div class="setting-row">
     <span id="appearance-label">外观</span>
@@ -148,6 +152,12 @@
       </Select.Root>
     </div>
   {/if}
+</section>
+</div>
+
+<div hidden={section !== "refresh"} class="grid gap-5">
+<section class="settings-card" aria-labelledby="page-refresh-title">
+  <div class="settings-heading"><div><h2 id="page-refresh-title">页面刷新</h2><p>更新页面中的本地已有数据，不向上游发起查询。</p></div></div>
   <div class="setting-row">
     <span id="dashboard-label">总览刷新间隔</span>
     <Select.Root
@@ -168,7 +178,7 @@
     </Select.Root>
   </div>
   <div class="setting-row">
-    <span id="provider-label"><strong>供应商列表状态更新间隔</strong><small class="block text-xs text-muted-foreground">更新本地健康度、Key 和已保存余额；不向上游查询。上游查询周期在“账户”中设置。</small></span>
+    <span id="provider-label"><strong>供应商列表状态更新间隔</strong><small class="block text-xs text-muted-foreground">更新本地健康度、Key 和已保存余额；不向上游查询。上游查询周期在下方“上游信息刷新”中设置。</small></span>
     <Select.Root
       type="single"
       bind:value={() => String(saved.providerSeconds), (value) => void update({ providerSeconds: Number(value) })}
@@ -186,6 +196,9 @@
       >
     </Select.Root>
   </div>
+</section>
+<section class="settings-card" aria-labelledby="model-sync-title">
+  <div class="settings-heading"><div><h2 id="model-sync-title">模型目录同步</h2><p>同步在线模型目录与价格。</p></div></div>
   <div class="setting-row">
     <span id="model-update-label"><strong>模型目录与价格自动更新</strong><small class="block text-xs text-muted-foreground">定期检查 basellm 来源，保留本地修改；关闭后仍可手动同步价格。</small></span>
     <Switch
@@ -213,4 +226,5 @@
     </InputGroup.Root>
   </div>
 </section>
-{#if error}<Alert.Root variant="destructive" class="mt-4"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}
+</div>
+{#if error && (section === "general" || section === "refresh")}<Alert.Root variant="destructive" class="mt-4"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}

@@ -6,7 +6,8 @@
   import { VelaService, type SettingsSnapshot } from "$lib/generated/mygo";
   import { errorMessage, type Notify, type SettingsSection } from "./sections";
   import ApplicationUpdate from "./ApplicationUpdate.svelte";
-  import GeneralSettings from "./GeneralSettings.svelte";
+  import PreferencesSettings from "./PreferencesSettings.svelte";
+  import ConfigTransfer from "./ConfigTransfer.svelte";
   import ConnectionSettings from "./ConnectionSettings.svelte";
   import AccountSettings from "./AccountSettings.svelte";
   import NetworkSettings from "./NetworkSettings.svelte";
@@ -79,32 +80,32 @@
   {:else if !snapshot}
     <p class="p-16 text-center text-sm text-muted-foreground">正在读取设置…</p>
   {:else}
+    <PreferencesSettings
+      bind:saved={snapshot.general}
+      bind:openAtLogin={snapshot.openAtLogin}
+      {desktop}
+      {section}
+    />
     <div hidden={section !== "general"}>
-      <GeneralSettings
-        bind:saved={snapshot.general}
-        bind:openAtLogin={snapshot.openAtLogin}
-        {desktop}
-      />
       <ApplicationUpdate />
     </div>
-    <div hidden={section !== "connection"}>
+    <div hidden={section !== "connection"} class="grid gap-5">
       <ConnectionSettings
         bind:saved={snapshot.gateway}
         active={section === "connection"}
         {desktop}
         {notify}
       />
-    </div>
-    <div hidden={section !== "account"}>
-      <AccountSettings bind:saved={snapshot.account} {desktop} {notify} />
-    </div>
-    <div hidden={section !== "network"}>
       <NetworkSettings {desktop} {notify} />
+    </div>
+    <div hidden={section !== "refresh"} class="mt-5">
+      <AccountSettings bind:saved={snapshot.account} {desktop} {notify} />
     </div>
     <div hidden={section !== "attention"}>
       <AttentionSettings bind:saved={snapshot.attention} {desktop} {notify} />
     </div>
-    <div hidden={section !== "records"}>
+    <div hidden={section !== "records"} class="grid gap-5">
+      <ConfigTransfer />
       <RecordsSettings />
     </div>
   {/if}

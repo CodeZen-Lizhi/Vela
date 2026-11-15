@@ -35,8 +35,8 @@
   function cancel():void{draft={...saved};error="";}
 </script>
 
-<form class="settings-card" novalidate onsubmit={save} aria-label="全局账户设置">
-  <div class="settings-heading"><div><h2>账户信息刷新</h2><p>余额与 Key 信息独立查询，三个开关默认关闭。</p></div></div>
+<form class="settings-card" novalidate onsubmit={save} aria-label="上游信息刷新">
+  <div class="settings-heading"><div><h2>上游信息刷新</h2><p>余额与 Key 信息独立查询，三个开关默认关闭。</p></div></div>
   <Field.Set disabled={!desktop||busy} class="contents">
     <Label variant="content" class="setting-row tall border-t" for="balance-auto-refresh"><span><strong>余额定时刷新</strong><small>只查询供应商余额，不刷新 Key 信息。</small></span><Switch id="balance-auto-refresh" bind:checked={draft.enabled}/></Label>
     <div class="setting-row tall"><Label variant="content" class="flex-col items-start gap-0" for="balance-refresh-minutes"><strong>余额刷新间隔</strong><small>{saved.enabled?`当前每 ${saved.minutes} 分钟查询一次。`:"已关闭；开启后按分钟间隔查询。"}</small></Label><InputGroup.Root class="w-36 shrink-0"><InputGroup.Input id="balance-refresh-minutes" type="number" min="1" step="1" disabled={!draft.enabled} bind:value={draft.minutes}/><InputGroup.Addon align="inline-end" class="text-xs">分钟</InputGroup.Addon></InputGroup.Root></div>

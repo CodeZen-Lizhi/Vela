@@ -93,8 +93,8 @@
       <div class="flex items-center gap-3">
         <span class="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-primary"><Network class="size-5" aria-hidden="true" /></span>
         <div>
-          <h2 id="global-proxy-title" class="text-[15px] font-semibold">全局代理</h2>
-          <p class="mt-1 text-xs text-muted-foreground">为模型调用与在线价格目录设置连接方式</p>
+          <h2 id="global-proxy-title" class="text-[15px] font-semibold">出站代理</h2>
+          <p class="mt-1 text-xs text-muted-foreground">配置 Vela 访问模型上游与在线价格目录时使用的全局代理</p>
         </div>
       </div>
       <Switch aria-label="使用全局代理" bind:checked={enabled} disabled={!desktop || !loaded || busy} />
