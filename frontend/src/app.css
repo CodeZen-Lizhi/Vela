@@ -562,35 +562,6 @@ input:not([data-slot]):focus-visible {
   border-left: 1px solid var(--border);
 }
 
-/* 矮窗口下仅在展开设置分类时收紧侧栏间距，超出高度时仍可滚动到达；其他页面的侧栏不变。 */
-@media (max-height: 720px) {
-  .sidebar:has(.settings-subnav) {
-    padding-top: calc(var(--mygo-titlebar-height, 0px) + 14px);
-    padding-bottom: 10px;
-  }
-  .sidebar:has(.settings-subnav) .sidebar-brand {
-    margin-bottom: 18px;
-  }
-  .sidebar:has(.settings-subnav) .nav-item {
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
-  .sidebar:has(.settings-subnav) .settings-nav {
-    padding-top: 8px;
-  }
-  .sidebar:has(.settings-subnav) .settings-subnav {
-    gap: 1px;
-    margin-top: 4px;
-  }
-  .sidebar:has(.settings-subnav) .settings-subnav button {
-    min-height: 27px;
-    padding-top: 3px;
-    padding-bottom: 3px;
-  }
-  .sidebar:has(.settings-subnav) > p {
-    padding-top: 8px;
-  }
-}
 .settings-page {
   container: settings / inline-size;
   min-width: 0;
