@@ -3,9 +3,10 @@
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
+  import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Field from "$lib/components/ui/field";
   import * as Select from "$lib/components/ui/select";
-  import { Network, ShieldCheck, Eye, EyeOff } from "@lucide/svelte";
+  import { Network, Eye, EyeOff } from "@lucide/svelte";
   import * as InputGroup from "$lib/components/ui/input-group";
   import { parseProxyAddress, formatProxyAddress, proxyProtocols } from "./proxy-address";
   import { Input } from "$lib/components/ui/input";
@@ -27,6 +28,8 @@
   let enabled = $state(false);
   /** 连接及认证草稿，取消后从已保存地址恢复；密码默认隐藏。 */
   let address = $state(parseProxyAddress(""));
+  /** 按需展开认证；收起保留草稿，但提交时不携带认证信息。 */
+  let authenticationEnabled = $state(false);
   let passwordVisible = $state(false);
   let saved = $state<Proxy>({ enabled: false, url: "" });
   /** 已从桌面服务读到当前配置后才允许编辑与保存。 */
@@ -34,9 +37,11 @@
   /** busy 表示正在保存；error 是读取、校验或保存失败的原因。 */
   let busy = $state(false);
   let error = $state("");
+  /** 认证关闭时只提交连接字段，避免隐藏的凭据继续生效。 */
+  const effectiveAddress = $derived(authenticationEnabled ? address : { ...address, username: "", password: "" });
   /** 关闭代理时地址不参与比较：关闭后沿用已保存的地址。 */
   const changed = $derived(
-    enabled !== saved.enabled || (enabled && JSON.stringify(address) !== JSON.stringify(parseProxyAddress(saved.url))),
+    enabled !== saved.enabled || (enabled && JSON.stringify(effectiveAddress) !== JSON.stringify(parseProxyAddress(saved.url))),
   );
 
   /** 读取唯一的全局代理；读取失败时不允许保存，避免覆盖未读到的配置。 */
@@ -46,6 +51,7 @@
     try {
       const value = await VelaService.globalProxy();
       address = parseProxyAddress(value.url);
+      authenticationEnabled = Boolean(address.username || address.password);
       saved = value;
       enabled = saved.enabled;
       loaded = true;
@@ -54,17 +60,18 @@
     }
   }
 
-  /** 校验并组装地址后交给 Go 保存；失败保留草稿，关闭时沿用已保存地址。 */
+  /** 校验有效字段后交给 Go 保存；失败保留草稿，关闭代理时沿用已保存地址。 */
   async function save(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (busy || !loaded) return;
     busy = true;
     error = "";
     try {
-      const next = { enabled, url: enabled ? formatProxyAddress(address, saved.url) : saved.url };
+      const next = { enabled, url: enabled ? formatProxyAddress(effectiveAddress, saved.url) : saved.url };
       await VelaService.saveGlobalProxy(next);
       saved = next;
       address = parseProxyAddress(saved.url);
+      authenticationEnabled = Boolean(address.username || address.password);
       passwordVisible = false;
       notify("已保存全局代理");
     } catch (cause) {
@@ -78,6 +85,7 @@
   function cancel(): void {
     enabled = saved.enabled;
     address = parseProxyAddress(saved.url);
+    authenticationEnabled = Boolean(address.username || address.password);
     passwordVisible = false;
     error = "";
   }
@@ -121,22 +129,27 @@
               <Input id="proxy-port" bind:value={address.port} inputmode="numeric" placeholder="7890" autocomplete="off" disabled={!desktop || busy} />
             </Field.Field>
           </div>
-          <div class="border-t pt-5">
-            <div class="mb-4 flex items-center gap-2 text-sm font-medium"><ShieldCheck class="size-4 text-muted-foreground" aria-hidden="true" />代理认证<span class="text-xs font-normal text-muted-foreground">可选，无需认证时留空</span></div>
-            <Field.Group class="grid gap-4 sm:grid-cols-2">
-              <Field.Field>
-                <Field.Label for="proxy-username">用户名</Field.Label>
-                <Input id="proxy-username" bind:value={address.username} placeholder="输入代理用户名" autocomplete="off" autocapitalize="none" spellcheck={false} disabled={!desktop || busy} />
-              </Field.Field>
-              <Field.Field>
-                <Field.Label for="proxy-password">密码</Field.Label>
-                <InputGroup.Root>
-                  <InputGroup.Input id="proxy-password" type={passwordVisible ? "text" : "password"} bind:value={address.password} placeholder="输入代理密码" autocomplete="new-password" disabled={!desktop || busy} />
-                  <InputGroup.Addon align="inline-end"><InputGroup.Button size="icon-xs" aria-label={passwordVisible ? "隐藏代理密码" : "显示代理密码"} aria-pressed={passwordVisible} disabled={!desktop || busy} onclick={() => (passwordVisible = !passwordVisible)}>{#if passwordVisible}<EyeOff />{:else}<Eye />{/if}</InputGroup.Button></InputGroup.Addon>
-                </InputGroup.Root>
-              </Field.Field>
-            </Field.Group>
-          </div>
+          <Field.Group class="gap-4">
+            <Field.Field orientation="horizontal">
+              <Checkbox id="proxy-authentication" bind:checked={authenticationEnabled} disabled={!desktop || busy} onCheckedChange={() => (passwordVisible = false)} />
+              <Field.Label for="proxy-authentication">需要身份认证</Field.Label>
+            </Field.Field>
+            {#if authenticationEnabled}
+              <Field.Group class="grid gap-4 sm:grid-cols-2">
+                <Field.Field>
+                  <Field.Label for="proxy-username">用户名</Field.Label>
+                  <Input id="proxy-username" bind:value={address.username} placeholder="输入代理用户名" autocomplete="off" autocapitalize="none" spellcheck={false} disabled={!desktop || busy} />
+                </Field.Field>
+                <Field.Field>
+                  <Field.Label for="proxy-password">密码</Field.Label>
+                  <InputGroup.Root>
+                    <InputGroup.Input id="proxy-password" type={passwordVisible ? "text" : "password"} bind:value={address.password} placeholder="输入代理密码" autocomplete="new-password" disabled={!desktop || busy} />
+                    <InputGroup.Addon align="inline-end"><InputGroup.Button size="icon-xs" aria-label={passwordVisible ? "隐藏代理密码" : "显示代理密码"} aria-pressed={passwordVisible} disabled={!desktop || busy} onclick={() => (passwordVisible = !passwordVisible)}>{#if passwordVisible}<EyeOff />{:else}<Eye />{/if}</InputGroup.Button></InputGroup.Addon>
+                  </InputGroup.Root>
+                </Field.Field>
+              </Field.Group>
+            {/if}
+          </Field.Group>
         </Field.Group>
       {:else}
         <p class="text-sm text-muted-foreground">当前使用直连。开启后可配置代理服务器和认证信息。</p>
