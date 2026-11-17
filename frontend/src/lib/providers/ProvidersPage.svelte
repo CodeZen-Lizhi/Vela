@@ -145,7 +145,14 @@
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0">
-    <Table.Root role="table" class="provider-table"><Table.Header role="rowgroup" variant="list"><Table.Row role="row"><Table.Head role="columnheader">供应商</Table.Head><Table.Head role="columnheader" data-align="number">余额</Table.Head><Table.Head role="columnheader">首选 Key</Table.Head><Table.Head role="columnheader" data-align="control">倍率</Table.Head><Table.Head role="columnheader">健康</Table.Head><Table.Head role="columnheader">模型验证</Table.Head><Table.Head role="columnheader" data-align="control">状态</Table.Head><Table.Head role="columnheader" data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body role="rowgroup">{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
+    <Table.Root role="table" class="provider-table provider-list-table">
+      <!-- 表头和数据共享固定列定义，名称及余额变化不参与重新分配列宽。 -->
+      <colgroup>
+        <col class="provider-col-name" /><col class="provider-col-balance" />
+        <col class="provider-col-key" /><col class="provider-col-multiplier" />
+        <col class="provider-col-health" /><col class="provider-col-verification" />
+        <col class="provider-col-status" /><col class="provider-col-actions" />
+      </colgroup><Table.Header role="rowgroup" variant="list"><Table.Row role="row"><Table.Head role="columnheader">供应商</Table.Head><Table.Head role="columnheader" data-align="number">余额</Table.Head><Table.Head role="columnheader">首选 Key</Table.Head><Table.Head role="columnheader" data-align="control">倍率</Table.Head><Table.Head role="columnheader">健康</Table.Head><Table.Head role="columnheader">模型验证</Table.Head><Table.Head role="columnheader" data-align="control">状态</Table.Head><Table.Head role="columnheader" data-align="control">操作</Table.Head></Table.Row></Table.Header><Table.Body role="rowgroup">{#each filtered as row(row.provider.id)}{@const provider=row.provider}{@const account=accounts[provider.id]}{@const display=balance(account)}
       <!-- 名称按钮提供键盘入口，整行点击仅扩展鼠标命中区域。 -->
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
       <Table.Row role="row" data-disabled={!provider.enabled} onclick={(event)=>openRow(event,provider.id)}>

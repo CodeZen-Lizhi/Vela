@@ -4,7 +4,7 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  /* 九列内容保持紧凑阅读宽度，避免收紧短列后将全部空白转移到模型列。 */
+  /* 九列保持紧凑阅读宽度；低于可读下限时由列表滚动区横向滚动。 */
   width: 100%;
   max-width: 1040px;
   align-self: center;
@@ -56,11 +56,11 @@
 }
 .records-table {
   min-width: 0;
-  container-type: inline-size;
 }
 .records-table table {
-  table-layout: auto;
+  table-layout: fixed;
   width: 100%;
+  min-width: 1000px;
 }
 .records-table th,
 .records-table td {
@@ -72,51 +72,31 @@
   padding: 8px;
   line-height: 1.4;
 }
-.records-table th {
-  vertical-align: middle;
-  padding-block: 6px;
-}
-/* 筛选入口自带点击区域，列头让出横向留白以容纳字段名和图标。 */
-.records-table th:has([data-slot="select-trigger"]) {
-  padding-inline: 0;
-}
-/* 表头计量说明不继承大写和扩展字距，最小窗口仍保持一行。 */
-.records-table th small {
-  letter-spacing: normal;
-  text-transform: none;
-  white-space: nowrap;
-}
-/* 原生自动布局按各列内容分配空间，长身份受上下限约束，不独占剩余宽度。 */
-.record-model-line,
-.records-table td:nth-child(2) > .record-truncate {
-  width: max-content;
-  min-width: 72px;
-  max-width: clamp(90px, calc(100cqw - 650px), 250px);
-}
-.record-provider-line,
-.records-table td:nth-child(3) > .record-truncate {
-  width: max-content;
-  max-width: clamp(65px, 12cqw, 140px);
-}
+/* 列宽只随表格宽度变化；名称长短、空结果及请求终态不能参与分配。 */
+.records-table col.record-col-time { width: 84px; }
+.records-table col.record-col-provider { width: 128px; }
+.records-table col.record-col-protocol { width: 100px; }
+.records-table col.record-col-state { width: 84px; }
+.records-table col.record-col-type { width: 60px; }
+.records-table col.record-col-usage { width: 140px; }
+.records-table col.record-col-cost { width: 108px; }
+.records-table col.record-col-timing { width: 140px; }
+/* 模型列取得剩余空间，1000px下仍预留156px；其他列不因长映射扩张。 */
+.records-table col.record-col-model { width: calc(100% - 844px); }
+.records-table th { height: 36px; padding-block: 3px; }
 .records-table td:first-child { white-space: nowrap; }
-.records-table td:nth-child(4) { max-width: 100px; }
-/* 为进行中与终态状态预留相同宽度，收尾时不因胶囊文字变化挤动相邻列。 */
-.records-table td:nth-child(5) { min-width: 82px; }
-.record-column-heading { display: flex; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
+.record-model-line,
+.record-provider-line,
+.records-table td > .record-truncate { width: 100%; min-width: 0; }
+/* 数值表头、成组值和未知占位均以整列中心对齐。 */
+.records-table :is(th, td):nth-child(n + 7) { text-align: center; }
+.record-column-heading { display: flex; justify-content: center; align-items: center; gap: 4px; letter-spacing: normal; text-transform: none; }
 .record-column-heading > span:first-child { white-space: nowrap; }
 .record-column-help { font-size: 9px; font-weight: 400; line-height: 1.35; white-space: nowrap; color: var(--muted-foreground); }
-/* 窄窗口收紧留白和身份列，表头说明换行，数值列继续按真实内容分配。 */
-@container (max-width: 850px) {
-  .record-column-heading { flex-wrap: wrap; row-gap: 2px; }
-  .records-table th,
-  .records-table td { padding-inline: 4px; }
-  .records-table th:has([data-slot="select-trigger"]) { padding-inline: 0; }
-  .record-provider-line,
-  .records-table td:nth-child(3) > .record-truncate { max-width: 75px; }
-  .records-table td:nth-child(5) { min-width: 74px; }
-  .records-token-usage > div { flex-wrap: wrap; }
-}
-.records-table th { height: 36px; padding-block: 3px; }
+/* 名称可收缩，实际倍率始终完整显示；不使用当前Key配置回填历史。 */
+.records-table small.record-key-line { display: flex; align-items: baseline; min-width: 0; }
+.record-key-line > .record-truncate { flex: 0 1 auto; }
+.record-key-multiplier { flex: none; white-space: nowrap; }
 .record-protocol { display: block; overflow-wrap: anywhere; line-height: 1.4; }
 .record-protocol > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .record-provider-line { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; min-width: 0; }
@@ -212,6 +192,7 @@
 .records-token-usage > div {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 4px;
   min-width: 0;
 }
@@ -231,7 +212,7 @@
 .record-cost-pair { display: inline-flex; flex-direction: column; align-items: center; }
 .record-first-byte { color: var(--caution); }
 .record-separator { color: var(--muted-foreground); }
-.record-timing-pair { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; font-variant-numeric: tabular-nums; }
+.record-timing-pair { display: flex; flex-wrap: nowrap; justify-content: center; align-items: baseline; column-gap: 4px; font-variant-numeric: tabular-nums; }
 .record-timing-pair > span { white-space: nowrap; }
 .record-speed { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .record-missing { color: var(--muted-foreground); font-weight: 400; }

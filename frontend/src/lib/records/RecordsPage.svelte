@@ -116,14 +116,16 @@
       range !== "today",
     ),
   );
-  /** 当前筛选从本地自然日开始，全部表示保留期内全部明细。 */
+  /** 按本地自然日筛选；昨天截止到今天零点前一毫秒，全部不限制时间。 */
   function query(): Query {
     const query = { ...q };
+    query.end = 0;
     if (range !== "all") {
       const day = new Date();
       day.setHours(0, 0, 0, 0);
+      if (range === "yesterday") query.end = day.getTime() - 1;
       day.setDate(
-        day.getDate() - (range === "today" ? 0 : range === "last7" ? 6 : 29),
+        day.getDate() - (range === "today" ? 0 : range === "yesterday" ? 1 : range === "last7" ? 6 : 29),
       );
       query.start = day.getTime();
     } else query.start = 0;
@@ -292,6 +294,7 @@
             label="时间范围"
             options={[
               { value: "today", label: "今天" },
+              { value: "yesterday", label: "昨天" },
               { value: "last7", label: "最近7天" },
               { value: "last30", label: "最近30天" },
               { value: "all", label: "全部" },
@@ -357,8 +360,14 @@
         <Empty.Description>调整筛选，或在产生真实请求后刷新。</Empty.Description>
       </Empty.Root>{/if}
     <div class="records-table" aria-busy={loading}>
-      <Table.Root
-        ><Table.Header
+      <Table.Root>
+        <colgroup>
+          <col class="record-col-time" /><col class="record-col-model" />
+          <col class="record-col-provider" /><col class="record-col-protocol" />
+          <col class="record-col-state" /><col class="record-col-type" />
+          <col class="record-col-usage" /><col class="record-col-cost" /><col class="record-col-timing" />
+        </colgroup>
+        <Table.Header
           ><Table.Row>
             <Table.Head>时间</Table.Head><Table.Head
               ><Filter
@@ -507,7 +516,8 @@
     {#if activity.transfers}<Badge  variant="warning"  aria-label={`转移 ${activity.transfers} 次`}><Shuffle aria-hidden="true" />{activity.transfers}</Badge>{/if}
     {#if activity.retries}<Badge  variant="info"  aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/if}
   </div>
-  <Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<small {...hintProps9} class="record-truncate" >{target.keyName}</small>{/snippet}</Hint>
+  <!-- 仅实际执行身份显示倍率快照；本地阻断及未采集记录不伪造倍率。 -->
+  <small class="record-key-line"><Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<span {...hintProps9} class="record-truncate">{target.keyName}</span>{/snippet}</Hint>{#if row.state !== "local" && row.keyName && row.multiplier != null}<span class="record-key-multiplier">（{row.multiplier}倍）</span>{/if}</small>
 {/snippet}
 <!-- 状态单独显示和筛选，进行中保留既定动画。 -->
 {#snippet stateCell(row: RecordsRecord)}
