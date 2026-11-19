@@ -517,7 +517,7 @@
     {#if activity.retries}<Badge  variant="info"  aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/if}
   </div>
   <!-- 仅实际执行身份显示倍率快照；本地阻断及未采集记录不伪造倍率。 -->
-  <small class="record-key-line"><Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<span {...hintProps9} class="record-truncate">{target.keyName}</span>{/snippet}</Hint>{#if row.state !== "local" && row.keyName && row.multiplier != null}<span class="record-key-multiplier">（{row.multiplier}倍）</span>{/if}</small>
+  <small class="record-key-line"><Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<span {...hintProps9} class="record-truncate">{target.keyName}</span>{/snippet}</Hint>{#if row.state !== "local" && row.keyName && row.multiplier != null}<span class="record-key-multiplier">（×{row.multiplier}）</span>{/if}</small>
 {/snippet}
 <!-- 状态单独显示和筛选，进行中保留既定动画。 -->
 {#snippet stateCell(row: RecordsRecord)}
