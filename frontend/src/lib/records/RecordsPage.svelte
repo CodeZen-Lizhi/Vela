@@ -51,6 +51,8 @@
     recordTarget,
   } from "./display";
   import "./records.css";
+  import { tableLayout } from "$lib/list-layout/table-layout";
+  import { recordColumns } from "$lib/list-layout/columns";
   /** 使用记录工作台读取真实分页；浏览器预览不生成演示请求或伪造空数据库。 */
   let {
     notify,
@@ -101,6 +103,13 @@
       range,
     ]),
   );
+  /** 样本身份跟随已成功返回的查询，避免新筛选使用旧分页内容测量。 */
+  let columnIdentity = $state<string | null>(null);
+  const columnSamples = $derived([
+    [], result?.records.flatMap(row => [row.model, row.upstreamModel]) ?? [],
+    result?.records.flatMap(row => { const target = recordTarget(row); return [target.providerName, target.keyName]; }) ?? [],
+    [], [], [], [], [], [],
+  ]);
   /** 空库与主动筛选无匹配使用不同提示。 */
   const filtered = $derived(
     Boolean(
@@ -131,10 +140,11 @@
     } else query.start = 0;
     return query;
   }
-  /** 读取分页及摘要；实时查询可在关闭时失效，成功前保留当前插入顺序快照。 */
+  /** 读取分页及摘要并登记成功查询的测量身份；实时查询可在关闭时失效，失败保留已有快照。 */
   async function load(reset = false, automatic = false): Promise<void> {
     if (!desktop || disposed) return;
     const request = query();
+    const requestedColumns = filterIdentity;
     if (reset) request.before = 0;
     const version = ++generation;
     realtimeLoading = automatic;
@@ -144,6 +154,7 @@
       const next = await VelaService.requestRecords(request);
       if (disposed || version !== generation) return;
       result = next;
+      columnIdentity = requestedColumns;
       q.before = next.before;
     } catch (cause) {
       if (!disposed && version === generation) error = errorMessage(cause);
@@ -346,7 +357,7 @@
     </div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="list-scroll" role="region" aria-label="使用记录列表内容" tabindex="0">
+    <div class="list-scroll" role="region" aria-label="使用记录列表内容" tabindex="0" use:tableLayout={{columns: recordColumns, samples: columnSamples, identity: filterIdentity, ready: columnIdentity === filterIdentity && Boolean(result?.records.length)}}>
     {#if loading && !result}<Empty.Root role="status">
         正在读取请求记录…
       </Empty.Root>{:else if result && !result.records.length}<Empty.Root>

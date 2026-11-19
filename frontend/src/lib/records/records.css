@@ -4,9 +4,9 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  /* 九列保持紧凑阅读宽度；低于可读下限时由列表滚动区横向滚动。 */
+  /* 按容器预算有限舒展，低于九列可读下限时只在列表内部横向滚动。 */
   width: 100%;
-  max-width: 1040px;
+  max-width: none;
   align-self: center;
 }
 .records-actions {
@@ -60,7 +60,8 @@
 .records-table table {
   table-layout: fixed;
   width: 100%;
-  min-width: 1000px;
+  min-width: 0;
+  margin-inline: auto;
 }
 .records-table th,
 .records-table td {
@@ -72,17 +73,7 @@
   padding: 8px;
   line-height: 1.4;
 }
-/* 列宽只随表格宽度变化；名称长短、空结果及请求终态不能参与分配。 */
-.records-table col.record-col-time { width: 84px; }
-.records-table col.record-col-provider { width: 128px; }
-.records-table col.record-col-protocol { width: 100px; }
-.records-table col.record-col-state { width: 84px; }
-.records-table col.record-col-type { width: 60px; }
-.records-table col.record-col-usage { width: 140px; }
-.records-table col.record-col-cost { width: 108px; }
-.records-table col.record-col-timing { width: 140px; }
-/* 模型列取得剩余空间，1000px下仍预留156px；其他列不因长映射扩张。 */
-.records-table col.record-col-model { width: calc(100% - 844px); }
+/* colgroup宽度由共享列预算统一写入，避免固定像素与剩余宽度重复分配。 */
 .records-table th { height: 36px; padding-block: 3px; }
 .records-table td:first-child { white-space: nowrap; }
 .record-model-line,

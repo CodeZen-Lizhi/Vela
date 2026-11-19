@@ -77,19 +77,14 @@
 .provider-methods { display:flex; flex-direction:column; gap:7px; }
 
 /* 主列表始终使用同一列结构；窄窗口仅在已有列表滚动区横向滚动。 */
-.provider-list-table { min-width:1080px; }
-.provider-list-table col.provider-col-name { width:22%; }
-.provider-list-table col.provider-col-balance { width:128px; }
-.provider-list-table col.provider-col-multiplier { width:120px; }
-.provider-list-table col.provider-col-health { width:88px; }
-.provider-list-table col.provider-col-verification { width:164px; }
-.provider-list-table col.provider-col-status { width:64px; }
-.provider-list-table col.provider-col-actions { width:160px; }
-/* 首选Key使用剩余空间；其余列不随当前数据的最长内容伸缩。 */
-.provider-list-table col.provider-col-key { width:auto; }
+.provider-list-table { min-width:0; margin-inline:auto; }
 .provider-list-table :is(th,td) { --table-head-inset:8px; padding-inline:8px; }
 .provider-list-table td:nth-child(6) > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .provider-list-table .provider-actions { justify-content:center; }
+/* 数值按固定列预算截断，完整币种及金额仍由已有查询提示和可访问名称提供。 */
+.provider-list-table td[data-label="余额"] > button { max-width:100%; min-width:0; }
+.provider-list-table .provider-balance { min-width:0; max-width:100%; }
+.provider-list-table .provider-balance > span:last-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .provider-table td { white-space:normal; overflow-wrap:anywhere; }
 .provider-identity > a { flex-shrink:0; }
 /* 短内容列统一居中，避免余额靠右而健康靠左造成相邻列视觉拥挤。 */

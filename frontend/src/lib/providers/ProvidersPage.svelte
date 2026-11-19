@@ -22,6 +22,8 @@
   import ProviderDetails from "./ProviderDetails.svelte";
   import AccountForm from "./AccountForm.svelte";
   import "./providers.css";
+  import { tableLayout } from "$lib/list-layout/table-layout";
+  import { providerColumns } from "$lib/list-layout/columns";
   /** 主页面维护列表快照；详情、表单草稿与账户查询各自保有生命周期。 */
   let {notify}: {notify:(message:string)=>void}=$props();
   let rows=$state<ProviderOverview[]>([]), defaults=$state<ProviderDefaults|null>(null);
@@ -48,6 +50,9 @@
     /** 是否存在可展示的余额数值。 */
     available: boolean;
   };
+  /** 全集名称决定重测身份，筛选、首选Key切换及后台状态刷新不重排列。 */
+  const columnIdentity = $derived(JSON.stringify(rows.map(row => ({id: row.provider.id, name: row.provider.name})).sort((a,b) => a.id.localeCompare(b.id))));
+  const columnSamples = $derived([rows.map(row => row.provider.name), [], rows.map(row => row.preferredKey?.name ?? ""), [], [], [], [], []]);
   /** 当前详情取最新快照；删除后不会留下旧抽屉。 */
   const selected=$derived(rows.find((row)=>row.provider.id===detailID)?.provider??null);
   const modelOptions=$derived([{value:"all",label:"全部关联模型"},...Array.from(new Map(Object.values(relations).flat().map((model)=>[model.modelId,{value:model.modelId,label:model.name}])).values()).sort((left,right)=>left.label.localeCompare(right.label))]);
@@ -144,9 +149,9 @@
     <div class="provider-toolbar"><InputGroup.Root class="provider-search"><InputGroup.Input aria-label="搜索供应商" bind:value={query} placeholder="搜索名称、主站或关联模型"/><InputGroup.Addon><Search/></InputGroup.Addon></InputGroup.Root><div class="provider-filter"><Choice bind:value={modelFilter} label="按关联模型筛选" options={modelOptions}/></div><ToggleGroup.Root type="single" value={status} onValueChange={(value)=>{if(value)status=value;}} variant="segmented" size="xs" spacing={1} aria-label="供应商状态筛选">{#each [{value:"all",label:"全部",count:rows.length},{value:"enabled",label:"已启用",count:rows.filter((row)=>row.provider.enabled).length},{value:"disabled",label:"已停用",count:rows.filter((row)=>!row.provider.enabled).length}] as item}<ToggleGroup.Item value={item.value}>{item.label} <span>{item.count}</span></ToggleGroup.Item>{/each}</ToggleGroup.Root><div class="provider-toolbar-actions"><Button onclick={refresh} variant="ghost" size="icon-sm" aria-label={refreshing?"正在刷新上游信息":"刷新上游信息"}  aria-busy={refreshing} disabled={!isMyGo()||refreshing||loading||!rows.length} ><RefreshCw class={refreshing ? "animate-spin" : ""}/></Button><Button disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加供应商</Button></div></div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0">
+    <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0" use:tableLayout={{columns: providerColumns, samples: columnSamples, identity: columnIdentity, ready: !loading}}>
     <Table.Root role="table" class="provider-table provider-list-table">
-      <!-- 表头和数据共享固定列定义，名称及余额变化不参与重新分配列宽。 -->
+      <!-- 列边界由共享预算分配；名称集合变化允许重测，筛选及状态变化沿用同周期宽度。 -->
       <colgroup>
         <col class="provider-col-name" /><col class="provider-col-balance" />
         <col class="provider-col-key" /><col class="provider-col-multiplier" />
