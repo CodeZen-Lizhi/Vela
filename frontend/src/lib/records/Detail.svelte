@@ -14,6 +14,7 @@
   import { errorMessage } from "$lib/settings/sections";
   import { rateNames, rateUnit, unitLabel } from "$lib/models/display";
   import Exchange from "./Exchange.svelte";
+  import { attemptError } from "./execution";
   import ExecutionPath from "./ExecutionPath.svelte";
   import { elapsedClock } from "./elapsed-clock.svelte";
   import {
@@ -53,6 +54,8 @@
   let viewedID = $state("");
   /** 头部状态来自最后一次真实 HTTP，逻辑失败仍单独显示最终状态。 */
   const lastStatus = $derived(record?.attempts.at(-1)?.status);
+  /** 最终失败补充最后一次实际尝试的上游错误，成功记录不继承重试错误。 */
+  const failure = $derived(record?.state === "failed" ? attemptError(record.attempts.at(-1)) || record.error : record?.error);
   const elapsed = $derived(record?.state === "active" ? Math.max(0, clock.now - record.startedAt) : record?.durationMillis);
   /** 详情失败可重试，活跃时持续读取到真实终态。 */
   async function load(requestID: string): Promise<void> {
@@ -160,7 +163,7 @@
           <Card.Root size="sm"><Card.Content><span>输出速度</span><strong>{record.outputRate == null ? "—" : `${compact(record.outputRate)} TPS`}</strong></Card.Content></Card.Root>
           <Card.Root size="sm"><Card.Content><span>首字耗时</span><strong>{duration(record.firstByteMillis)}</strong></Card.Content></Card.Root>
         </section>
-        {#if record.error}<Alert.Root variant="destructive"><Alert.Description>{record.error}</Alert.Description></Alert.Root>{/if}
+        {#if failure}<Alert.Root variant="destructive"><Alert.Description>{failure}</Alert.Description></Alert.Root>{/if}
         {#if !record.usage}<p class="record-detail-note">{record.state === "active" ? "请求进行中，用量与估算费用尚未结算。" : record.state === "local" ? "请求未发上游，无上游用量。" : "上游未提供可验证用量，未知值不显示为零。"}</p>{/if}
         {#if record.circuitSourceId}<Alert.Root variant="info"><Alert.Description>本地熔断 · 触发请求 <Button variant="link" size="inline" onclick={() => openSource(record!.circuitSourceId)}>{record.circuitSourceId}</Button></Alert.Description></Alert.Root>{/if}
 

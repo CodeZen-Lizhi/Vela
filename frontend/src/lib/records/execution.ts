@@ -1,4 +1,5 @@
 import type { Attempt, Candidate, RecordsRecord } from "$lib/generated/mygo";
+import { conversationMessages } from "./exchange";
 
 /** 路径条目保留实际尝试索引；本地跳过的索引为空，不能跳转到其他上游响应。 */
 export interface PathEntry {
@@ -23,19 +24,30 @@ export function pathEntries(record: RecordsRecord): PathEntry[] {
   }));
 }
 
-/** 错误优先使用执行原因，再读取真实脱敏响应；超期正文不从其他请求补入。 */
+/** 失败节点同时显示执行原因和真实上游错误；本地阻断保留准入原因。 */
 export function entryError(entry: PathEntry): string {
   if (entry.index == null) return (entry.item as Candidate).reason;
   const item = entry.item as Attempt;
-  if (item.error) return item.error;
-  if (entry.state !== "failed" || !item.payload?.responseBody) return "";
+  return entry.state === "failed" ? attemptError(item) : "";
+}
+
+/** 合并单次执行错误与已脱敏 JSON/SSE 错误；正文超期时仅使用保留的执行诊断。 */
+export function attemptError(item: Attempt | undefined): string {
+  if (!item) return "";
+  const payload = item.payload;
+  if (!payload?.responseBody || payload.bodyState === "expired") return item.error;
+  let detail = "";
   try {
-    const body = JSON.parse(item.payload.responseBody);
-    if (typeof body?.error?.message === "string") return body.error.message;
-    if (typeof body?.error === "string") return body.error;
-    if (typeof body?.message === "string") return body.message;
+    const body = JSON.parse(payload.responseBody);
+    if (typeof body?.error?.message === "string") detail = body.error.message;
+    else if (typeof body?.error === "string") detail = body.error;
+    else if (typeof body?.message === "string") detail = body.message;
+    const code = body?.error?.code ?? body?.error?.type;
+    if (typeof code === "string" && code) detail = detail ? `${code}：${detail}` : code;
   } catch { /* 非 JSON 错误保留原始文本。 */ }
-  return item.payload.responseBody;
+  if (!detail) detail = conversationMessages(payload.responseBody, "response").filter(row => row.role === "错误").map(row => row.text).join("\n");
+  if (!detail && (item.status >= 400 || !item.status)) detail = payload.responseBody;
+  return [item.error, detail && detail !== item.error ? detail : ""].filter(Boolean).join("：");
 }
 
 /** 冷却按真实 Unix 毫秒截止时间逐秒显示；到期只说明可重试/探测，不改写请求或健康终态。 */

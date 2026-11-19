@@ -166,8 +166,12 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 		if !stopped || errors.Is(attemptCtx.Err(), context.DeadlineExceeded) {
 			result.Outcome.Penalty = Light
 			result.Status = 504
+			if req.Stream && !stopped {
+				return result, fmt.Errorf("首次响应超时（%d 秒），未收到上游 HTTP 响应头", first)
+			}
+			return result, errors.New("上游请求超时，未收到 HTTP 响应头")
 		}
-		return result, errors.New("上游连接或首次响应失败")
+		return result, upstreamConnectionError(err, secret)
 	}
 	defer response.Body.Close()
 	if req.Stream {
@@ -250,6 +254,21 @@ func (r *HTTPRunner) Run(ctx context.Context, c Candidate, req ExecutionRequest,
 	}
 	result.Outcome.Success = true
 	return result, nil
+}
+
+// upstreamConnectionError 保留网络或 TLS 故障原因，移除可能带凭据的请求 URL 和已知上游密钥。
+func upstreamConnectionError(cause error, secret string) error {
+	var requestError *url.Error
+	if errors.As(cause, &requestError) {
+		cause = requestError.Err
+	}
+	detail := cause.Error()
+	if secret != "" {
+		for _, value := range []string{secret, url.QueryEscape(secret), url.PathEscape(secret)} {
+			detail = strings.ReplaceAll(detail, value, "[REDACTED]")
+		}
+	}
+	return fmt.Errorf("上游连接失败：%s", detail)
 }
 
 // classifyHTTP 只读取顶层错误信封，不把生成文字中的错误码当作凭据失效证明。

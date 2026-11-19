@@ -3,15 +3,32 @@ package scheduling
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/CodeZen-Lizhi/vela/internal/providers"
 )
+
+// TestUpstreamConnectionError 验证网络细节可诊断，同时不把请求 URL、查询凭据或密钥带入错误。
+func TestUpstreamConnectionError(t *testing.T) {
+	secret := "test-secret+/"
+	cause := &url.Error{Op: "Post", URL: "https://user:password@example.invalid/v1/responses?key=query-secret", Err: errors.New("TLS handshake failed: " + secret + " " + url.QueryEscape(secret))}
+	message := upstreamConnectionError(cause, secret).Error()
+	if !strings.Contains(message, "TLS handshake failed") {
+		t.Fatalf("网络错误细节丢失: %q", message)
+	}
+	for _, forbidden := range []string{"password", "query-secret", "example.invalid", secret, url.QueryEscape(secret)} {
+		if strings.Contains(message, forbidden) {
+			t.Fatalf("连接错误包含敏感数据: %q", message)
+		}
+	}
+}
 
 // TestResponsesLargePrelude 验证携带指令和工具定义的双事件前奏可完整转发，错误与缺失终态仍不会提交。
 func TestResponsesLargePrelude(t *testing.T) {

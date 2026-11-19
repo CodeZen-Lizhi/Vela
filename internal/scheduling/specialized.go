@@ -84,7 +84,7 @@ func (r *HTTPRunner) runSpecialized(ctx context.Context, c Candidate, req Execut
 	// 首次响应以最终响应头为界；Interactions 后续按空闲等待，其余操作保留独立总期限。
 	firstResponse := time.AfterFunc(time.Duration(first)*time.Second, cancel)
 	response, err := client.Do(call)
-	firstResponse.Stop()
+	stopped := firstResponse.Stop()
 	if err != nil {
 		var local *records.LocalError
 		if errors.As(err, &local) {
@@ -99,8 +99,12 @@ func (r *HTTPRunner) runSpecialized(ctx context.Context, c Candidate, req Execut
 		if bounded.Err() != nil {
 			result.Status = 504
 			result.Outcome.Penalty = Light
+			if !stopped {
+				return result, fmt.Errorf("首次响应超时（%d 秒），未收到上游 HTTP 响应头", first)
+			}
+			return result, fmt.Errorf("上游请求超时（%d 秒），未收到 HTTP 响应头", seconds)
 		}
-		return result, errors.New("上游连接失败")
+		return result, upstreamConnectionError(err, secret)
 	}
 	defer response.Body.Close()
 	if req.Type == "interactions" && req.Stream {

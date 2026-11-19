@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
 import { test } from "node:test";
-import { pathEntries, entryError, protectionRemaining } from "./execution.ts";
+
+// Node 原生执行时补全 Vite 使用的本地 TypeScript 扩展名。
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (context.parentURL?.match(/\/(execution|exchange)\.ts$/) && ["./exchange", "./display"].includes(specifier)) return nextResolve(new URL(`${specifier}.ts`, context.parentURL).href, context);
+  return nextResolve(specifier, context);
+} });
+const { attemptError, entryError, pathEntries, protectionRemaining } = await import("./execution.ts");
 
 /** 协议终态错误不能被真实 HTTP 200 掩盖；重试索引保持与正文选择一致。 */
 test("真实尝试保留顺序，HTTP 200 执行错误仍为失败", () => {
@@ -42,4 +49,20 @@ test("WebSocket 101 完整成功与正在输出分别展示", () => {
   const record={state:"success",attempts:[{number:1,status:101,error:"",durationMillis:100,endedAt:1000}]};
   assert.equal(pathEntries(record)[0].state,"success");
   assert.equal(pathEntries({...record,state:"active",attempts:[{number:1,status:101,error:"",durationMillis:0,endedAt:0}]})[0].state,"pending");
+});
+
+/** HTTP 错误详情和代码不能被通用执行说明遮住，正文到期后不旁路展示。 */
+test("失败节点合并执行原因与上游错误，过期正文不可见", () => {
+  const item = {number:1, status:429, error:"上游返回状态 429", payload:{bodyState:"available", responseBody:'{"error":{"code":"rate_limit_exceeded","message":"余额不足，请充值"}}'}};
+  const [entry] = pathEntries({state:"failed", attempts:[item]});
+  assert.equal(entryError(entry), "上游返回状态 429：rate_limit_exceeded：余额不足，请充值");
+  assert.equal(attemptError({...item, payload:{...item.payload, bodyState:"expired"}}), item.error);
+});
+
+/** 无响应保留网络故障，SSE 终态提取真实错误且不把正常回答当成错误。 */
+test("网络故障和流式错误使用各自事实", () => {
+  assert.equal(attemptError({error:"首次响应超时（30 秒），未收到上游 HTTP 响应头", status:0, payload:{responseBody:""}}), "首次响应超时（30 秒），未收到上游 HTTP 响应头");
+  const item = {status:200, error:"上游流式响应失败", payload:{responseBody:'data: {"type":"response.failed","response":{"error":{"code":"server_error","message":"模型暂不可用"}}}\n\n'}};
+  assert.match(attemptError(item), /模型暂不可用/);
+  assert.equal(attemptError({status:200,error:"",payload:{responseBody:'{"choices":[{"message":{"content":"正常回答"}}]}'}}), "");
 });

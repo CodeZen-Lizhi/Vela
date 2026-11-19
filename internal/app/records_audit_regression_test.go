@@ -4,13 +4,56 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/CodeZen-Lizhi/vela/internal/records"
 	"io"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/CodeZen-Lizhi/vela/internal/providers"
+	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
+
+// TestAuditUpstreamFailureReason 经真实鉴权网关和 SQLite 重读，验证无响应时仍保留具体故障与实际请求。
+func TestAuditUpstreamFailureReason(t *testing.T) {
+	for _, scenario := range []string{"first-response-timeout", "connection-refused"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newExecutionFixture(t)
+			s := auditRecords(t, f)
+			address := f.provider.URL
+			want := "首次响应超时（1 秒），未收到上游 HTTP 响应头"
+			if scenario == "connection-refused" {
+				listener, err := net.Listen("tcp", "127.0.0.1:0")
+				if err != nil {
+					t.Fatal(err)
+				}
+				address = "http://" + listener.Addr().String()
+				if err := listener.Close(); err != nil {
+					t.Fatal(err)
+				}
+				want = "connection refused"
+			} else {
+				f.handle = func(w http.ResponseWriter, r *http.Request, _ map[string]any) { <-r.Context().Done() }
+			}
+			var err error
+			f.provider, err = f.vendors.Update(context.Background(), f.provider.ID, providers.ProviderDraft{Name: "Local", URL: address, Request: providers.RequestPolicy{Attempts: 1, FirstByteSeconds: 1, Proxy: providers.ProxyChoice{Mode: providers.ProxyDirect}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			status, out := compatibilityRequest(t, startCompatibilityGateway(t, f), "/v1/responses", `{"model":"logical-model","input":"hello","stream":true}`, nil)
+			r := auditDetail(t, s)
+			if status < 400 || !strings.Contains(r.Error, want) || !strings.Contains(string(out), want) {
+				t.Fatalf("具体失败原因丢失: HTTP=%d record=%q client=%s", status, r.Error, out)
+			}
+			for _, attempt := range r.Attempts {
+				if !strings.Contains(attempt.Error, want) || attempt.Status != 0 || attempt.Payload.RequestBody == "" || attempt.Payload.ResponseBody != "" {
+					t.Fatalf("无响应的尝试事实错误: %+v", attempt)
+				}
+			}
+		})
+	}
+}
 
 // auditRecords 使用隔离数据库接入真实网关记录。
 func auditRecords(t *testing.T, f *executionFixture) *records.Store {
