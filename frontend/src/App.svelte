@@ -177,7 +177,7 @@
         设置 <span class="mx-2 text-border">/</span><span class="text-foreground">{sectionName}</span>
       </p>{/if}
     </header>
-    <main class="app-main" class:list-workspace={["供应商", "模型", "使用记录", "模型验证"].includes(page)}>
+    <main class="app-main">
       {#if page === "总览"}<OverviewPage {notify} navigate={(target) => { if (target === "providers") page = "供应商"; else openSettings("connection"); }} />{:else if page === "供应商"}<ProvidersPage {notify} />{:else if page === "模型"}<ModelsPage {notify} />{:else if page === "调度"}<SchedulingPage
           {notify}
         />{:else if page === "使用记录"}<RecordsPage {notify} />{:else if page === "模型验证"}<VerificationPage {notify} />{:else}<SettingsPage

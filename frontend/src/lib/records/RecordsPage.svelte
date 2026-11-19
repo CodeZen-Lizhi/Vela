@@ -105,11 +105,6 @@
   );
   /** 样本身份跟随已成功返回的查询，避免新筛选使用旧分页内容测量。 */
   let columnIdentity = $state<string | null>(null);
-  const columnSamples = $derived([
-    [], result?.records.flatMap(row => [row.model, row.upstreamModel]) ?? [],
-    result?.records.flatMap(row => { const target = recordTarget(row); return [target.providerName, target.keyName]; }) ?? [],
-    [], [], [], [], [], [],
-  ]);
   /** 空库与主动筛选无匹配使用不同提示。 */
   const filtered = $derived(
     Boolean(
@@ -282,13 +277,13 @@
 
 <div class="records-page list-page">
   <PageHeader title="使用记录" description="请求明细 · 用量、估算费用与执行路径" />
+  <section class="records-surface list-surface" aria-label="请求记录">
   {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览：请在 Vela 桌面应用中查询真实请求记录。
     </Alert.Description></Alert.Root>{/if}
   {#if error}<Alert.Root variant="destructive"><Alert.Description>
       {error}<Button variant="outline" onclick={refresh}>重试</Button>
     </Alert.Description></Alert.Root>{/if}
-  <section class="records-surface list-surface" aria-label="请求记录">
     <div class="records-filters">
         <InputGroup.Root class="records-search"
           ><InputGroup.Addon><Search /></InputGroup.Addon><InputGroup.Input
@@ -357,7 +352,7 @@
     </div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="list-scroll" role="region" aria-label="使用记录列表内容" tabindex="0" use:tableLayout={{columns: recordColumns, samples: columnSamples, identity: filterIdentity, ready: columnIdentity === filterIdentity && Boolean(result?.records.length)}}>
+    <div class="list-scroll" role="region" aria-label="使用记录列表内容" tabindex="0" use:tableLayout={{columns: recordColumns, identity: filterIdentity, ready: columnIdentity === filterIdentity && Boolean(result?.records.length)}}>
     {#if loading && !result}<Empty.Root role="status">
         正在读取请求记录…
       </Empty.Root>{:else if result && !result.records.length}<Empty.Root>
@@ -512,23 +507,23 @@
 </div>
 <!-- 参数紧随模型名且保持同一行；长名称省略，上游映射保留独立信息行。 -->
 {#snippet modelCell(row: RecordsRecord)}
-  <div class="record-model-line">
-    <Hint overflowOnly text={row.model || "未知模型"}>{#snippet children(hintProps4)}<strong {...hintProps4} class="record-model">{row.model || "未知模型"}</strong>{/snippet}</Hint>
+  <div class="record-model-line" data-column-line>
+    <Hint overflowOnly text={row.model || "未知模型"}>{#snippet children(hintProps4)}<strong {...hintProps4} class="record-model" data-column-text>{row.model || "未知模型"}</strong>{/snippet}</Hint>
     {#if row.effort}<Badge variant="parameter">{row.effort}</Badge>{/if}
     {#if row.tier && row.tier.toLowerCase() !== "standard"}<Badge variant="parameter">{row.tier}</Badge>{/if}
   </div>
-  <Hint overflowOnly text={`→ ${row.upstreamModel || "—"}`}>{#snippet children(hintProps5)}<small {...hintProps5} class="record-truncate" >→ {row.upstreamModel || "—"}</small>{/snippet}</Hint>
+  <Hint overflowOnly text={`→ ${row.upstreamModel || "—"}`}>{#snippet children(hintProps5)}<small {...hintProps5} class="record-truncate" data-column-line data-column-text >→ {row.upstreamModel || "—"}</small>{/snippet}</Hint>
 {/snippet}
 <!-- 执行供应商或已知本地阻断供应商与 Key 分两行展示，只有真实尝试才计算重试/转移。 -->
 {#snippet providerCell(row: RecordsRecord)}
   {@const activity = executionCounts(row)}
   {@const target = recordTarget(row)}
-  <div class="record-provider-line"><Hint overflowOnly text={target.providerName}>{#snippet children(hintProps6)}<strong {...hintProps6} class="record-truncate">{target.providerName}</strong>{/snippet}</Hint>
+  <div class="record-provider-line" data-column-line><Hint overflowOnly text={target.providerName}>{#snippet children(hintProps6)}<strong {...hintProps6} class="record-truncate" data-column-text>{target.providerName}</strong>{/snippet}</Hint>
     {#if activity.transfers}<Badge  variant="warning"  aria-label={`转移 ${activity.transfers} 次`}><Shuffle aria-hidden="true" />{activity.transfers}</Badge>{/if}
     {#if activity.retries}<Badge  variant="info"  aria-label={`重试 ${activity.retries} 次`}><RefreshCw aria-hidden="true" />{activity.retries}</Badge>{/if}
   </div>
   <!-- 仅实际执行身份显示倍率快照；本地阻断及未采集记录不伪造倍率。 -->
-  <small class="record-key-line"><Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<span {...hintProps9} class="record-truncate">{target.keyName}</span>{/snippet}</Hint>{#if row.state !== "local" && row.keyName && row.multiplier != null}<span class="record-key-multiplier">（×{row.multiplier}）</span>{/if}</small>
+  <small class="record-key-line" data-column-line><Hint overflowOnly text={target.keyName}>{#snippet children(hintProps9)}<span {...hintProps9} class="record-truncate" data-column-text>{target.keyName}</span>{/snippet}</Hint>{#if row.state !== "local" && row.keyName && row.multiplier != null}<span class="record-key-multiplier">（×{row.multiplier}）</span>{/if}</small>
 {/snippet}
 <!-- 状态单独显示和筛选，进行中保留既定动画。 -->
 {#snippet stateCell(row: RecordsRecord)}

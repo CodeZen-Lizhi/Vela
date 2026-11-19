@@ -3,9 +3,8 @@ import { allocateColumns, type ColumnBudget } from "./columns";
 
 /** 表格内容测量参数；identity只在允许重新测量的业务边界改变。 */
 export interface TableLayoutOptions {
-  /** 与colgroup顺序一致的列预算及逐列完整文字样本。 */
+  /** 与colgroup顺序一致的列预算。 */
   columns: readonly ColumnBudget[];
-  samples: readonly (readonly string[])[];
   /** 查询身份或供应商名称集合；旧查询加载期间ready必须为false。 */
   identity: string;
   ready: boolean;
@@ -38,15 +37,7 @@ export function tableLayout(node: HTMLElement, initial: TableLayoutOptions) {
     if (options.ready && identity !== options.identity) {
       const table = node.querySelector("table");
       if (!table) return;
-      const context = document.createElement("canvas").getContext("2d");
-      if (!context) return;
-      const style = getComputedStyle(table.querySelector("tbody td") ?? table);
-      context.font = `600 ${style.fontSize} ${style.fontFamily}`;
-      measured = options.columns.map((column, index) => {
-        const chrome = column.chrome;
-        if (chrome === undefined) return column.preferred;
-        return (options.samples[index] ?? []).reduce((width, text) => Math.max(width, context.measureText(text).width + chrome), column.min);
-      });
+      measured = measureColumns(node, options.columns);
       identity = options.identity;
     }
     layout();
@@ -59,4 +50,44 @@ export function tableLayout(node: HTMLElement, initial: TableLayoutOptions) {
     update: (next: TableLayoutOptions) => { void update(next); },
     destroy: () => { disposed = true; generation++; observer.disconnect(); },
   };
+}
+
+/** 测量文字的真实字体、间距、边框和留白；装饰元素直接读取实际布局，不估算固定附加宽度。 */
+function textWidth(element: HTMLElement, context: CanvasRenderingContext2D): number {
+  const style = getComputedStyle(element);
+  const text = element.textContent ?? "";
+  context.font = style.font;
+  const spacing = style.letterSpacing === "normal" ? 0 : parseFloat(style.letterSpacing);
+  return context.measureText(text).width + Math.max(0, Array.from(text).length - 1) * spacing
+    + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+    + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+}
+
+/** 同一列取实际信息行的最大宽度，再加入该单元格留白；隐藏的供应商全集样本也沿用真实组件。 */
+export function measureColumns(node: HTMLElement, columns: readonly ColumnBudget[]): number[] {
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) throw new Error("无法初始化列表文字测量");
+  const widths = columns.map(column => column.content ? column.min : column.preferred);
+  for (const line of node.querySelectorAll<HTMLElement>("[data-column-line]")) {
+    const cell = line.closest("td");
+    if (!cell || !columns[cell.cellIndex]?.content) continue;
+    const style = getComputedStyle(line);
+    const parts = line.hasAttribute("data-column-text")
+      ? [line]
+      : Array.from(line.children).filter((child): child is HTMLElement =>
+          child instanceof HTMLElement && getComputedStyle(child).display !== "none");
+    const gap = style.columnGap === "normal" ? 0 : parseFloat(style.columnGap);
+    let width = Math.max(0, parts.length - 1) * gap;
+    for (const part of parts) {
+      const partStyle = getComputedStyle(part);
+      const contentWidth = part.hasAttribute("data-column-text")
+        ? textWidth(part, context)
+        : part.getBoundingClientRect().width;
+      width += contentWidth + parseFloat(partStyle.marginLeft) + parseFloat(partStyle.marginRight);
+    }
+    const cellStyle = getComputedStyle(cell);
+    width += parseFloat(cellStyle.paddingLeft) + parseFloat(cellStyle.paddingRight);
+    widths[cell.cellIndex] = Math.max(widths[cell.cellIndex] ?? 0, width);
+  }
+  return widths;
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from "$lib/components/PageHeader.svelte";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
   import { Activity, ArrowRight, BarChart3, Check, DollarSign, LineChart, Maximize2, RefreshCw, Settings2, ShieldAlert, TrendingDown, TrendingUp, Wallet, X, Zap } from "@lucide/svelte";
@@ -115,12 +116,13 @@
   });
 </script>
 
-<div class="overview-page">
-  <header class="overview-header"><div class="overview-title"><h1>总览</h1><p>{period}</p></div>
-    <div class="overview-actions">
+<div class="overview-page workspace-page">
+  <PageHeader title="总览" description={period}>
+    {#snippet actions()}
       <OverviewDateRange {range} {start} {end} min={firstDay} max={today} {timezone} disabled={!snapshot} onPresetChange={changeRange} onDateChange={changeDates} />
-    </div>
-  </header>
+    {/snippet}
+  </PageHeader>
+  <div class="workspace-content">
   {#if !desktop}<Alert.Root><Alert.Title>请在 Vela 桌面应用中查看用量</Alert.Title><Alert.Description>总览读取本机真实请求统计，浏览器预览未连接本机数据库。</Alert.Description></Alert.Root>{/if}
   {#if error}<Alert.Root variant="destructive"><Alert.Title>统计更新失败</Alert.Title><Alert.Description>{error}{snapshot ? "，已保留上次数据。" : ""}<Button variant="text" size="xs" onclick={retry}><RefreshCw />重试</Button></Alert.Description></Alert.Root>{/if}
   {#if loading}<div class="overview-metrics" aria-label="正在读取统计" aria-busy="true">{#each [1,2,3] as item}<Skeleton class="h-[166px]" />{/each}</div>{/if}
@@ -165,6 +167,7 @@
     {/if}
     <p class="overview-footnote">全部调用（进行中不计入成功率） · 费用为价格快照估算（USD） · {timezone}</p>
   {/if}
+  </div>
 </div>
 
 {#snippet costBasis()}<ToggleGroup.Root spacing={1} type="single" value={basis} onValueChange={value=>{if(value)basis=value;}} variant="segmented" size="xs" aria-label="费用口径"><ToggleGroup.Item value="standard">标准</ToggleGroup.Item><ToggleGroup.Item value="actual">实际</ToggleGroup.Item></ToggleGroup.Root>{/snippet}

@@ -101,8 +101,9 @@
   });
 </script>
 
-<div class="flex flex-col gap-5">
+<div class="workspace-page">
   <PageHeader title="调度" description="选择调度策略并调整供应商优先顺序。" />
+  <div class="workspace-content">
   {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 调度策略的读取与保存请在 Vela 桌面窗口中进行。
     </Alert.Description></Alert.Root>{/if}
@@ -149,6 +150,7 @@
   <p class="settings-note">
     调度策略已保存在本机；网关接入后按此策略调度。
   </p>
+  </div>
 </div>
 
 <style>

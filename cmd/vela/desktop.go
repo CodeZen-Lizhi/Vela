@@ -41,16 +41,16 @@ func applyGeneral(value settings.GeneralSettings) {
 	})
 }
 
-// createMainWindow 首次按当前屏幕工作区居中打开，尺寸不超过 1200×800 逻辑像素及工作区的 90%；后续由 MyGo 恢复窗口状态。
+// createMainWindow 首次使用1200×800，工作区不足的维度缩至90%；后续由MyGo恢复用户尺寸、位置及最大化状态。
 // 关闭到后台时保留 WebView，使当前页面、筛选与草稿不丢失。
 func createMainWindow() *mygo.Window {
 	workArea := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
-	width := min(1200, workArea.Width*9/10)
-	height := min(800, workArea.Height*9/10)
+	initial := initialWindowBounds(workArea)
+	width, height := initial.Width, initial.Height
 	window := mygo.NewWindow(mygo.WindowOptions{
 		Title:           "Vela",
-		X:               workArea.X + (workArea.Width-width)/2,
-		Y:               workArea.Y + (workArea.Height-height)/2,
+		X:               initial.X,
+		Y:               initial.Y,
 		Width:           width,
 		Height:          height,
 		MinWidth:        min(820, width),
@@ -62,6 +62,14 @@ func createMainWindow() *mygo.Window {
 		StateKey:             "main",
 		URL:                  "/",
 	})
+	// MyGo只要求旧窗口有一小部分可见；这里让恢复的普通窗口完整留在工作区内。
+	if !window.IsMaximized() && !window.IsFullScreen() {
+		bounds := window.Bounds()
+		visible := fitWindowBounds(bounds, mygo.Screen.DisplayMatching(bounds).WorkArea)
+		if visible != bounds {
+			window.SetBounds(visible)
+		}
+	}
 	window.OnClose(func(event *mygo.CloseEvent) {
 		if quitting || general.CloseAction == "quit" {
 			return

@@ -353,6 +353,7 @@
 
 <div class="list-page models-page">
   <PageHeader title="模型" description="统一管理模型与标准价格，调用成本按本地规则估算。" />
+  <section class="list-surface" aria-label="模型列表">
   {#if !isMyGo()}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 数据操作请在 Vela 桌面窗口中进行。
     </Alert.Description></Alert.Root>{/if}
@@ -361,7 +362,6 @@
         >重试</Button
       >
     </Alert.Description></Alert.Root>{/if}
-  <section class="list-surface" aria-label="模型列表">
     <div class="model-toolbar">
       <div class="model-filters">
         <InputGroup.Root class="model-search">

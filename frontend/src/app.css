@@ -565,7 +565,6 @@ input:not([data-slot]):focus-visible {
 .settings-page {
   container: settings / inline-size;
   min-width: 0;
-  padding-bottom: 20px;
 }
 /* 端口、间隔与阈值直接输入数值，不显示 WebKit 的步进箭头；方向键仍可增减。 */
 
@@ -705,14 +704,9 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
 .app-main {
   container: workspace / inline-size;
   width: 100%;
-  max-width: 1280px;
   min-height: 0;
   min-width: 0;
-  margin-inline: auto;
   padding: 8px 28px 24px;
-  overflow-y: auto;
-}
-.app-main.list-workspace {
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -724,8 +718,9 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
   flex-wrap: wrap;
   gap: 12px 20px;
   flex-shrink: 0;
+  min-height: 56px;
 }
-.page-heading-copy { min-width: 0; }
+.page-heading-copy { min-width: 0; flex: 1; }
 .page-heading h1 {
   font-size: 23px;
   line-height: 1.35;
@@ -734,6 +729,9 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
 }
 .page-heading p {
   margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.6;
@@ -745,6 +743,7 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
   gap: 8px;
   margin-left: auto;
 }
+.workspace-page,
 .list-page {
   display: flex;
   flex-direction: column;
@@ -753,7 +752,20 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
   min-width: 0;
   gap: 20px;
 }
+.workspace-page > .page-heading,
 .list-page > :not(.list-surface) { flex-shrink: 0; }
+/* 普通页面在标题下滚动；列表页只滚动数据区，外框始终填满相同的可用区域。 */
+.workspace-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.workspace-content > * { flex-shrink: 0; }
 .list-surface {
   gap: 0;
   display: flex;
@@ -789,6 +801,6 @@ table [data-align="number"] :is(.price-amount, .price-traits) { justify-content:
 }
 .list-footer { flex-shrink: 0; }
 @media (max-width: 900px) {
-  .app-main { padding: 12px 12px 20px; }
+  .app-main { padding-inline: 12px; }
   .app-titlebar { padding-inline: 20px; }
 }

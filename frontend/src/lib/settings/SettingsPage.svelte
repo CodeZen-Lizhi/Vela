@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from "$lib/components/PageHeader.svelte";
   import * as Alert from "$lib/components/ui/alert";
   import { onMount } from "svelte";
   import { isMyGo } from "mygo-runtime";
@@ -68,8 +69,10 @@
   });
 </script>
 
-<div class="settings-page">
-  {#if !desktop}<Alert.Root variant="info" class="mb-5"><Alert.Description>
+<div class="settings-page workspace-page">
+  <PageHeader title="设置" description="管理应用偏好、接入配置与本机数据。" />
+  <div class="workspace-content">
+  {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 设置的读取与保存请在 Vela 桌面窗口中进行。
     </Alert.Description></Alert.Root>{/if}
   {#if loadError}
@@ -109,4 +112,5 @@
       <RecordsSettings />
     </div>
   {/if}
+  </div>
 </div>

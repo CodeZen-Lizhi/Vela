@@ -29,3 +29,9 @@ test("内容决定名称宽度，有限舒展不会制造大段名称空白", ()
   assert.ok(short.reduce((sum,value)=>sum+value,0)<1200);
   assert.deepEqual(allocateColumns(providerColumns,1200,[132,0,100]),short);
 });
+
+/** 实际恢复为1049px窗口时，默认侧栏与页面留白后约822px必须完整容纳九列。 */
+test("使用记录1049px常用窗口无需横向滚动", () => {
+  const widths = allocateColumns(recordColumns, 822, recordColumns.map(() => 2000));
+  assert.ok(widths.reduce((sum, width) => sum + width, 0) <= 822.01);
+});

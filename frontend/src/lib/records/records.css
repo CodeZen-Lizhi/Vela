@@ -1,28 +1,9 @@
 /* 请求记录仅组织业务布局，基础控件外观沿用 shadcn-svelte 主题与变体。 */
-.records-page.list-page {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  /* 按容器预算有限舒展，低于九列可读下限时只在列表内部横向滚动。 */
-  width: 100%;
-  max-width: none;
-  align-self: center;
-}
 .records-actions {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
-}
-.records-page .page-heading-copy {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-.records-page .page-heading-copy p {
-  margin-top: 0;
 }
 .records-surface {
   min-width: 0;

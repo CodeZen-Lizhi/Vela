@@ -5,7 +5,7 @@
   let { title, description, actions }: {
     /** 当前模块名称。 */
     title: string;
-    /** 标题下的一行用途说明。 */
+    /** 标题下的一行用途说明；过长时省略，并可悬停读取全文。 */
     description: string;
     /** 当前模块已有的主要操作。 */
     actions?: Snippet;
@@ -15,7 +15,7 @@
 <header class="page-heading">
   <div class="page-heading-copy">
     <h1>{title}</h1>
-    <p>{description}</p>
+    <p title={description}>{description}</p>
   </div>
   {#if actions}<div class="page-heading-actions">{@render actions()}</div>{/if}
 </header>

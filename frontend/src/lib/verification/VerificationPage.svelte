@@ -264,6 +264,7 @@
 
 <section class="v-page list-page">
   <PageHeader title="模型验证" description="按供应商、模型、Key 与思考强度追踪固定线路的覆盖和差异。" />
+  <Tabs.Root bind:value={tab} class="v-surface list-surface" aria-label="模型验证工作台">
   {#if !desktop}<Alert.Root variant="info"><Alert.Description>
       浏览器预览 · 计划、检测及报告请在 Vela
       桌面窗口中使用；此处不生成演示结果。
@@ -271,7 +272,6 @@
   {#if error}<Alert.Root variant="inline-error"><Alert.Description>
       {error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button>
     </Alert.Description></Alert.Root>{/if}
-  <Tabs.Root bind:value={tab} class="v-surface list-surface" aria-label="模型验证工作台">
     <div class="v-toolbar">
         <Tabs.List aria-label="模型验证视图">
           <Tabs.Trigger value="results">验证结果 <span>{scopedReports.length}</span></Tabs.Trigger>

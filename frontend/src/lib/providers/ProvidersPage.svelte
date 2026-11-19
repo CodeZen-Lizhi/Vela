@@ -52,7 +52,6 @@
   };
   /** 全集名称决定重测身份，筛选、首选Key切换及后台状态刷新不重排列。 */
   const columnIdentity = $derived(JSON.stringify(rows.map(row => ({id: row.provider.id, name: row.provider.name})).sort((a,b) => a.id.localeCompare(b.id))));
-  const columnSamples = $derived([rows.map(row => row.provider.name), [], rows.map(row => row.preferredKey?.name ?? ""), [], [], [], [], []]);
   /** 当前详情取最新快照；删除后不会留下旧抽屉。 */
   const selected=$derived(rows.find((row)=>row.provider.id===detailID)?.provider??null);
   const modelOptions=$derived([{value:"all",label:"全部关联模型"},...Array.from(new Map(Object.values(relations).flat().map((model)=>[model.modelId,{value:model.modelId,label:model.name}])).values()).sort((left,right)=>left.label.localeCompare(right.label))]);
@@ -143,13 +142,13 @@
 </script>
 <section class="provider-page list-page">
   <PageHeader title="供应商" description="管理上游站点、密钥、模型关联与账户信息。" />
+  <section class="provider-surface list-surface">
   {#if !isMyGo()}<Alert.Root variant="info"><Alert.Description>浏览器预览：供应商业务需在桌面应用中使用；此处不生成演示数据或模拟保存。</Alert.Description></Alert.Root>{/if}
   {#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}<Button variant="ghost" size="sm" onclick={load}>重新读取</Button></Alert.Description></Alert.Root>{/if}
-  <section class="provider-surface list-surface">
     <div class="provider-toolbar"><InputGroup.Root class="provider-search"><InputGroup.Input aria-label="搜索供应商" bind:value={query} placeholder="搜索名称、主站或关联模型"/><InputGroup.Addon><Search/></InputGroup.Addon></InputGroup.Root><div class="provider-filter"><Choice bind:value={modelFilter} label="按关联模型筛选" options={modelOptions}/></div><ToggleGroup.Root type="single" value={status} onValueChange={(value)=>{if(value)status=value;}} variant="segmented" size="xs" spacing={1} aria-label="供应商状态筛选">{#each [{value:"all",label:"全部",count:rows.length},{value:"enabled",label:"已启用",count:rows.filter((row)=>row.provider.enabled).length},{value:"disabled",label:"已停用",count:rows.filter((row)=>!row.provider.enabled).length}] as item}<ToggleGroup.Item value={item.value}>{item.label} <span>{item.count}</span></ToggleGroup.Item>{/each}</ToggleGroup.Root><div class="provider-toolbar-actions"><Button onclick={refresh} variant="ghost" size="icon-sm" aria-label={refreshing?"正在刷新上游信息":"刷新上游信息"}  aria-busy={refreshing} disabled={!isMyGo()||refreshing||loading||!rows.length} ><RefreshCw class={refreshing ? "animate-spin" : ""}/></Button><Button disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}><Plus data-icon="inline-start"/>添加供应商</Button></div></div>
     <!-- 独立滚动区需要键盘焦点，支持方向键与翻页键浏览列表。 -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0" use:tableLayout={{columns: providerColumns, samples: columnSamples, identity: columnIdentity, ready: !loading}}>
+    <div class="list-scroll" role="region" aria-label="供应商列表内容" tabindex="0" use:tableLayout={{columns: providerColumns, identity: columnIdentity, ready: !loading}}>
     <Table.Root role="table" class="provider-table provider-list-table">
       <!-- 列边界由共享预算分配；名称集合变化允许重测，筛选及状态变化沿用同周期宽度。 -->
       <colgroup>
@@ -161,9 +160,9 @@
       <!-- 名称按钮提供键盘入口，整行点击仅扩展鼠标命中区域。 -->
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
       <Table.Row role="row" data-disabled={!provider.enabled} onclick={(event)=>openRow(event,provider.id)}>
-        <Table.Cell role="cell" class="provider-main" data-label="供应商"><div class="provider-identity"><span class="provider-avatar">{provider.name.slice(0,1).toUpperCase()}</span><Hint overflowOnly text={provider.name}>{#snippet children(hintProps1)}<Button variant="text" size="table-inline" {...mergeProps(hintProps1, { onclick: ()=>detailID=provider.id })} class="provider-name" >{provider.name}</Button>{/snippet}</Hint>{#if provider.website}<a  href={provider.website} target="_blank" rel="noreferrer" aria-label={`打开 ${provider.name} 主站`} ><ExternalLink class="size-3 text-muted-foreground"/></a>{/if}</div>{#if rowErrors[provider.id]}<small class="text-destructive">{rowErrors[provider.id]}</small>{/if}</Table.Cell>
+        <Table.Cell role="cell" class="provider-main" data-label="供应商">{@render providerIdentity(provider)}{#if rowErrors[provider.id]}<small class="text-destructive">{rowErrors[provider.id]}</small>{/if}</Table.Cell>
         <Table.Cell role="cell" data-label="余额" data-align="number"><QueryStatusHint label={display.label} mode={!account?"unavailable":account.config.mode?"query":"unconfigured"} status={account?.balance.status} available={display.available}><span class="provider-balance" class:is-empty={!display.available}>{#if display.symbol}<span class="provider-currency-symbol" aria-hidden="true">{display.symbol}</span>{/if}<span>{display.amount}</span></span></QueryStatusHint></Table.Cell>
-        <Table.Cell role="cell" data-label="首选 Key">{#if row.preferredKey}<div class="provider-key-summary" aria-label={`首选 Key ${row.preferredKey.name}`}><Hint overflowOnly text={row.preferredKey.name}>{#snippet children(hintProps5)}{#if row.preferredKey}<span {...hintProps5} class="provider-key-name">{row.preferredKey.name}</span>{/if}{/snippet}</Hint></div>{/if}</Table.Cell>
+        <Table.Cell role="cell" data-label="首选 Key">{@render preferredKey(row)}</Table.Cell>
         <Table.Cell role="cell" data-label="倍率" data-align="control">{#if row.preferredKey}{@const queryState=keyQueries[row.preferredKey.id]}<QueryStatusHint label={`倍率 ${multiplier(row.preferredKey.multiplier)}`} mode={!queryState?"unavailable":queryState.multiplierSource==="manual"?"manual":"query"} status={queryState?.multiplierStatus} available={row.preferredKey.multiplier!==null}><Badge variant={row.preferredKey.multiplier===null?"neutral":"info"}>{multiplier(row.preferredKey.multiplier)}</Badge></QueryStatusHint>{/if}</Table.Cell>
         <Table.Cell role="cell" data-label="健康"><Badge variant={row.health.state === "normal" ? "positive" : row.health.state === "abnormal" || row.health.state === "circuit" ? "negative" : row.health.state === "degraded" ? "warning" : "neutral"}>{#if row.health.state === "circuit"}<ShieldAlert aria-hidden="true" />{/if}{({normal:"正常",degraded:"降级",abnormal:"异常",circuit:"熔断",unavailable:"不可用"})[row.health.state]}</Badge></Table.Cell>
         <Table.Cell role="cell" data-label="模型验证"><Hint overflowOnly text={verificationSummary(provider.id)}>{#snippet children(hintProps8)}<span {...hintProps8} class="block truncate text-[11px] text-muted-foreground">{verificationSummary(provider.id)}</span>{/snippet}</Hint>{#if verificationTime(provider.id)}<Hint overflowOnly text={verificationTime(provider.id)}>{#snippet children(hintProps7)}<small {...hintProps7} class="block truncate text-[10px] text-muted-foreground" >{verificationTime(provider.id)}</small>{/snippet}</Hint>{/if}</Table.Cell>
@@ -171,6 +170,17 @@
         <Table.Cell role="cell" data-label="操作" data-align="control"><div class="provider-actions provider-row-actions"><Button onclick={()=>detailID=provider.id} variant="ghost" size="row-action" aria-label={`管理 ${provider.name}`}  ><SlidersHorizontal/></Button><Button onclick={()=>{editing=provider;formError="";editorOpen=true;}} variant="ghost" size="row-action" aria-label={`编辑 ${provider.name}`}  ><Pencil/></Button><Button onclick={()=>accountProvider=provider} variant="ghost" size="row-action" aria-label={`${provider.name} 账户信息`}  ><Wallet/></Button><Button onclick={()=>{deleting=provider;formError="";}} variant="ghost" size="row-action" aria-label={`删除 ${provider.name}`}  ><Trash2/></Button></div></Table.Cell>
       </Table.Row>
     {/each}</Table.Body></Table.Root>
+    <div inert aria-hidden="true" style="position:absolute;visibility:hidden;pointer-events:none;width:0;height:0;overflow:hidden">
+      <!-- 全集样本不可见且不可聚焦，复用同一shadcn表格及内容片段。 -->
+      <Table.Root class="provider-table provider-list-table">
+        <Table.Body>
+          {#each rows as row(row.provider.id)}
+            <Table.Row><Table.Cell>{@render providerIdentity(row.provider)}</Table.Cell><Table.Cell></Table.Cell><Table.Cell>{@render preferredKey(row)}</Table.Cell></Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
+    </div>
+
     {#if loading}<Empty.Root>正在读取供应商…</Empty.Root>{:else if !filtered.length}<Empty.Root>{rows.length?"没有符合条件的供应商":"尚未添加供应商"}{#if rows.length}<Button variant="outline" onclick={()=>{query="";status="all";modelFilter="all";}}>清空筛选</Button>{:else}<Button variant="outline" disabled={!isMyGo()||!defaults} onclick={()=>{editing=null;formError="";editorOpen=true;}}>添加供应商</Button>{/if}</Empty.Root>{/if}
     </div>
   </section>
@@ -179,3 +189,30 @@
 <Sheet.Root open={selected!==null} onOpenChange={(value)=>{if(!value)detailID="";}}><Sheet.Content variant="wide" class="provider-drawer">{#if selected&&defaults}{#key selected.id}<ProviderDetails provider={selected} {defaults} refreshSeconds={listSeconds} onupdated={load} {notify}/>{/key}{/if}</Sheet.Content></Sheet.Root>
 <Dialog.Root open={accountProvider!==null} onOpenChange={(value)=>{if(!value&&!accountBusy)accountProvider=null;}}><Dialog.Content class="provider-form-dialog provider-account-dialog" showCloseButton={!accountBusy} onInteractOutside={(event)=>{if(accountBusy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(accountBusy)event.preventDefault();}}><Dialog.Header><Dialog.Title>账户信息</Dialog.Title><Dialog.Description>{accountProvider?.name} · 供应商余额查询，Key 信息来源在各 Key 内配置。</Dialog.Description></Dialog.Header>{#if accountProvider}<AccountForm providerID={accountProvider.id} baseURL={accountProvider.url} onbusy={(value)=>accountBusy=value} {notify} onclose={()=>accountProvider=null} onupdated={load}/>{/if}</Dialog.Content></Dialog.Root>
 <Dialog.Root open={deleting!==null} onOpenChange={(value)=>{if(!busy&&!value)deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除供应商？</Dialog.Title><Dialog.Description>确认删除“{deleting?.name}”？它的全部 Key、凭据、模型关联、模型权限、映射和账户配置将一并删除，统一模型保持不变。</Dialog.Description></Dialog.Header>{#if formError}<Alert.Root variant="inline-error"><Alert.Description>{formError}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={remove}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
+
+<!-- 可见行与全集测量样本复用同一信息结构，避免图标和文字预算分叉。 -->
+{#snippet providerIdentity(provider: Provider)}
+  <div class="provider-identity" data-column-line>
+    <span class="provider-avatar">{provider.name.slice(0,1).toUpperCase()}</span>
+    <Hint overflowOnly text={provider.name}>
+      {#snippet children(hintProps1)}
+        <Button variant="text" size="table-inline" {...mergeProps(hintProps1, { onclick: ()=>detailID=provider.id })} class="provider-name" data-column-text>{provider.name}</Button>
+      {/snippet}
+    </Hint>
+    {#if provider.website}
+      <a href={provider.website} target="_blank" rel="noreferrer" aria-label={`打开 ${provider.name} 主站`}><ExternalLink class="size-3 text-muted-foreground"/></a>
+    {/if}
+  </div>
+{/snippet}
+<!-- 首选Key与其测量样本共用真实文字样式，不预留不存在的装饰。 -->
+{#snippet preferredKey(row: ProviderOverview)}
+  {#if row.preferredKey}
+    <div class="provider-key-summary" data-column-line aria-label={`首选 Key ${row.preferredKey.name}`}>
+      <Hint overflowOnly text={row.preferredKey.name}>
+        {#snippet children(hintProps5)}
+          {#if row.preferredKey}<span {...hintProps5} class="provider-key-name" data-column-text>{row.preferredKey.name}</span>{/if}
+        {/snippet}
+      </Hint>
+    </div>
+  {/if}
+{/snippet}
