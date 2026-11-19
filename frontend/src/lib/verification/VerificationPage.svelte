@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tableLayout } from "$lib/list-layout/table-layout";
+  import { verificationColumns, verificationPlanColumns } from "$lib/list-layout/columns";
   import * as Alert from "$lib/components/ui/alert";
   import * as Empty from "$lib/components/ui/empty";
   import { Hint } from "$lib/components/ui/tooltip";
@@ -332,13 +334,14 @@
         任务结束：{snapshot.progress.error}
       </Alert.Description></Alert.Root>{/if}
     <Tabs.Content value={tab} class="list-scroll" aria-label={tab === "results" ? "验证结果列表内容" : "检测计划列表内容"}>
+    <div use:tableLayout={{columns: tab === "results" ? verificationColumns : verificationPlanColumns, identity: JSON.stringify([tab, snapshot?.reports.map(report => [report.id, report.target.providerName, report.target.modelName, report.target.requestModel, report.target.keyName]), snapshot?.plans.map(plan => plan.providerId)]), ready: !loading}}>
     {#if loading}<Empty.Root role="status">
         正在读取本地验证数据…
       </Empty.Root>{:else if desktop && !snapshot}<Empty.Root>
         验证数据尚未读取成功，请重试。
       </Empty.Root>{:else if tab === "results"}
       <Table.Root class="v-table"
-        ><Table.Header variant="list"
+        ><colgroup>{#each verificationColumns as column}<col style:width={`${column.min}px`} />{/each}</colgroup><Table.Header variant="list"
           ><Table.Row
             >{#each ["供应商", "执行模型", "执行 Key", "结论", "候选置信度", "最近检测", "操作"] as title}<Table.Head data-align={title==="操作"?"control":title==="候选置信度"?"number":undefined}
                 >{title}</Table.Head
@@ -350,19 +353,19 @@
               snapshot?.targets ?? [],
             )}<Table.Row
               ><Table.Cell
-                ><div class="v-identity">
+                ><div class="v-identity" data-column-line>
                   <span class="v-avatar">{report.target.providerName.slice(0, 1)}</span
-                  ><Hint overflowOnly text={report.target.providerName}>{#snippet children(hintProps0)}<strong {...hintProps0}>{report.target.providerName}</strong>{/snippet}</Hint>
+                  ><Hint overflowOnly text={report.target.providerName}>{#snippet children(hintProps0)}<strong {...hintProps0} data-column-text>{report.target.providerName}</strong>{/snippet}</Hint>
                 </div></Table.Cell
               ><Table.Cell
-                ><Hint overflowOnly text={report.target.modelName}>{#snippet children(modelHint)}<strong {...modelHint} class="v-result-model">{report.target.modelName}</strong>{/snippet}</Hint><small class="v-result-model" title={`${report.target.requestModel} · 思考${effort(report.target.effort)}`}
+                ><Hint overflowOnly text={report.target.modelName}>{#snippet children(modelHint)}<strong {...modelHint} class="v-result-model" data-column-line data-column-text>{report.target.modelName}</strong>{/snippet}</Hint><small class="v-result-model" data-column-line data-column-text title={`${report.target.requestModel} · 思考${effort(report.target.effort)}`}
                   >{report.target.requestModel} · 思考{effort(
                     report.target.effort,
                   )}</small
                 ></Table.Cell
               ><Table.Cell
-                ><div class="v-identity">
-                  <KeyRound class="size-3" /><Hint overflowOnly text={report.target.keyName}>{#snippet children(hintProps1)}<span {...hintProps1} class="v-key-name">{report.target.keyName}</span>{/snippet}</Hint>
+                ><div class="v-identity" data-column-line>
+                  <KeyRound class="size-3" /><Hint overflowOnly text={report.target.keyName}>{#snippet children(hintProps1)}<span {...hintProps1} class="v-key-name" data-column-text>{report.target.keyName}</span>{/snippet}</Hint>
                 </div>
                 {#if reason}<small class="text-destructive">{reason}</small
                   >{/if}</Table.Cell
@@ -420,6 +423,7 @@
         </Empty.Root>{/if}
     {:else}
       <Table.Root class="v-table v-plan-table">
+        <colgroup>{#each verificationPlanColumns as column}<col style:width={`${column.min}px`} />{/each}</colgroup>
         <Table.Header variant="list"><Table.Row>
           <Table.Head>供应商</Table.Head><Table.Head>检测线路</Table.Head>
           <Table.Head>执行方式</Table.Head><Table.Head>最近执行</Table.Head>
@@ -430,7 +434,7 @@
             {@const executable = executableLines(plan)}
             {@const name = providerOptions.find((item) => item.value === plan.providerId)?.label || snapshot?.targets.find((target) => target.providerId === plan.providerId)?.providerName || plan.providerId}
             <Table.Row>
-              <Table.Cell><div class="v-identity"><span class="v-avatar">{name.slice(0, 1)}</span><Hint overflowOnly text={name}>{#snippet children(hintProps4)}<strong {...hintProps4}>{name}</strong>{/snippet}</Hint></div></Table.Cell>
+              <Table.Cell><div class="v-identity" data-column-line><span class="v-avatar">{name.slice(0, 1)}</span><Hint overflowOnly text={name}>{#snippet children(hintProps4)}<strong {...hintProps4} data-column-text>{name}</strong>{/snippet}</Hint></div></Table.Cell>
               <Table.Cell>{plan.lines.length} 条线路</Table.Cell>
               <Table.Cell><div class="v-identity"><Switch checked={plan.enabled} disabled={busy || !desktop} aria-label={`${name} 自动运行`} onCheckedChange={(enabled) => toggle(plan, enabled)} /><span>{plan.enabled ? `每 ${plan.hours} 小时` : "手动执行"}</span></div></Table.Cell>
               <Table.Cell>{time(plan.lastAt)}</Table.Cell>
@@ -447,6 +451,7 @@
         <Empty.Description>先为供应商选择要验证的模型、Key、协议与思考强度。</Empty.Description>
       </Empty.Root>{/if}
     {/if}
+    </div>
     </Tabs.Content>
     <footer class="v-surface-footer">
       <span>{tab === "results" ? "差异优先，其次按最近检测倒序 · 仅保留最近一轮" : "每个供应商的固定线路与执行设置"}</span>

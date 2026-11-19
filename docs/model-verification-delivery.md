@@ -89,3 +89,9 @@
 - `TestLiveRoundScoring` 改用三条不同的上游 fixture 回答，继续覆盖接近、差异、未知参考身份、首次 503 重试、报告替换和复测。临时 Go overlay 移除新增判定后，三类重放用例全部在业务断言处失败；启用时全部通过。
 - `go test ./internal/verification/... -count=1`、`go vet ./internal/verification/...`、`go test -race ./internal/verification -run 'TestLiveRound(RepeatedEvidence|Scoring)$' -count=1` 通过。固定输入仍只用于回归与一致性，不代表独立模型识别准确率；未进行收费上游、原生窗口或容量性能验收。
 - 需求依据为[模型验证需求](/Users/zhenglizhi/otherProjects/Aether/docs/tasks/11-07-desktop-rewrite/model-verification.md) MV-R06～R07、MV-A26～A27；独立留出评估仍未完成。
+
+## 2026-11-19：模型验证主表列宽统一
+
+验证结果七列和检测计划五列接入供应商/使用记录共用的内容测量与比例铺满分配器。删除结果表其他列固定宽度、模型独占余量规则，以及计划表单独百分比宽度。名称信息行受显示上限约束，长名称保持省略与全文提示；结论、置信度、时间和操作按各自预算参与铺满。需求依据为共享页面需求PL-R05。
+
+实际App隔离样例覆盖1200/1800/2560/820宽度下两个页签共8项，表头与正文对齐，页面无横向溢出；前三组表格铺满数据区，820下结果表仅表内横滚、计划表可装下。1800宽模型列约260px、Key列约268px，不再由模型占走全部余量。截图及测量见`.cache/verification-fill/`；共享预算3项测试、Svelte检查0错误/0警告和build:web通过，保留既有大chunk提示。本轮未提交、push或发版；验证使用合成数据，不执行真实检测消耗。

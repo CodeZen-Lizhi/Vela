@@ -24,6 +24,15 @@ export function tableLayout(node: HTMLElement, initial: TableLayoutOptions) {
     if (!table || !node.clientWidth) return;
     const widths = allocateColumns(options.columns, node.clientWidth, measured);
     table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
+    // 长名称的显示上限独立于列的布局宽度，保留既有省略和全文提示。
+    for (const line of node.querySelectorAll<HTMLElement>("[data-column-line]")) {
+      const cell = line.closest("td");
+      const column = cell && options.columns[cell.cellIndex];
+      if (cell && column?.content) {
+        const style = getComputedStyle(cell);
+        line.style.maxWidth = `${Math.max(0, column.max - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight))}px`;
+      }
+    }
     table.querySelectorAll("col").forEach((column, index) => { column.style.width = `${widths[index]}px`; });
   }
 

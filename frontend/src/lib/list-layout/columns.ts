@@ -1,12 +1,12 @@
 /** 单列预算包含单元格留白；名称按内容测量，其他列使用稳定的常规展示预算。 */
 export interface ColumnBudget {
-  /** 最小可读宽度、常规宽度与绝对上限，单位逻辑像素。 */
+  /** 最小可读宽度、常规宽度与内容预算上限，单位逻辑像素。 */
   min: number;
   preferred: number;
   max: number;
   /** 占容器宽度的上限（0～1），不强制占满；下限优先。 */
   cap: number;
-  /** 额外空间的分配权重；零表示不舒展。 */
+  /** 内容预算阶段的舒展权重；铺满阶段所有列按预算比例扩展。 */
   grow: number;
   /** 内容列由真实文字和装饰组合测量；其他列使用常规预算。 */
   content?: boolean;
@@ -37,7 +37,7 @@ export const recordColumns: ColumnBudget[] = [
   { min: 104, preferred: 124, max: 142, cap: .15, grow: 1 },
 ];
 
-/** 内容先受上下限约束，预算不足按剩余可收缩空间分摊；预算充足时有限舒展，余量留在表外。 */
+/** 内容先受上下限约束，预算不足按剩余可收缩空间分摊；预算充足时先有限舒展，再按各列预算比例分配余量以铺满容器。 */
 export function allocateColumns(columns: readonly ColumnBudget[], available: number, measured: readonly number[]): number[] {
   const tracks = columns.map((column, index) => {
     const desired = !column.content ? column.preferred : Math.max(column.min, measured[index] ?? column.min);
@@ -65,5 +65,27 @@ export function allocateColumns(columns: readonly ColumnBudget[], available: num
     }
     remaining -= added;
   }
-  return tracks.map(track => track.width);
+  // 内容预算上限不限制表格总宽度；所有列同比例承接余量，避免整表居中及名称列独吞空白。
+  const used = tracks.reduce((sum, track) => sum + track.width, 0);
+  return tracks.map(track => used > 0 ? track.width * available / used : track.width);
 }
+
+/** 验证结果七列共用内容测量与比例铺满；模型不再独占剩余宽度。 */
+export const verificationColumns: ColumnBudget[] = [
+  { min: 104, preferred: 120, max: 200, cap: .20, grow: 1, content: true },
+  { min: 140, preferred: 170, max: 280, cap: .26, grow: 1, content: true },
+  { min: 110, preferred: 130, max: 230, cap: .22, grow: 1, content: true },
+  { min: 96, preferred: 112, max: 140, cap: .15, grow: 1 },
+  { min: 88, preferred: 96, max: 108, cap: .12, grow: 1 },
+  { min: 116, preferred: 140, max: 156, cap: .17, grow: 1 },
+  { min: 92, preferred: 92, max: 100, cap: .12, grow: 0 },
+];
+
+/** 检测计划五列按各自预算铺满，保留自动运行开关及两项操作的可读下限。 */
+export const verificationPlanColumns: ColumnBudget[] = [
+  { min: 104, preferred: 120, max: 220, cap: .25, grow: 1, content: true },
+  { min: 88, preferred: 100, max: 120, cap: .18, grow: 1 },
+  { min: 150, preferred: 164, max: 180, cap: .26, grow: 1 },
+  { min: 116, preferred: 140, max: 156, cap: .22, grow: 1 },
+  { min: 92, preferred: 92, max: 100, cap: .15, grow: 0 },
+];
