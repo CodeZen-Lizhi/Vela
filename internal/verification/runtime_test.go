@@ -90,7 +90,7 @@ func TestLiveRoundRepeatedEvidence(t *testing.T) {
 				t.Fatalf("应只采样三次并保存一份报告: calls=%d reports=%d", calls.Load(), len(snapshot.Reports))
 			}
 			report := snapshot.Reports[0]
-			if report.State != "complete" || report.Conclusion != "insufficient" || !strings.Contains(report.Reason, "无法作为三份独立证据") || len(report.Candidates) != 69 || len(report.Samples) != 3 {
+			if report.State != "complete" || report.Conclusion != "insufficient" || !strings.Contains(report.Reason, "无法作为三份独立证据") || len(report.Candidates) != 75 || len(report.Samples) != 3 {
 				t.Fatalf("重复证据未保留原始分析并拒绝业务判定: %+v", report)
 			}
 			if test.name == "完全重放" && (report.Candidates[0].Probability == nil || *report.Candidates[0].Probability < 0.75) {

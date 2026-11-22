@@ -26,7 +26,7 @@ func (d *Detector) Analyze(outputs []Output, strict bool) (*Analysis, error)
 func (d *Detector) Detect(ctx context.Context, config DetectConfig, options ...DetectOption) (*DetectResult, error)
 ```
 
-`ReferenceModel` 提供上游真实的 `ID / DisplayName / Family / FamilyName / ResponseCount`。`Models` 返回独立副本，不加载新数据；本快照有 69 个模型。没有全局模型目录或全局解码缓存。
+`ReferenceModel` 提供上游真实的 `ID / DisplayName / Family / FamilyName / ResponseCount`。`Models` 返回独立副本，不加载新数据；本快照有 75 个模型。没有全局模型目录或全局解码缓存。
 
 包初始化不解码离线 bank/bin。每次显式 `LoadBundled` 创建一个评分器；任务开始后加载一次，采样及 Analyze 期间复用，任务结束释放评分器引用即可由 GC 回收解码状态。原始 embed 字节随程序存在。上游少量题目模板的包初始化行为保留。
 
@@ -34,27 +34,27 @@ func (d *Detector) Detect(ctx context.Context, config DetectConfig, options ...D
 
 ## 数据追溯
 
-两个文件均来自上述固定提交的 `data/`，未压缩、裁剪或改写。bank 与 detector 构建时间均为 `2026-11-11T01:24:58.268488+00:00`；加载时还核对模型顺序、ID 和响应数量。
+两个文件均来自上游指纹数据提交 [`70159b7`](https://github.com/Ikaleio/lm-detector/tree/70159b7536a2ceb55c478c8c9472da81d3627e59/data) 的 `data/`，未压缩、裁剪或改写。bank 与 detector 构建时间均为 `2026-11-19T05:26:09.347356+00:00`；加载时还核对模型顺序、ID 和响应数量。
 
 | 文件 | SHA-256 |
 | --- | --- |
-| data/unified_bank.json | `a6e8d6291b50e7cf25744b5fbad46460ed4cc0b94e156bb2719a9d714684b635` |
-| data/shared_detector.bin | `8c7d48ea242026d123baa7cfbbe377701ac8d6899e6796f319ce555d3ae06b6c` |
+| data/unified_bank.json | `81d96a68404e2c394731d482f0e261f02b1a9c12e3bcfb4ccb677f8f0c715048` |
+| data/shared_detector.bin | `a55d4bb275b09b630d9deeeac5a119077869a40dc65132ffff0ab87e58b7c9e9` |
 | testdata/conformance/analyze.json（上游原始旧版） | `7bdd3ab697de6b1a2600d7dc19103380c10139abfd6f0db8e92a03141ad0ce73` |
-| testdata/analyze-snapshot.json（当前数据的独立期望） | `46246a8a3854594c527c4a3532c0577ce12422d652e3bc01e3b96b7cb832b4d8` |
+| testdata/analyze-snapshot.json（当前数据的独立期望） | `71bf4cf170767730d5bbbe2d323a77231d8a70b36bcb915925141bd93d56f2a7` |
 
 ## 验证与 fixture 版本差异
 
-`go test -v ./internal/verification/fingerprint` 运行真实核心：11 组解析、49 组请求、13 组本地 HTTP 流/JSON 样本、12 组评分，以及真实注入 TLS client、context 取消、模型元数据隔离和题目约束测试。数值比较沿用上游相对容差 `1e-9`，逐项比较完整 Analysis（包括 69 个候选、分数、概率和诊断），不复制 Go 业务算法到测试。
+`go test -v ./internal/verification/fingerprint` 运行真实核心：11 组解析、49 组请求、13 组本地 HTTP 流/JSON 样本、12 组评分，以及真实注入 TLS client、context 取消、模型元数据隔离和题目约束测试。数值比较沿用上游相对容差 `1e-9`，逐项比较完整 Analysis（包括 75 个候选、分数、概率和诊断），不复制 Go 业务算法到测试。
 
-注意：指定提交中原始 `sdk/conformance/analyze.json` 对应 `2026-10-25T10:04:10.682171+00:00` 数据，与该提交 bank/bin 不匹配。`testdata/conformance/` 完整保留原始 fixture；解析、请求、流和模板直接与之比较。评分使用原始 12 组固定输入，以同提交上游 Python SDK `_codec / _analysis / _ranker / _features` 及当前 bank/bin 独立重算，保存为 `testdata/analyze-snapshot.json`；没有使用本 Go 实现产生测试期望。
+注意：指定提交中原始 `sdk/conformance/analyze.json` 对应 `2026-10-25T10:04:10.682171+00:00` 数据，与当前 bank/bin 不匹配。`testdata/conformance/` 完整保留原始 fixture；解析、请求、流和模板直接与之比较。评分使用原始 12 组固定输入，以参考数据提交中的上游 Python SDK `_codec / _analysis / _ranker / _features` 及当前 bank/bin 独立重算，保存为 `testdata/analyze-snapshot.json`；没有使用本 Go 实现产生测试期望。
 
 这里的“独立”指期望值由另一语言实现生成，不代表独立评估样本。2026-11-15 离线消融中，六组完整评分输入的 18 条回答直方图均命中对应模型参考库；移除位置分支、或仅保留生产特征变换与七近邻时，六组首候选仍与固定期望一致。这只能说明该输入范围内的一致性，不能证明真实准确率、分支无用或复杂评分带来增益；有效性评估须按模块需求 MV-R06 / MV-A27 使用独立留出数据，变体不能沿用完整算法的置信度校准。重复回答的证据判定由 `verification` 业务层负责，本包继续保持固定版本上游算法一致。
 
 重算仅需 Python 与 NumPy（本次环境 NumPy 2.2.6），不载入上游网络/缓存模块：
 
 ```sh
-python3 internal/verification/fingerprint/testdata/generate_snapshot.py /path/to/lm-detector-at-fixed-commit
+python3 internal/verification/fingerprint/testdata/generate_snapshot.py /path/to/lm-detector-at-data-commit
 ```
 
 第三方 conformance runner 改为 Go 测试入口及本地 LoadBundled，保留原比较逻辑。全链路 Vela 业务、真实外部模型与 Gemini 不在此包验收范围。

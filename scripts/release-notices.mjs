@@ -66,7 +66,7 @@ export function notices() {
   }
   for (const name of [...Object.keys(frontend.dependencies), ...runtime].sort()) addPackage(name, join(root, "frontend"));
   add("Lobe Icons @lobehub/icons-static-svg 1.102.0 / MIT (frontend/src/lib/assets/providers)", join(root, "frontend/src/lib/assets/providers/LICENSE"));
-  add("lm-detector a7e9d3056e019827904dd50722c20b4a0c896738 / MIT (internal/verification/fingerprint; code and bundled bank/detector data)", join(root, "internal/verification/fingerprint/LICENSE"));
+  add("lm-detector / MIT (internal/verification/fingerprint; code a7e9d3056e019827904dd50722c20b4a0c896738, bundled bank/detector data 70159b7536a2ceb55c478c8c9472da81d3627e59)", join(root, "internal/verification/fingerprint/LICENSE"));
   add("shadcn-svelte / MIT (frontend/src/lib/components/ui; upstream LICENSE at 28f5a3bef5ea7934044a7fb60a3e6f201b3b090a)", join(root, "THIRD_PARTY_NOTICES.shadcn-svelte.txt"));
   const sections = [...entries].sort(([a], [b]) => a.localeCompare(b, "en"));
   return `Vela — Third-Party Notices

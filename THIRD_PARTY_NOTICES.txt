@@ -37,7 +37,7 @@ Contents (67 license/notice files):
 - golang.org/x/sys v0.49.0 / PATENTS
 - golang.org/x/text v0.43.0 / LICENSE
 - golang.org/x/text v0.43.0 / PATENTS
-- lm-detector a7e9d3056e019827904dd50722c20b4a0c896738 / MIT (internal/verification/fingerprint; code and bundled bank/detector data)
+- lm-detector / MIT (internal/verification/fingerprint; code a7e9d3056e019827904dd50722c20b4a0c896738, bundled bank/detector data 70159b7536a2ceb55c478c8c9472da81d3627e59)
 - Lobe Icons @lobehub/icons-static-svg 1.102.0 / MIT (frontend/src/lib/assets/providers)
 - modernc.org/libc v1.80.1 / LICENSE
 - modernc.org/libc v1.80.1 / LICENSE-3RD-PARTY.md
@@ -1448,7 +1448,7 @@ rights granted to you under this License for this implementation of Go
 shall terminate as of the date such litigation is filed.
 
 ==============================================================================
-lm-detector a7e9d3056e019827904dd50722c20b4a0c896738 / MIT (internal/verification/fingerprint; code and bundled bank/detector data)
+lm-detector / MIT (internal/verification/fingerprint; code a7e9d3056e019827904dd50722c20b4a0c896738, bundled bank/detector data 70159b7536a2ceb55c478c8c9472da81d3627e59)
 ==============================================================================
 
 MIT License

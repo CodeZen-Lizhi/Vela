@@ -266,7 +266,7 @@ func TestLiveRoundScoring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snap.Reports) != 1 || snap.Reports[0].Conclusion != "match" || len(snap.Reports[0].Candidates) != 69 || snap.Reports[0].Candidates[0].Model != "claude-haiku-4.5" || calls.Load() != 4 {
+	if len(snap.Reports) != 1 || snap.Reports[0].Conclusion != "match" || len(snap.Reports[0].Candidates) != 75 || snap.Reports[0].Candidates[0].Model != "claude-haiku-4.5" || calls.Load() != 4 {
 		t.Fatalf("真实评分/重试结果不符: reports=%+v calls=%d", snap.Reports, calls.Load())
 	}
 
