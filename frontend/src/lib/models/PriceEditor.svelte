@@ -20,6 +20,7 @@
     kind,
     source,
     manual = false,
+    baseAlwaysVisible = false,
     onrestore,
     openGroups = $bindable<string[]>(["base"]),
   }: {
@@ -28,18 +29,20 @@
     kind: string;
     source: Pricing;
     manual?: boolean;
+    /** 手动创建和编辑时，基础价格作为常驻表单区。 */
+    baseAlwaysVisible?: boolean;
     readOnly?: boolean;
     overrides?: string[];
     onrestore?: (group: string) => void;
     /** 父级校验失败时展开包含无效输入的规则组。 */
     openGroups?: string[];
   } = $props();
-  /** 基础价格默认展开，其余规则按需查看和编辑。 */
+  /** 为价格规则输入生成独立标签 ID。 */
   const prefix = $props.id();
   /** 只显示来源或本地已存在的规则；手动补充独立收起，避免空规则占据创建页。 */
   let supplement = $state(false);
   const visibleGroups = $derived(Object.entries(groupNames).filter(([group]) => {
-    if (group === "base") return true;
+    if (group === "base") return !baseAlwaysVisible;
     const key = group as "tiers" | "modes" | "schedules" | "images" | "videos";
     if (pricing[key].length || source[key].length) return true;
     return manual && supplement && (group === "images" ? kind === "image" : group === "videos" ? kind === "video" : ["tiers", "modes"].includes(group) ? kind === "chat" : true);
@@ -88,21 +91,39 @@
   }
 </script>
 
-<Accordion.Root type="multiple" bind:value={openGroups} class="price-editor">
+{#snippet groupLabel(group: string, label: string | undefined)}
+  {group === "modes" ? "处理模式" : label}
+  {#if overrides.includes(group)}<Badge variant="neutral">本地修改</Badge>{/if}
+{/snippet}
+
+{#snippet restoreButton(group: string)}
+  {#if !readOnly && onrestore}
+    <Button variant="ghost" size="sm" onclick={() => onrestore?.(group)}>恢复来源值</Button>
+  {/if}
+{/snippet}
+
+<div class="price-editor">
+{#if baseAlwaysVisible}
+  <section data-price-group="base" aria-labelledby={`${prefix}-base-heading`}>
+    <h3 id={`${prefix}-base-heading`} class="py-2.5 text-sm font-semibold">
+      {@render groupLabel("base", groupNames.base)}
+    </h3>
+    <div class="pb-3">
+      <RateFields bind:rates={pricing.base} {readOnly} allowAdd={manual} {kind} />
+      {#if !readOnly && onrestore}
+        <div class="mt-2 flex justify-end">{@render restoreButton("base")}</div>
+      {/if}
+    </div>
+  </section>
+{/if}
+<Accordion.Root type="multiple" bind:value={openGroups}>
   {#each visibleGroups as [group, label]}
     <Accordion.Item value={group} data-price-group={group}>
       <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
         <Accordion.Trigger class="flex-1 py-2.5">
-          <span>
-            {group === "modes" ? "处理模式" : label}
-            {#if overrides.includes(group)}<Badge variant="neutral">本地修改</Badge>{/if}
-          </span>
+          <span>{@render groupLabel(group, label)}</span>
         </Accordion.Trigger>
-        {#if !readOnly && onrestore}<Button
-            variant="ghost"
-            size="sm"
-            onclick={() => onrestore?.(group)}>恢复来源值</Button
-          >{/if}
+        {@render restoreButton(group)}
       </div>
       <Accordion.Content class="pb-3">
         {#if group === "base"}
@@ -528,6 +549,7 @@
     </Accordion.Item>
   {/each}
 </Accordion.Root>
+</div>
 
 {#if manual && !readOnly}<Button variant="ghost" size="sm" class="mt-2" onclick={() => (supplement = !supplement)}>{supplement ? "收起补充规则" : "补充价格规则"}</Button>{/if}
 

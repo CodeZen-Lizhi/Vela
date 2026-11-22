@@ -124,8 +124,9 @@
       source={model.sourcePricing}
       kind={model.kind}
       manual={!model.providerId}
+      baseAlwaysVisible={mode !== "online"}
       overrides={model.overrides}
-      onrestore={mode === "edit" ? onrestore : undefined}
+      onrestore={mode === "edit" && model.providerId ? onrestore : undefined}
       bind:openGroups
     />
     <p class="text-xs text-muted-foreground">{model.providerId ? `价格来源 ${model.source || "历史目录"} · ${model.providerName}` : "手动创建 · 未填写价格保持未知"}</p>

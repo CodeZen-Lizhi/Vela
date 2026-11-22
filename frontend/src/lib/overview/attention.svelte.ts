@@ -11,11 +11,15 @@ export interface AttentionItem {
   /** 类别决定图标与语义色；path 定位调用链路，title 陈述结论，detail 展示对应事实。 */
   kind: "balance" | "difference" | "health" | "rate-up" | "rate-down";
   path: string; title: string; detail: string;
+  /** 倍率变化的检测时间，Unix 毫秒；旧提醒缺失时显示时间未知。 */
+  detectedAt?: number;
 }
 /** 两次已知倍率之间的最近一次未读变化。 */
 interface RateChange {
   /** 事件身份和前后倍率，零倍率有效。 */
   id: string; before: number; after: number;
+  /** 观察到倍率前后值不同时的本机时间，旧事件可缺失。 */
+  detectedAt?: number;
 }
 /** 本机 WebView 持久观察基线；不包含密钥和账户凭据。 */
 interface Tracker {
@@ -35,7 +39,7 @@ const storageKey = "vela-overview-rates-v1";
 let tracker: Tracker = { rates: {}, changes: {} };
 let latestItems: AttentionItem[] = [];
 
-/** 恢复存储时校验有限倍率和事件结构，损坏数据明确提示而非覆盖。 */
+/** 恢复存储时校验有限倍率、事件结构和已有的检测时间，损坏数据明确提示而非覆盖。 */
 function restore(): void {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return;
@@ -46,6 +50,7 @@ function restore(): void {
   for (const value of Object.values(rates)) if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error("倍率提醒记录格式无效");
   for (const value of Object.values(changes)) {
     if (!value || typeof value !== "object" || typeof value.id !== "string" || typeof value.before !== "number" || typeof value.after !== "number" || !Number.isFinite(value.before) || !Number.isFinite(value.after) || value.before < 0 || value.after < 0) throw new Error("倍率提醒记录格式无效");
+    if ("detectedAt" in value && (typeof value.detectedAt !== "number" || !Number.isFinite(new Date(value.detectedAt).getTime()))) throw new Error("倍率提醒检测时间无效");
   }
   tracker = { rates: rates as Tracker["rates"], changes: changes as Tracker["changes"] };
 }
@@ -61,7 +66,7 @@ function filterItems(items: AttentionItem[], preferences: AttentionSettings): At
   return items.filter(item => preferences[item.kind.startsWith("rate-") ? "rate" : item.kind as "balance" | "difference" | "health"]);
 }
 
-/** 读取启用调用链和当前结果，首次倍率只建基线；未知、停用或删除后清除该身份。 */
+/** 读取启用调用链和当前结果，首次倍率只建基线，检测到变化时记录时间；未知、停用或删除后清除该身份。 */
 export async function refreshAttention(): Promise<void> {
   const [settings, snapshot, verification] = await Promise.all([VelaService.settings(), VelaService.providers(), VelaService.verification()]);
   const items: AttentionItem[] = [];
@@ -103,10 +108,10 @@ export async function refreshAttention(): Promise<void> {
     const id = JSON.stringify([key.providerId, key.id]);
     next.rates[id] = key.multiplier;
     const before = tracker.rates[id];
-    const change = before !== undefined && before !== key.multiplier ? { id: crypto.randomUUID(), before, after: key.multiplier } : tracker.changes[id];
+    const change = before !== undefined && before !== key.multiplier ? { id: crypto.randomUUID(), before, after: key.multiplier, detectedAt: Date.now() } : tracker.changes[id];
     if (change) {
       next.changes[id] = change;
-      items.push({ id: change.id, kind: change.after > change.before ? "rate-up" : "rate-down", path, title: `Key 倍率${change.after > change.before ? "升高" : "降低"}`, detail: `${change.before}× → ${change.after}×` });
+      items.push({ id: change.id, kind: change.after > change.before ? "rate-up" : "rate-down", path, detectedAt: change.detectedAt, title: `Key 倍率${change.after > change.before ? "升高" : "降低"}`, detail: `${change.before}× → ${change.after}×` });
     }
   }
   persist(next);

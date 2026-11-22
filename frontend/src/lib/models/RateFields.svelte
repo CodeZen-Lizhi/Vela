@@ -26,7 +26,7 @@
 <Field.FieldGroup class="rate-fields">
   {#each rates as rate, i}
     {@const multiplier = cacheMultiplier(rate, rates)}
-    <Field.Field class="min-w-0 gap-1.5">
+    <Field.Field class="rate-field min-w-0 gap-1.5">
       <Field.Label for={`${prefix}-price-${i}`} class="flex-wrap gap-x-1 gap-y-0">
         <span class="whitespace-nowrap">{rate.key === "cache_write" ? rates.some((item) => item.key.startsWith("cache_write_")) ? "缓存创建·5分钟" : "缓存创建" : rate.key === "cache_write_1h" ? "缓存创建·1小时" : rateNames[rate.key] ?? rate.key}</span>
         <span class="whitespace-nowrap text-muted-foreground">{multiplier !== null ? "倍率" : rate.unit === "million_tokens" ? "$/M" : unitLabel(rate.unit)}</span>
@@ -58,5 +58,7 @@
 
 <style>
   /* 按价格组实际宽度排列短数值，避免视口断点让足够宽的弹窗提前换行。 */
+  /* 同排字段共用标签、输入及说明的行高，长标签换行时输入框仍对齐。 */
+  :global(.rate-fields > .rate-field) { display: grid; grid-template-rows: subgrid; grid-row: span 3; align-self: stretch; align-items: start; }
   :global(.rate-fields) { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr)); gap: 8px; align-items: start; }
 </style>

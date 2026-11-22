@@ -21,6 +21,7 @@
   import Trend from "./Trend.svelte";
   import Details from "./Details.svelte";
   import OverviewDateRange, { type OverviewRange } from "./OverviewDateRange.svelte";
+  import { time as verificationTime } from "$lib/verification/display";
   import "./overview.css";
 
   /** 总览通过现有主导航进入配置，关注事项自身不提供跳转。 */
@@ -155,7 +156,7 @@
     {#if attention.error}<Alert.Root variant="destructive"><Alert.Title>关注事项未能更新</Alert.Title><Alert.Description>{attention.error}<Button variant="text" size="xs" onclick={retry}>重试</Button></Alert.Description></Alert.Root>{/if}
     {#if attention.preferences && attentionCount}
       <Card.Root class="overview-attention" aria-label="需要关注">
-        {#if attention.items.length}<Card.Header class="overview-card-header"><Card.Title>需要关注 <Badge variant="warning">{attention.items.length}</Badge></Card.Title><div class="overview-attention-tools"><span>已启用的调用范围</span>{@render attentionButton()}</div></Card.Header><Card.Content><ul>{#each attention.items as item}{@const Icon=attentionIcons[item.kind]}<li><span class="overview-attention-icon" class:overview-rate-down={item.kind === "rate-down"}><Icon size={16} /></span><div class="overview-attention-copy"><strong>{item.title}</strong><span>{item.path}</span></div><div class="overview-attention-detail"><span>{item.detail}</span>{#if item.kind.startsWith("rate-")}<Button variant="text" size="xs" aria-label={`标为已读：${item.path} ${item.detail}`} onclick={() => markRateRead(item.id)}><Check />已读</Button>{/if}</div></li>{/each}</ul></Card.Content>
+        {#if attention.items.length}<Card.Header class="overview-card-header"><Card.Title>需要关注 <Badge variant="warning">{attention.items.length}</Badge></Card.Title><div class="overview-attention-tools"><span>已启用的调用范围</span>{@render attentionButton()}</div></Card.Header><Card.Content><ul>{#each attention.items as item}{@const Icon=attentionIcons[item.kind]}<li><span class="overview-attention-icon" class:overview-rate-down={item.kind === "rate-down"}><Icon size={16} /></span><div class="overview-attention-copy"><strong>{item.title}</strong><span>{item.path}</span></div><div class="overview-attention-detail"><div><span>{item.detail}</span>{#if item.kind.startsWith("rate-")}<small class="block whitespace-nowrap tabular-nums">{item.detectedAt === undefined ? "检测时间未知" : `检测于 ${verificationTime(item.detectedAt)}`}</small>{/if}</div>{#if item.kind.startsWith("rate-")}<Button variant="text" size="xs" aria-label={`标为已读：${item.path} ${item.detail}`} onclick={() => markRateRead(item.id)}><Check />已读</Button>{/if}</div></li>{/each}</ul></Card.Content>
         {:else}<Card.Content class="overview-attention-clear"><span class="overview-clear-icon"><Check size={15} /></span><div><strong>当前没有需要关注的事项</strong><small>{attentionCount} 项提醒已开启</small></div>{@render attentionButton()}</Card.Content>{/if}
       </Card.Root>
     {/if}
