@@ -16,11 +16,17 @@ func (s *VelaService) Overview(ctx context.Context) (records.OverviewSnapshot, e
 
 // OverviewToday 返回当天统计，供总览首屏独立加载。
 func (s *VelaService) OverviewToday(ctx context.Context) (records.OverviewSnapshot, error) {
+	if value := s.refresh.today.Load(); value != nil {
+		return *value, nil
+	}
 	return s.readOverview(ctx, "today", (*records.Store).OverviewToday)
 }
 
 // OverviewRecent 返回最近三十个统计日供快捷范围共享。
 func (s *VelaService) OverviewRecent(ctx context.Context) (records.OverviewSnapshot, error) {
+	if value := s.refresh.recent.Load(); value != nil {
+		return *value, nil
+	}
 	return s.readOverview(ctx, "recent", (*records.Store).OverviewRecent)
 }
 

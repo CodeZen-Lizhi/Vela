@@ -196,31 +196,27 @@
     try { guideDismissed = sessionStorage.getItem("vela-connect-dismissed") === "1"; } catch { /* 不影响统计查询。 */ }
     if (!desktop) return;
     let stopped = false, running = false, pending = false;
-    let timer: ReturnType<typeof setTimeout>;
-    /** 页面可见时串行重读，卸载释放轮询。 */
+    /** 页面串行应用后台结果，卸载时释放订阅。 */
     const poll = async (): Promise<void> => {
       if (stopped || document.hidden) return;
       if (running) { pending = true; return; }
-      running = true; await load(); running = false;
-      if (!stopped) {
-        if (pending) { pending = false; void poll(); }
-        else timer = setTimeout(() => void poll(), attention.seconds * 1000);
-      }
+      running = true;
+      await load();
+      running = false;
+      if (pending && !stopped) { pending = false; void poll(); }
     };
-    /** 恢复窗口后立即更新统计，旧定时器不再重复触发。 */
-    const visible = (): void => { if (!document.hidden) { clearTimeout(timer); void poll(); } };
-    document.addEventListener("visibilitychange", visible);
-    const unsubscribeVisible = events.windowVisible.on(visible);
-    const unsubscribeAccounts = events.providerAccountsRefreshed.on(visible);
-    requestRefresh = visible;
-    void poll();
+    const refresh = (): void => { void poll(); };
+    const offVisible = events.windowVisible.on(refresh);
+    const offBackground = events.localRefreshCompleted.on(scope => { if (scope === "overview") refresh(); });
+    document.addEventListener("visibilitychange", refresh);
+    requestRefresh = refresh;
+    refresh();
     return () => {
       requestRefresh = undefined;
       disposed = stopped = true;
-      unsubscribeVisible();
-      unsubscribeAccounts();
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", visible);
+      offVisible();
+      offBackground();
+      document.removeEventListener("visibilitychange", refresh);
     };
   });
 </script>

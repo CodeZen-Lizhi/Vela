@@ -1641,6 +1641,8 @@ export const VelaService = {
 export const events = {
   /** windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。 */
   windowVisible: event<boolean>("window:visible"),
+  /** localRefreshCompleted 通知已发布的总览后台结果。 */
+  localRefreshCompleted: event<string>("local:refresh-completed"),
   /** providerAccountsRefreshed 通知后台账户查询已结束，页面重读落库后的余额和倍率。 */
   providerAccountsRefreshed: event<boolean>("provider:accounts-refreshed"),
   /** providerKeyHealthChanged 通知页面重读指定 Key 的运行状态。 */

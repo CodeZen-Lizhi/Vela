@@ -34,6 +34,9 @@ var trayIconPNG []byte
 // windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。
 var windowVisible = mygo.NewEvent[bool]("window:visible")
 
+// localRefreshCompleted 通知已发布的总览后台结果。
+var localRefreshCompleted = mygo.NewEvent[string]("local:refresh-completed")
+
 // providerAccountsRefreshed 通知后台账户查询已结束，页面重读落库后的余额和倍率。
 var providerAccountsRefreshed = mygo.NewEvent[bool]("provider:accounts-refreshed")
 
@@ -224,6 +227,11 @@ func startApplication(dataDir string, isolated bool) error {
 	queryWork.Add(1)
 	go func() {
 		defer queryWork.Done()
+		select {
+		case <-queryContext.Done():
+			return
+		case <-time.After(1 * time.Second):
+		}
 		if err := accounts.Run(queryContext, preferences.AccountRefresh); err != nil && queryContext.Err() == nil {
 			log.Printf("账户定时刷新停止: %v", err)
 		}
@@ -238,6 +246,11 @@ func startApplication(dataDir string, isolated bool) error {
 	defer func() { stopCatalog(); <-catalogDone }()
 	go func() {
 		defer close(catalogDone)
+		select {
+		case <-catalogContext.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
 		if runErr := store.RunCatalogUpdates(catalogContext); runErr != nil && catalogContext.Err() == nil {
 			log.Printf("模型目录自动更新停止: %v", runErr)
 		}
@@ -271,7 +284,7 @@ func startApplication(dataDir string, isolated bool) error {
 	mygo.Theme.SetSource(themeSource(general.Appearance))
 	applicationUpdates := updates.NewDesktop(buildinfo.Version)
 	defer applicationUpdates.Close()
-	mygo.Bind(app.NewVelaService(app.Options{
+	service := app.NewVelaService(app.Options{
 		Updates:      applicationUpdates,
 		Records:      history,
 		Version:      buildinfo.Version,
@@ -286,7 +299,17 @@ func startApplication(dataDir string, isolated bool) error {
 		Credentials:  secrets,
 		ApplyGeneral: applyGeneral,
 		ApplyGateway: applyGateway,
-	}))
+	})
+	mygo.Bind(service)
+	queryWork.Add(1)
+	go func() {
+		defer queryWork.Done()
+		app.RunLocalRefresh(queryContext, service, func(scope string) {
+			if err := localRefreshCompleted.Broadcast(scope); err != nil && queryContext.Err() == nil {
+				log.Printf("推送后台刷新结果失败: %v", err)
+			}
+		})
+	}()
 
 	refreshOnVisible = func() {
 		store.CheckCatalog()

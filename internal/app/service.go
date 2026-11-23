@@ -21,6 +21,8 @@ import (
 
 // VelaService 提供运行信息、模型管理、供应商管理、调度策略和全局设置操作，由 MyGo 生成 TypeScript 客户端。
 type VelaService struct {
+	// refresh 保存桌面后台本地查询结果。
+	refresh localRefresh
 	// updates 管理主动检查、下载及用户确认重启，生命周期由宿主持有。
 	updates *updates.Manager
 	// records 管理独立请求历史与清理，生命周期由桌面宿主持有。

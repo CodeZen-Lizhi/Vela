@@ -31,7 +31,7 @@ interface Tracker {
 export const attention = $state({
   preferences: null as AttentionSettings | null,
   items: [] as AttentionItem[], providerCount: 0, ready: false,
-  error: "", loaded: false, seconds: 10,
+  error: "", loaded: false,
 });
 /** 存储身份固定于本机配置；观察数据不随用量时间范围变化。 */
 const storageKey = "vela-overview-rates-v1";
@@ -120,7 +120,6 @@ export async function refreshAttention(): Promise<void> {
   attention.items = filterItems(items, settings.attention);
   attention.providerCount = snapshot.providers.length;
   attention.ready = ready;
-  attention.seconds = settings.general.dashboardSeconds;
   attention.loaded = true;
   attention.error = "";
 }
@@ -142,16 +141,15 @@ export function applyAttentionPreferences(preferences: AttentionSettings): void 
   attention.items = filterItems(latestItems, preferences);
 }
 
-/** 应用生命周期内持续读本地状态；隐藏时停读，恢复立即重读，离开页面不会丢基线。 */
+/** 应用生命周期内持续读本地状态；由应用后台刷新事件驱动，离开页面不会丢基线。 */
 export function observeAttention(): () => void {
   if (!isMyGo()) return () => {};
   let stopped = false, running = false, pending = false;
-  let timer: ReturnType<typeof setTimeout>;
   let storageValid = true;
   try { restore(); } catch (cause) { storageValid = false; attention.error = `无法读取倍率提醒记录：${errorMessage(cause)}`; }
-  /** 串行轮询，销毁或隐藏时不继续安排查询。 */
+  /** 串行应用刷新事件，卸载后停止读取。 */
   const poll = async (): Promise<void> => {
-    if (stopped || document.hidden || !storageValid) return;
+    if (stopped || !storageValid) return;
     if (running) { pending = true; return; }
     running = true;
     try { await refreshAttention(); } catch (cause) { attention.error = `关注事项更新失败：${errorMessage(cause)}`; }
@@ -159,15 +157,15 @@ export function observeAttention(): () => void {
       running = false;
       if (!stopped) {
         if (pending) { pending = false; void poll(); }
-        else timer = setTimeout(() => void poll(), attention.seconds * 1000);
       }
     }
   };
-  /** 页面恢复可见时取消旧计时并重读，避免重叠请求。 */
-  const visible = (): void => { if (!document.hidden) { clearTimeout(timer); void poll(); } };
+  /** 启动或窗口恢复时同步本地状态。 */
+  const visible = (): void => { void poll(); };
   document.addEventListener("visibilitychange", visible);
   const unsubscribeVisible = events.windowVisible.on(visible);
+  const unsubscribeBackground = events.localRefreshCompleted.on(scope => { if (scope === "overview") visible(); });
   const unsubscribeAccounts = events.providerAccountsRefreshed.on(visible);
   void poll();
-  return () => { unsubscribeVisible(); unsubscribeAccounts(); stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", visible); };
+  return () => { unsubscribeVisible(); unsubscribeAccounts(); stopped = true; unsubscribeBackground(); document.removeEventListener("visibilitychange", visible); };
 }
