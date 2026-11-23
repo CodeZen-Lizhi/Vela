@@ -161,6 +161,8 @@ type ProviderDefaults struct {
 
 // ProviderSnapshot 是供应商页一次读取的内容。
 type ProviderSnapshot struct {
+	// NextCooldownEnd 是可能影响首选 Key 的最近冷却截止时刻；零值表示无需到期重读。
+	NextCooldownEnd time.Time `json:"nextCooldownEnd"`
 	// Providers 供应商概览：启用的在前，其次按创建顺序；没有供应商时为空数组。
 	Providers []ProviderOverview `json:"providers"`
 	// Defaults 表单使用的默认值。

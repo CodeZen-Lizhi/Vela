@@ -60,6 +60,27 @@ func TestRuntimeHealthSequence(t *testing.T) {
 	}
 }
 
+// TestRuntimeHealthNotificationOnlyOnVisibleChanges 验证满分成功与普通中性退出不刷新页面，熔断及探测状态变化会通知。
+func TestRuntimeHealthNotificationOnlyOnVisibleChanges(t *testing.T) {
+	r, now := runtimeClock()
+	c := runtimeCandidate("a", 0, 0, nil)
+	var updates []KeyHealth
+	r.SetHealthChanged(func(id string) {
+		updates = append(updates, r.Health(id, c.CredentialVersion))
+	})
+	finishRuntime(t, r, c, Outcome{Success: true})
+	finishRuntime(t, r, c, Outcome{})
+	if len(updates) != 0 {
+		t.Fatalf("健康状态未变却收到通知: %+v", updates)
+	}
+	finishRuntime(t, r, c, Outcome{Penalty: Unavailable})
+	*now = now.Add(time.Minute)
+	finishRuntime(t, r, c, Outcome{})
+	if len(updates) != 3 || updates[0].Score != 0 || !updates[0].CircuitOpen || !updates[1].Probing || updates[2].Probing {
+		t.Fatalf("预期依次收到熔断、探测开始与退出通知: %+v", updates)
+	}
+}
+
 // TestRuntimeManualHealthReset 验证手动恢复清除故障状态、隔离旧请求并在保存失败时可回滚。
 func TestRuntimeManualHealthReset(t *testing.T) {
 	r, _ := runtimeClock()

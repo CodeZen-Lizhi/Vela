@@ -34,6 +34,23 @@ func NewRuntime() *Runtime {
 	return &Runtime{now: time.Now, keys: make(map[string]*keyState), affinities: make(map[affinityScope]affinityEntry)}
 }
 
+// SetHealthChanged 注册健康状态变化通知。回调可以重读运行状态，也可能被多个请求同时调用。
+func (r *Runtime) SetHealthChanged(notify func(string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.healthChanged = notify
+}
+
+// notifyHealthChanged 在手动恢复成功后通知宿主重读指定 Key。
+func (r *Runtime) notifyHealthChanged(keyID string) {
+	r.mu.Lock()
+	notify := r.healthChanged
+	r.mu.Unlock()
+	if notify != nil {
+		notify(keyID)
+	}
+}
+
 // stateForRank 登记源快照凭据，只有严格更新的快照才能替换凭据；旧快照返回 nil，调用方持锁。
 func (r *Runtime) stateForRank(c Candidate) *keyState {
 	s := r.keys[c.Key.ID]
@@ -89,7 +106,13 @@ func (s *keyState) unavailable(c Candidate, now time.Time) error {
 // 允许直接准入首次使用的候选，但已有 Key 的凭据只能由当前配置的 Rank 更新。
 func (r *Runtime) Acquire(c Candidate) (*Attempt, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var notify func(string)
+	defer func() {
+		r.mu.Unlock()
+		if notify != nil {
+			notify(c.Key.ID)
+		}
+	}()
 	if !candidateEnabled(c) {
 		return nil, ErrUnavailable
 	}
@@ -105,6 +128,7 @@ func (r *Runtime) Acquire(c Candidate) (*Attempt, error) {
 	if a.probe {
 		s.probe = a
 		s.health.Probing = true
+		notify = r.healthChanged
 	}
 	s.usage.inflight++
 	// 无 RPM 限制时无需保留无限实际请求历史；保留最近一分钟供之后设置上限使用。
@@ -118,8 +142,20 @@ func (a *Attempt) Finish(outcome Outcome) {
 	a.once.Do(func() {
 		r := a.runtime
 		r.mu.Lock()
-		defer r.mu.Unlock()
 		s := a.state
+		before := s.health
+		defer func() {
+			after := s.health
+			changed := r.keys[a.candidate.Key.ID] == s &&
+				(before.Score != after.Score || before.Probing != after.Probing ||
+					before.CircuitOpen != after.CircuitOpen || !before.NextProbe.Equal(after.NextProbe) ||
+					!before.CooldownUntil.Equal(after.CooldownUntil))
+			notify := r.healthChanged
+			r.mu.Unlock()
+			if changed && notify != nil {
+				notify(a.candidate.Key.ID)
+			}
+		}()
 		s.usage.inflight--
 		ownsProbe := s.probe == a
 		if ownsProbe {
@@ -297,7 +333,13 @@ func (r *Runtime) RestoreHealth(records []HealthRecord) error {
 // UnavailableReason 在不取得资格或占用额度的情况下读取候选的当前准入原因，供请求记录展示。
 func (r *Runtime) UnavailableReason(c Candidate) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var notify func(string)
+	defer func() {
+		r.mu.Unlock()
+		if notify != nil {
+			notify(c.Key.ID)
+		}
+	}()
 	if !candidateEnabled(c) {
 		return ErrUnavailable
 	}

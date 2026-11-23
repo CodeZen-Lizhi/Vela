@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/CodeZen-Lizhi/vela/internal/credentials"
@@ -363,6 +364,7 @@ func (s *Store) Snapshot(ctx context.Context) (ProviderSnapshot, error) {
 		},
 	}
 	// 数据库只有一个连接：先读完并关闭一个结果集，再发起下一条查询。
+	now := time.Now()
 	keys, err := s.keyBriefs(ctx)
 	if err != nil {
 		return snapshot, err
@@ -384,6 +386,14 @@ func (s *Store) Snapshot(ctx context.Context) (ProviderSnapshot, error) {
 		}
 
 		preferred, health := summarize(enabled, keys[id])
+		for _, key := range keys[id] {
+			until := key.health.CooldownUntil
+			if enabled && key.enabled && key.health.Score > 0 && !key.health.CircuitOpen &&
+				!key.health.Probing && until.After(now) &&
+				(snapshot.NextCooldownEnd.IsZero() || until.Before(snapshot.NextCooldownEnd)) {
+				snapshot.NextCooldownEnd = until
+			}
+		}
 		snapshot.Providers = append(snapshot.Providers, ProviderOverview{
 			Provider:     doc.provider(id, name, enabled),
 			KeyCount:     len(keys[id]),

@@ -43,7 +43,6 @@
   };
   /** 总览与供应商列表可选的刷新间隔，单位秒。 */
   const dashboardIntervals = [10, 30, 60];
-  const providerIntervals = [60, 120];
 
   /** 保存一项修改；成功后才更新界面上的已保存值。 */
   async function update(change: Partial<GeneralSettings>): Promise<void> {
@@ -171,25 +170,6 @@
       <Select.Content align="end"
         ><Select.Group
           >{#each dashboardIntervals as seconds}<Select.Item
-              value={String(seconds)}>{seconds} 秒</Select.Item
-            >{/each}</Select.Group
-        ></Select.Content
-      >
-    </Select.Root>
-  </div>
-  <div class="setting-row">
-    <span id="provider-label"><strong>供应商列表状态更新间隔</strong><small class="block text-xs text-muted-foreground">更新本地健康度、Key 和已保存余额；不向上游查询。上游查询周期在下方“上游信息刷新”中设置。</small></span>
-    <Select.Root
-      type="single"
-      bind:value={() => String(saved.providerSeconds), (value) => void update({ providerSeconds: Number(value) })}
-      disabled={!desktop}
-    >
-      <Select.Trigger aria-labelledby="provider-label" class="min-w-24"
-        >{saved.providerSeconds} 秒</Select.Trigger
-      >
-      <Select.Content align="end"
-        ><Select.Group
-          >{#each providerIntervals as seconds}<Select.Item
               value={String(seconds)}>{seconds} 秒</Select.Item
             >{/each}</Select.Group
         ></Select.Content

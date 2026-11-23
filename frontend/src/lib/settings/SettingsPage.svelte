@@ -33,7 +33,6 @@
       closeAction: "background",
       backgroundEntry: "menu",
       dashboardSeconds: 10,
-      providerSeconds: 60,
       modelAutoUpdate: true,
       modelUpdateMinutes: 10,
     },

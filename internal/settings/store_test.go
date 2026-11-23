@@ -77,7 +77,7 @@ func TestDefaultsAndPersistence(t *testing.T) {
 		t.Fatalf("提醒默认值 = %+v, %v", attention, err)
 	}
 
-	wantGeneral := GeneralSettings{Appearance: "system", CloseAction: "quit", BackgroundEntry: "both", DashboardSeconds: 30, ProviderSeconds: 120, ModelAutoUpdate: true, ModelUpdateMinutes: 10}
+	wantGeneral := GeneralSettings{Appearance: "system", CloseAction: "quit", BackgroundEntry: "both", DashboardSeconds: 30, ModelAutoUpdate: true, ModelUpdateMinutes: 10}
 	wantAttention := AttentionSettings{Balance: false, Difference: true, Health: false, Rate: true, BalanceThreshold: 0}
 	if err = s.SaveGeneral(ctx, wantGeneral); err != nil {
 		t.Fatal(err)
@@ -135,11 +135,10 @@ func TestInvalidValuesKeepSavedSettings(t *testing.T) {
 		t.Fatal("负数阈值应被拒绝")
 	}
 	invalid := []GeneralSettings{
-		{Appearance: "sepia", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60},
-		{Appearance: "light", CloseAction: "hide", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60},
-		{Appearance: "light", CloseAction: "background", BackgroundEntry: "none", DashboardSeconds: 10, ProviderSeconds: 60},
-		{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 5, ProviderSeconds: 60},
-		{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 30},
+		{Appearance: "sepia", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10},
+		{Appearance: "light", CloseAction: "hide", BackgroundEntry: "menu", DashboardSeconds: 10},
+		{Appearance: "light", CloseAction: "background", BackgroundEntry: "none", DashboardSeconds: 10},
+		{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 5},
 	}
 	for _, value := range invalid {
 		if err := s.SaveGeneral(ctx, value); err == nil {

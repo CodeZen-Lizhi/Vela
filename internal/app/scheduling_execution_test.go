@@ -346,6 +346,51 @@ func TestSchedulingHealthSurvivesRuntimeRestart(t *testing.T) {
 	}
 }
 
+// TestSchedulingHealthNotificationReadsCurrentProvider 验证真实上游结果结算归零时，通知接收方可立即读取列表和 Key 详情。
+func TestSchedulingHealthNotificationReadsCurrentProvider(t *testing.T) {
+	f := newExecutionFixture(t)
+	ctx := context.Background()
+	if err := f.vendors.SetKeyEnabled(ctx, f.keys[1].ID, false); err != nil {
+		t.Fatal(err)
+	}
+	f.handle = func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		w.WriteHeader(http.StatusBadGateway)
+		io.WriteString(w, `{"error":{"code":"upstream_error"}}`)
+	}
+
+	var notifications int
+	var circuitObserved bool
+	f.execution.Executor.Runtime.SetHealthChanged(func(keyID string) {
+		notifications++
+		if keyID != f.keys[0].ID {
+			t.Errorf("通知指向错误的 Key: %s", keyID)
+		}
+		snapshot, err := f.vendors.Snapshot(ctx)
+		if err != nil || len(snapshot.Providers) != 1 {
+			t.Fatalf("重读供应商列表: %+v, %v", snapshot, err)
+		}
+		row := snapshot.Providers[0]
+		if row.Health.Percent == nil || *row.Health.Percent != 0 {
+			return
+		}
+		circuitObserved = true
+		if row.Health.State != providers.ProviderHealthCircuit || row.PreferredKey != nil {
+			t.Errorf("通知发出时列表尚未显示熔断: %+v", row)
+		}
+		keys, err := f.vendors.Keys(ctx, f.provider.ID)
+		if err != nil || len(keys) != 2 || keys[0].HealthScore != 0 || keys[0].HealthState != providers.ProviderKeyHealthCircuit {
+			t.Errorf("通知发出时详情尚未显示零分熔断: %+v, %v", keys, err)
+		}
+	})
+	var out bytes.Buffer
+	for range 2 {
+		_, _ = f.execution.Executor.Execute(ctx, f.request(), &out)
+	}
+	if notifications != 4 || !circuitObserved {
+		t.Fatalf("预期四次扣分通知且最后一次读到熔断，实际通知 %d 次，熔断 %t", notifications, circuitObserved)
+	}
+}
+
 // TestSchedulingHealthProjectionIncludesCircuitRecovery 验证零分熔断会进入 Key 列表并带出真实下次试探时刻。
 func TestSchedulingHealthProjectionIncludesCircuitRecovery(t *testing.T) {
 	f := newExecutionFixture(t)

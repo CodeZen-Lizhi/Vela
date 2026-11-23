@@ -21,8 +21,6 @@ type GeneralSettings struct {
 	BackgroundEntry string `json:"backgroundEntry"`
 	// DashboardSeconds 总览刷新间隔，单位秒。
 	DashboardSeconds int `json:"dashboardSeconds"`
-	// ProviderSeconds 供应商列表本地状态重读间隔，单位秒，不触发上游查询。
-	ProviderSeconds int `json:"providerSeconds"`
 	// ModelAutoUpdate 是否后台更新模型目录及未修改的来源价格，默认开启。
 	ModelAutoUpdate bool `json:"modelAutoUpdate"`
 	// ModelUpdateMinutes 自动检查间隔，单位分钟，至少为 1；关闭时仍保留。
@@ -65,7 +63,7 @@ type AttentionSettings struct {
 
 // DefaultGeneral 返回常规设置默认值：浅色、关闭窗口继续运行、仅保留菜单栏入口。
 func DefaultGeneral() GeneralSettings {
-	return GeneralSettings{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ProviderSeconds: 60, ModelAutoUpdate: true, ModelUpdateMinutes: 10}
+	return GeneralSettings{Appearance: "light", CloseAction: "background", BackgroundEntry: "menu", DashboardSeconds: 10, ModelAutoUpdate: true, ModelUpdateMinutes: 10}
 }
 
 // DefaultGateway 返回默认监听端口。
@@ -92,9 +90,6 @@ func (g GeneralSettings) Validate() error {
 	}
 	if g.DashboardSeconds != 10 && g.DashboardSeconds != 30 && g.DashboardSeconds != 60 {
 		return errors.New("总览刷新间隔只能是 10、30 或 60 秒")
-	}
-	if g.ProviderSeconds != 60 && g.ProviderSeconds != 120 {
-		return errors.New("供应商列表刷新间隔只能是 60 或 120 秒")
 	}
 	if g.ModelUpdateMinutes < 1 || g.ModelUpdateMinutes > 525600 {
 		return errors.New("模型更新间隔须为 1～525600 分钟的整数")

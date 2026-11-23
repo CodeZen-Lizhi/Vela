@@ -267,8 +267,6 @@ export interface GeneralSettings {
   backgroundEntry: string;
   /** DashboardSeconds 总览刷新间隔，单位秒。 */
   dashboardSeconds: number;
-  /** ProviderSeconds 供应商列表本地状态重读间隔，单位秒，不触发上游查询。 */
-  providerSeconds: number;
   /** ModelAutoUpdate 是否后台更新模型目录及未修改的来源价格，默认开启。 */
   modelAutoUpdate: boolean;
   /** ModelUpdateMinutes 自动检查间隔，单位分钟，至少为 1；关闭时仍保留。 */
@@ -785,6 +783,8 @@ export interface ProviderOverview {
 
 /** ProviderSnapshot 是供应商页一次读取的内容。 */
 export interface ProviderSnapshot {
+  /** NextCooldownEnd 是可能影响首选 Key 的最近冷却截止时刻；零值表示无需到期重读。 */
+  nextCooldownEnd: string;
   /** Providers 供应商概览：启用的在前，其次按创建顺序；没有供应商时为空数组。 */
   providers: ProviderOverview[];
   /** Defaults 表单使用的默认值。 */
@@ -1641,8 +1641,10 @@ export const VelaService = {
 export const events = {
   /** windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。 */
   windowVisible: event<boolean>("window:visible"),
-  /** providerAccountsRefreshed 通知恢复窗口触发的账户查询已结束，页面此时重读落库后的余额和倍率。 */
+  /** providerAccountsRefreshed 通知后台账户查询已结束，页面重读落库后的余额和倍率。 */
   providerAccountsRefreshed: event<boolean>("provider:accounts-refreshed"),
+  /** providerKeyHealthChanged 通知页面重读指定 Key 的运行状态。 */
+  providerKeyHealthChanged: event<string>("provider:key-health-changed"),
   /** verificationProgress 将合并后的检测样本进度推送给已打开页面。 */
   verificationProgress: event<VerificationProgress>("verification:progress"),
 } as const;

@@ -143,6 +143,7 @@ func (e *Executor) ResetHealth(ctx context.Context, keyID, version string) error
 		e.Runtime.rollbackHealth(keyID, version, previous)
 		return fmt.Errorf("保存恢复后的健康度: %w", err)
 	}
+	e.Runtime.notifyHealthChanged(keyID)
 	return nil
 }
 

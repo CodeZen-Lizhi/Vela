@@ -32,8 +32,8 @@
   let verification=$state<VerificationSnapshot|null>(null);
   /** 同步状态按 Key 身份保存；读取失败时不沿用另一把 Key 的结果。 */
   let keyQueries=$state<Record<string,ProviderKeyQuery>>({});
-  /** 列表周期只重读本地快照，上游查询由全局账户任务负责。 */
-  let listSeconds=$state(60);
+  /** 首选 Key 可能在限流冷却到期时变化。 */
+  let nextCooldownEnd=$state(0);
   /** 账户保存及首次读取期间锁定父弹窗关闭入口。 */
   let accountBusy=$state(false);
   let query=$state(""), status=$state("all"), modelFilter=$state("all");
@@ -67,6 +67,7 @@
     error="";
     try{
       const snapshot=await VelaService.providers();rows=snapshot.providers;defaults=snapshot.defaults;
+      nextCooldownEnd=Date.parse(snapshot.nextCooldownEnd);
       const nextAccounts:Record<string,ProviderAccount>={},nextRelations:Record<string,ProviderModel[]>={},nextErrors:Record<string,string>={}, nextKeyQueries:Record<string,ProviderKeyQuery>={};
       await Promise.all(rows.map(async(row)=>{
         const id=row.provider.id;
@@ -77,29 +78,36 @@
       }));
       keyQueries=nextKeyQueries;accounts={...accounts,...nextAccounts};relations={...relations,...nextRelations};rowErrors=nextErrors;
       verification=await VelaService.verification();
-      const settings=await VelaService.settings();listSeconds=settings.general.providerSeconds;
     }catch(cause){error=message(cause);}finally{loading=false;}
   }
+  $effect(()=>{
+    if(nextCooldownEnd<=0||!Number.isFinite(nextCooldownEnd))return;
+    const timer=setTimeout(()=>{void load();},Math.max(0,nextCooldownEnd-Date.now()));
+    return()=>clearTimeout(timer);
+  });
   onMount(()=>{
     let stopped=false, running=false, pending=false;
-    let timer:ReturnType<typeof setTimeout>;
-    /** 恢复与查询完成事件共用串行重读；在途事件在本轮后补读，避免遗漏新结果。 */
-    const poll=async()=>{
+    /** 串行处理本地变更；读取期间的新事件在本轮结束后补读。 */
+    const reload=async()=>{
       if(stopped)return;
       if(running){pending=true;return;}
-      clearTimeout(timer);running=true;
+      running=true;
       try{await load();}finally{
         running=false;
-        if(!stopped){if(pending){pending=false;void poll();}else timer=setTimeout(()=>{void poll();},listSeconds*1000);}
+        if(!stopped&&pending){pending=false;void reload();}
       }
     };
-    void poll();
-    /** 原生恢复与账户查询完成后立即重读，不等待列表周期。 */
-    const restored=()=>{if(document.visibilityState==="visible")void poll();};
+    /** 原生恢复与账户查询完成后立即重读，同时处理新结算的 Key 健康状态。 */
+    const restored=()=>{if(document.visibilityState==="visible")void reload();};
     document.addEventListener("visibilitychange",restored);
     const unsubscribeVisible=isMyGo()?events.windowVisible.on(restored):()=>{};
     const unsubscribeAccounts=isMyGo()?events.providerAccountsRefreshed.on(restored):()=>{};
-    return()=>{unsubscribeVisible();unsubscribeAccounts();stopped=true;clearTimeout(timer);document.removeEventListener("visibilitychange",restored);};
+    const unsubscribeHealth=isMyGo()?events.providerKeyHealthChanged.on(restored):()=>{};
+    const unsubscribeVerification=isMyGo()?events.verificationProgress.on((progress)=>{
+      if(!progress.running)restored();
+    }):()=>{};
+    void reload();
+    return()=>{unsubscribeVerification();unsubscribeHealth();unsubscribeVisible();unsubscribeAccounts();stopped=true;document.removeEventListener("visibilitychange",restored);};
   });
   /** 明确的主动刷新才查询上游；单项失败由行内查询状态表达。 */
   async function refresh():Promise<void>{refreshing=true;error="";try{await VelaService.refreshProviderAccounts("");await load();notify("账户刷新已完成，失败项可在对应账户查看原因");}catch(cause){error=message(cause);}finally{refreshing=false;}}
@@ -186,7 +194,7 @@
   </section>
 </section>
 <Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy)editorOpen=value;}}><Dialog.Content class="provider-form-dialog provider-editor-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{editing?"编辑供应商":"添加供应商"}</Dialog.Title><Dialog.Description>密钥和模型在创建后的供应商详情中维护。</Dialog.Description></Dialog.Header>{#if editorOpen&&defaults}<ProviderForm provider={editing} {defaults} {busy} error={formError} onsave={saveProvider} onclose={()=>editorOpen=false}/>{/if}</Dialog.Content></Dialog.Root>
-<Sheet.Root open={selected!==null} onOpenChange={(value)=>{if(!value)detailID="";}}><Sheet.Content variant="wide" class="provider-drawer">{#if selected&&defaults}{#key selected.id}<ProviderDetails provider={selected} {defaults} refreshSeconds={listSeconds} onupdated={load} {notify}/>{/key}{/if}</Sheet.Content></Sheet.Root>
+<Sheet.Root open={selected!==null} onOpenChange={(value)=>{if(!value)detailID="";}}><Sheet.Content variant="wide" class="provider-drawer">{#if selected&&defaults}{#key selected.id}<ProviderDetails provider={selected} {defaults} onupdated={load} {notify}/>{/key}{/if}</Sheet.Content></Sheet.Root>
 <Dialog.Root open={accountProvider!==null} onOpenChange={(value)=>{if(!value&&!accountBusy)accountProvider=null;}}><Dialog.Content class="provider-form-dialog provider-account-dialog" showCloseButton={!accountBusy} onInteractOutside={(event)=>{if(accountBusy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(accountBusy)event.preventDefault();}}><Dialog.Header><Dialog.Title>账户信息</Dialog.Title><Dialog.Description>{accountProvider?.name} · 供应商余额查询，Key 信息来源在各 Key 内配置。</Dialog.Description></Dialog.Header>{#if accountProvider}<AccountForm providerID={accountProvider.id} baseURL={accountProvider.url} onbusy={(value)=>accountBusy=value} {notify} onclose={()=>accountProvider=null} onupdated={load}/>{/if}</Dialog.Content></Dialog.Root>
 <Dialog.Root open={deleting!==null} onOpenChange={(value)=>{if(!busy&&!value)deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除供应商？</Dialog.Title><Dialog.Description>确认删除“{deleting?.name}”？它的全部 Key、凭据、模型关联、模型权限、映射和账户配置将一并删除，统一模型保持不变。</Dialog.Description></Dialog.Header>{#if formError}<Alert.Root variant="inline-error"><Alert.Description>{formError}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={remove}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
 

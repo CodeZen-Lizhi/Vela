@@ -27,6 +27,9 @@ func refreshFailure(ctx context.Context, previous QueryStatus, err error) QueryS
 // RefreshBackground 静默查询所选范围，复用批次串行和配置世代校验；单项失败不阻断其他对象。
 func (a *Accounts) RefreshBackground(ctx context.Context, balance, keys bool) error {
 	_, err := a.refreshAccounts(context.WithValue(ctx, silentRefreshKey{}, true), "", balance, keys)
+	if ctx.Err() == nil && a.OnBackgroundRefresh != nil {
+		a.OnBackgroundRefresh()
+	}
 	return err
 }
 

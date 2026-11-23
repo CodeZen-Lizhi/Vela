@@ -34,8 +34,11 @@ var trayIconPNG []byte
 // windowVisible 通知当前页面从隐藏或最小化恢复，普通聚焦不触发。
 var windowVisible = mygo.NewEvent[bool]("window:visible")
 
-// providerAccountsRefreshed 通知恢复窗口触发的账户查询已结束，页面此时重读落库后的余额和倍率。
+// providerAccountsRefreshed 通知后台账户查询已结束，页面重读落库后的余额和倍率。
 var providerAccountsRefreshed = mygo.NewEvent[bool]("provider:accounts-refreshed")
+
+// providerKeyHealthChanged 通知页面重读指定 Key 的运行状态。
+var providerKeyHealthChanged = mygo.NewEvent[string]("provider:key-health-changed")
 
 // verificationProgress 将合并后的检测样本进度推送给已打开页面。
 var verificationProgress = mygo.NewEvent[verification.VerificationProgress]("verification:progress")
@@ -169,6 +172,11 @@ func startApplication(dataDir string, isolated bool) error {
 		return fmt.Errorf("初始化请求执行: %w", err)
 	}
 	defer execution.Close()
+	execution.Executor.Runtime.SetHealthChanged(func(keyID string) {
+		if err := providerKeyHealthChanged.Broadcast(keyID); err != nil {
+			log.Printf("推送 Key 健康变化失败: %v", err)
+		}
+	})
 	gatewayServer = gateway.New(store, execution.Executor)
 	applyGateway := func(ctx context.Context, desired settings.GatewaySettings) error {
 		key, readErr := secrets.Get("gateway-access-key")
@@ -203,6 +211,11 @@ func startApplication(dataDir string, isolated bool) error {
 	})
 	if err != nil {
 		return fmt.Errorf("初始化账户查询: %w", err)
+	}
+	accounts.OnBackgroundRefresh = func() {
+		if err := providerAccountsRefreshed.Broadcast(true); err != nil {
+			log.Printf("推送账户查询完成事件失败: %v", err)
+		}
 	}
 	queryContext, stopQueries := context.WithCancel(context.Background())
 	// 定时和窗口恢复查询都须在关闭共用数据库前退出。
@@ -286,11 +299,6 @@ func startApplication(dataDir string, isolated bool) error {
 			config, err := preferences.AccountRefresh(queryContext)
 			if err == nil && config.OnVisible {
 				_ = accounts.RefreshBackground(queryContext, true, true)
-				if queryContext.Err() == nil {
-					if err := providerAccountsRefreshed.Broadcast(true); err != nil {
-						log.Printf("推送账户查询完成事件失败: %v", err)
-					}
-				}
 			}
 		}()
 	}

@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS provider_key_queries (
 
 // Accounts 管理余额与 Key 信息查询；网络在 Store 锁外，串行查询防止令牌轮换与重复触发相互覆盖。
 type Accounts struct {
+	// OnBackgroundRefresh 在启动任务前配置，后台查询结束后通知宿主重读已保存的数据。
+	OnBackgroundRefresh func()
+
 	// validations 在 store.mu 保护下为每个供应商保留一份临时结果及已生效的凭据轮换；关闭只使余额结果失效。
 	validations map[string]accountValidation
 

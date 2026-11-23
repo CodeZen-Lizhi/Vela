@@ -120,6 +120,8 @@ type HealthRecord struct {
 type Runtime struct {
 	// mu 保护状态、亲和和请求序号，避免检查与实际取得资格分离。
 	mu sync.Mutex
+	// healthChanged 在锁外通知宿主重读已变化的 Key 健康状态。
+	healthChanged func(string)
 	// now 使用真实时钟，包内测试可替换以验证时间边界。
 	now func() time.Time
 	// keys 以稳定 Key ID 保存当前凭据代次。

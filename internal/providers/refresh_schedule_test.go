@@ -39,6 +39,8 @@ func TestIndependentRefreshCycles(t *testing.T) {
 	defer server.Close()
 	a, p := combinedFixture(t, server.URL)
 	ctx := context.Background()
+	var notifications atomic.Int32
+	a.OnBackgroundRefresh = func() { notifications.Add(1) }
 	if _, err := saveAndRefreshProviderAccount(a, ctx, p.ID, ProviderAccountDraft{Config: QueryConfig{Mode: "usage_api", APIKey: "fixture"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -71,13 +73,13 @@ func TestIndependentRefreshCycles(t *testing.T) {
 	tick(0)
 	tick(60)
 	tick(61)
-	if balances.Load() != 1 || keys.Load() != 0 {
-		t.Fatalf("余额周期误查Key: %d/%d", balances.Load(), keys.Load())
+	if balances.Load() != 1 || keys.Load() != 0 || notifications.Load() != 1 {
+		t.Fatalf("余额周期的余额/Key/完成通知次数错误: %d/%d/%d", balances.Load(), keys.Load(), notifications.Load())
 	}
 	tick(180)
 	tick(181)
-	if balances.Load() != 2 || keys.Load() != 1 {
-		t.Fatalf("独立周期失效: %d/%d", balances.Load(), keys.Load())
+	if balances.Load() != 2 || keys.Load() != 1 || notifications.Load() != 2 {
+		t.Fatalf("独立周期的余额/Key/完成通知次数错误: %d/%d/%d", balances.Load(), keys.Load(), notifications.Load())
 	}
 	close(ticks)
 	if err = <-done; err != nil {

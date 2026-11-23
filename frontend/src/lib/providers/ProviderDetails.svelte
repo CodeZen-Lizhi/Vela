@@ -23,7 +23,7 @@
   import InlineMultiplier from "./InlineMultiplier.svelte";
   import { queryConfigDraft } from "./query-defaults";
   /** 单个供应商详情始终附着在列表上方，数据刷新不关闭抽屉。 */
-  let { provider, defaults, onupdated, notify, refreshSeconds=60 }: {provider:Provider;defaults:ProviderDefaults;onupdated:()=>Promise<void>;notify:(message:string)=>void;/** 与列表共用本地状态更新周期，仅读取已保存数据。 */ refreshSeconds?:number}=$props();
+  let { provider, defaults, onupdated, notify }: {provider:Provider;defaults:ProviderDefaults;onupdated:()=>Promise<void>;notify:(message:string)=>void}=$props();
   let tab=$state("keys"), query=$state(""), status=$state("all");
   let keys=$state<ProviderKey[]>([]), models=$state<ProviderModel[]>([]);
   /** 主动测试历史独立读取，失败保留已有列表与最近结果。 */
@@ -75,27 +75,38 @@
     try{testResults=await VelaService.providerModelTestResults(provider.id);testResultsError="";}
     catch(cause){testResultsError=cause instanceof Error?cause.message:String(cause);}
   }
+  $effect(()=>{
+    const deadline=keys.reduce((earliest,key)=>{
+      if(key.healthState!=="cooldown")return earliest;
+      return Math.min(earliest,Date.parse(key.recoverAt));
+    },Infinity);
+    if(!Number.isFinite(deadline))return;
+    const timer=setTimeout(()=>{void load();},Math.max(0,deadline-Date.now()));
+    return()=>clearTimeout(timer);
+  });
   onMount(()=>{
     let stopped=false, running=false, pending=false;
-    let pollTimer:ReturnType<typeof setTimeout>;
     const clockTimer=setInterval(()=>{now=Date.now();},1000);
-    /** 恢复与查询完成事件共用串行重读；在途事件在本轮后补读，避免遗漏新结果。 */
-    const poll=async()=>{
+    /** 串行处理本地变更；读取期间的新事件在本轮结束后补读。 */
+    const reload=async()=>{
       if(stopped)return;
       if(running){pending=true;return;}
-      clearTimeout(pollTimer);running=true;
+      running=true;
       try{await load();}finally{
         running=false;
-        if(!stopped){if(pending){pending=false;void poll();}else pollTimer=setTimeout(()=>{void poll();},refreshSeconds*1000);}
+        if(!stopped&&pending){pending=false;void reload();}
       }
     };
-    void poll();
     /** 已打开的详情与列表同时重读，不重建抽屉或覆盖编辑草稿。 */
-    const restored=()=>{if(document.visibilityState==="visible")void poll();};
+    const restored=()=>{if(document.visibilityState==="visible")void reload();};
     document.addEventListener("visibilitychange",restored);
     const unsubscribeVisible=isMyGo()?events.windowVisible.on(restored):()=>{};
     const unsubscribeAccounts=isMyGo()?events.providerAccountsRefreshed.on(restored):()=>{};
-    return()=>{unsubscribeVisible();unsubscribeAccounts();stopped=true;clearTimeout(pollTimer);clearInterval(clockTimer);document.removeEventListener("visibilitychange",restored);};
+    const unsubscribeHealth=isMyGo()?events.providerKeyHealthChanged.on((keyID)=>{
+      if(loading||keys.some((key)=>key.id===keyID))restored();
+    }):()=>{};
+    void reload();
+    return()=>{unsubscribeHealth();unsubscribeVisible();unsubscribeAccounts();stopped=true;clearInterval(clockTimer);document.removeEventListener("visibilitychange",restored);};
   });
   /** 子功能保存后刷新抽屉与列表摘要，不切换当前页签。 */
   async function updated():Promise<void>{await load();await onupdated();}
