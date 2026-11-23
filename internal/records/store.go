@@ -15,6 +15,7 @@ import (
 )
 
 // schema 记录不外键关联配置，删除资源不删历史；正文与列表分表，累计不依赖明细。
+// 活跃状态的部分索引让总览只读取尚未结束的记录。
 const schema = `
 CREATE TABLE IF NOT EXISTS request_records(
  id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, ended_at INTEGER NOT NULL,
@@ -25,6 +26,7 @@ CREATE INDEX IF NOT EXISTS request_records_time ON request_records(started_at DE
 CREATE INDEX IF NOT EXISTS request_records_end ON request_records(ended_at) WHERE ended_at>0;
 CREATE INDEX IF NOT EXISTS request_records_model ON request_records(model_id,started_at DESC);
 CREATE INDEX IF NOT EXISTS request_records_provider ON request_records(provider_id,started_at DESC);
+CREATE INDEX IF NOT EXISTS request_records_active ON request_records(state) WHERE state='active';
 CREATE TABLE IF NOT EXISTS request_options(kind TEXT NOT NULL,value TEXT NOT NULL,label TEXT NOT NULL,PRIMARY KEY(kind,value));
 CREATE TABLE IF NOT EXISTS request_payloads(
  request_id TEXT NOT NULL REFERENCES request_records(id) ON DELETE CASCADE,

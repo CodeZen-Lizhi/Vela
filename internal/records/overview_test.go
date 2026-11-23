@@ -280,3 +280,37 @@ func TestOverviewDimensionLimit(t *testing.T) {
 		t.Fatal("超限返回了不完整结果", len(snapshot.Rows), err)
 	}
 }
+
+// TestOverviewScopedReads 验证近期范围、历史按需读取及热力图不重复累计 Key 尝试。
+func TestOverviewScopedReads(t *testing.T) {
+	s, catalog := fixture(t)
+	ctx := context.Background()
+	s.now = func() time.Time { return time.Date(2026, 11, 23, 12, 0, 0, 0, s.zone) }
+	_, err := catalog.DB().Exec(`INSERT INTO request_overview VALUES
+		(1,'2026-10-01','','','','','','','','{"requests":2}'),
+		(2,'2026-11-22','','','','','','','','{"requests":3}'),
+		(3,'2026-11-23','','','','','','','','{"requests":4,"tokens":12,"standardCost":2}'),
+		(3,'2026-11-23','','','','k','','','','{"requests":4,"tokens":12,"standardCost":2}')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	today, err := s.OverviewToday(ctx)
+	if err != nil || today.FirstDay != "2026-10-01" || len(today.Rows) != 2 {
+		t.Fatalf("今日统计=%+v，错误=%v", today, err)
+	}
+	recent, err := s.OverviewRecent(ctx)
+	if err != nil || len(recent.Rows) != 3 {
+		t.Fatalf("近期统计=%+v，错误=%v", recent, err)
+	}
+	history, err := s.OverviewRange(ctx, "2026-10-01", "2026-10-01")
+	if err != nil || len(history.Rows) != 1 || history.Rows[0].Metrics.Requests != 2 {
+		t.Fatalf("指定日统计=%+v，错误=%v", history, err)
+	}
+	heatmap, err := s.OverviewHeatmap(ctx, 2026)
+	if err != nil || len(heatmap.Rows) != 3 {
+		t.Fatalf("热力图=%+v，错误=%v", heatmap, err)
+	}
+	if got := heatmap.Rows[2].Metrics; got.Requests != 4 || got.Tokens != 12 || got.StandardCost != 2 {
+		t.Fatalf("热力图今日指标=%+v", got)
+	}
+}

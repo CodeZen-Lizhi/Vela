@@ -25,8 +25,9 @@ export function emptyMetrics(): OverviewMetrics {
 /** 按字段求和，逻辑调用与 Key 尝试行由调用方先选定口径。 */
 export function summarize(rows: OverviewRow[]): OverviewMetrics {
   const total = emptyMetrics();
+  const keys = Object.keys(total) as (keyof OverviewMetrics)[];
   for (const row of rows) {
-    for (const key of Object.keys(total) as (keyof OverviewMetrics)[]) total[key] += row.metrics[key];
+    for (const key of keys) total[key] += row.metrics[key];
   }
   return total;
 }
@@ -85,19 +86,30 @@ export function groupRows(rows: OverviewRow[], dimension: Dimension): Group[] {
   return [...groups].map(([id, group]) => ({ id, name: group.name, detail: group.detail, total: summarize(group.rows) }));
 }
 
-/** 单日按小时、短范围按日、超过62天按周；旧日累计不伪造小时归属，周桶标注实际覆盖日期。 */
+/** 单次归桶；单日按小时、短范围按日、超过62天按周，旧日累计不伪造小时归属。 */
 export function timeBuckets(rows: OverviewRow[], start: string, end: string, timezone: string): Group[] {
   const hourly = start === end && rows.every(row => row.metrics.detailsKnown === row.metrics.requests);
-  const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+  const startTime = Date.parse(start);
+  const days = Math.round((Date.parse(end) - startTime) / 86400000) + 1;
   const step = days > 62 ? 7 : 1;
   const buckets: Group[] = [];
-  const hourFormat = new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", hourCycle: "h23" });
-  for (let index = 0; index < (hourly ? 24 : Math.ceil(days / step)); index++) {
+  const hourFormat = hourly ? new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", hourCycle: "h23" }) : null;
+  const count = hourly ? 24 : Math.ceil(days / step);
+  const grouped = new Map<number, OverviewRow[]>();
+  for (const row of rows) {
+    const index = hourFormat
+      ? Number(hourFormat.format(row.time))
+      : Math.floor((Date.parse(row.day) - startTime) / (step * 86400000));
+    if (!(index >= 0 && index < count)) continue;
+    const selected = grouped.get(index);
+    if (selected) selected.push(row);
+    else grouped.set(index, [row]);
+  }
+  for (let index = 0; index < count; index++) {
     const day = shiftDay(start, index * step);
-    const selected = rows.filter(row => hourly ? Number(hourFormat.format(row.time)) === index : row.day >= day && row.day < shiftDay(day, step));
     const lastDay = step === 1 ? day : shiftDay(day, Math.min(step, days - index * step) - 1);
     const detail = day === lastDay ? day : `${day} — ${lastDay}`;
-    buckets.push({ id: hourly ? `${start}-${index}` : day, name: hourly ? `${String(index).padStart(2, "0")}:00` : day.slice(5).replace("-", "/"), detail: hourly ? start : detail, total: summarize(selected) });
+    buckets.push({ id: hourly ? `${start}-${index}` : day, name: hourly ? `${String(index).padStart(2, "0")}:00` : day.slice(5).replace("-", "/"), detail: hourly ? start : detail, total: summarize(grouped.get(index) ?? []) });
   }
   return buckets;
 }

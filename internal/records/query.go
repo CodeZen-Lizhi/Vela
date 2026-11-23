@@ -14,6 +14,10 @@ import (
 // conditions 校验公开查询并构造参数化条件；列与 JSON 路径只取固定白名单。
 func conditions(q Query) (string, []any, error) {
 	clauses := []string{"rowid<=?"}
+	if q.Start > 0 || q.End > 0 {
+		// SQLite 的一元加号保留整数值，只让快照上界退出索引选择，避免它压过日期索引。
+		clauses[0] = "+rowid<=?"
+	}
 	args := []any{q.Before}
 	if len(q.Search) > 512 {
 		return "", nil, errors.New("搜索内容过长")

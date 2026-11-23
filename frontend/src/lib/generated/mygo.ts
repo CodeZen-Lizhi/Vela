@@ -1373,6 +1373,10 @@ export const VelaService = {
   listModels(): Promise<Model[]> {
     return call("VelaService.ListModels");
   },
+  /** LogOverviewFrame 将 WebView 的帧耗时写入桌面诊断日志，限制事件名称和数值。 */
+  logOverviewFrame(scope: string, millis: number): Promise<void> {
+    return call("VelaService.LogOverviewFrame", scope, millis);
+  },
   /** ModelCatalog 加载真实目录，价格缺失保持未知。 */
   modelCatalog(): Promise<CatalogEntry[]> {
     return call("VelaService.ModelCatalog");
@@ -1384,6 +1388,22 @@ export const VelaService = {
   /** Overview 返回长期小时汇总，通过供应商模块解密解析当前 Key 名称，不在统计 SQL 中读取配置密文。 */
   overview(): Promise<OverviewSnapshot> {
     return call("VelaService.Overview");
+  },
+  /** OverviewHeatmap 读取指定年份的每日热力图汇总。 */
+  overviewHeatmap(year: number): Promise<OverviewSnapshot> {
+    return call("VelaService.OverviewHeatmap", year);
+  },
+  /** OverviewRange 返回自定义起止日内的统计。 */
+  overviewRange(start: string, end: string): Promise<OverviewSnapshot> {
+    return call("VelaService.OverviewRange", start, end);
+  },
+  /** OverviewRecent 返回最近三十个统计日供快捷范围共享。 */
+  overviewRecent(): Promise<OverviewSnapshot> {
+    return call("VelaService.OverviewRecent");
+  },
+  /** OverviewToday 返回当天统计，供总览首屏独立加载。 */
+  overviewToday(): Promise<OverviewSnapshot> {
+    return call("VelaService.OverviewToday");
   },
   /** PreviewConfiguration 解密并校验整包结构、规则和关联，仅返回数量，不写入任何数据或凭据。 */
   previewConfiguration(content: string, password: string): Promise<ConfigurationPreview> {

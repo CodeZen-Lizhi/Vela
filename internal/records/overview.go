@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -363,13 +364,80 @@ func (s *Store) backfillOverviewTotals(ctx context.Context, tx *sql.Tx, keys boo
 
 // Overview 在只读事务中解析模型、供应商名称与小时累计；Key 配置已加密，仅判断存在性，当前名称由应用层通过供应商模块解析。
 func (s *Store) Overview(ctx context.Context) (OverviewSnapshot, error) {
-	result := OverviewSnapshot{Timezone: s.zone.String(), Rows: []OverviewRow{}}
+	return s.overview(ctx, "", "", "all")
+}
+
+// OverviewToday 只读取固定统计时区的当天汇总与活跃请求。
+func (s *Store) OverviewToday(ctx context.Context) (OverviewSnapshot, error) {
+	day := s.now().In(s.zone).Format("2006-01-02")
+	return s.overview(ctx, day, day, "today")
+}
+
+// OverviewRecent 一次读取最近三十个统计日，供两个快捷历史范围共用。
+func (s *Store) OverviewRecent(ctx context.Context) (OverviewSnapshot, error) {
+	now := s.now().In(s.zone)
+	return s.overview(ctx, now.AddDate(0, 0, -29).Format("2006-01-02"), now.Format("2006-01-02"), "recent")
+}
+
+// OverviewRange 读取闭区间内的统计；空端点和无效日期会返回错误。
+func (s *Store) OverviewRange(ctx context.Context, start, end string) (OverviewSnapshot, error) {
+	for _, day := range []string{start, end} {
+		if _, err := time.Parse("2006-01-02", day); err != nil {
+			return OverviewSnapshot{}, errors.New("统计日期无效")
+		}
+	}
+	if end < start {
+		return OverviewSnapshot{}, errors.New("统计结束日期不能早于开始日期")
+	}
+	return s.overview(ctx, start, end, "range")
+}
+
+// OverviewHeatmap 只返回年度热力图所需的按日逻辑请求汇总。
+func (s *Store) OverviewHeatmap(ctx context.Context, year int) (OverviewSnapshot, error) {
+	if year < 1 || year > 9999 {
+		return OverviewSnapshot{}, errors.New("统计年份无效")
+	}
+	return s.overview(ctx, fmt.Sprintf("%04d-01-01", year), fmt.Sprintf("%04d-12-31", year), "heatmap")
+}
+
+// overview 在同一事务内合并结算汇总和活跃请求；空范围读取长期汇总。
+func (s *Store) overview(ctx context.Context, start, end, scope string) (result OverviewSnapshot, err error) {
+	result = OverviewSnapshot{Timezone: s.zone.String(), Rows: []OverviewRow{}}
+	started := time.Now()
+	var connection, settled time.Duration
+	defer func() {
+		log.Printf("[PERF][overview] scope=%s stage=database connection_ms=%.2f settled_ms=%.2f total_ms=%.2f rows=%d ok=%t", scope,
+			float64(connection.Microseconds())/1000, float64(settled.Microseconds())/1000,
+			float64(time.Since(started).Microseconds())/1000, len(result.Rows), err == nil)
+	}()
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	connection = time.Since(started)
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT o.time,o.day,o.provider_id,CASE WHEN o.provider_id='' THEN '' ELSE COALESCE(p.name,o.provider_name||'（已删除）') END,o.model_id,COALESCE(json_extract(m.document,'$.name'),o.model_name||'（已删除）'),o.protocol,o.key_id,CASE WHEN o.key_id='' THEN '' WHEN k.id IS NULL THEN o.key_name||'（已删除）' ELSE o.key_name END,o.metrics FROM request_overview o LEFT JOIN providers p ON p.id=o.provider_id LEFT JOIN models m ON m.id=o.model_id LEFT JOIN provider_keys k ON k.id=o.key_id AND k.provider_id=o.provider_id ORDER BY o.time,o.provider_id,o.model_id,o.protocol,o.key_id LIMIT 100001`)
+	queryStarted := time.Now()
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MIN(day),'') FROM request_overview`).Scan(&result.FirstDay); err != nil {
+		return OverviewSnapshot{}, err
+	}
+	query := `SELECT o.time,o.day,o.provider_id,CASE WHEN o.provider_id='' THEN '' ELSE COALESCE(p.name,o.provider_name||'（已删除）') END,o.model_id,COALESCE(json_extract(m.document,'$.name'),o.model_name||'（已删除）'),o.protocol,o.key_id,CASE WHEN o.key_id='' THEN '' WHEN k.id IS NULL THEN o.key_name||'（已删除）' ELSE o.key_name END,o.metrics FROM request_overview o LEFT JOIN providers p ON p.id=o.provider_id LEFT JOIN models m ON m.id=o.model_id LEFT JOIN provider_keys k ON k.id=o.key_id AND k.provider_id=o.provider_id`
+	var args []any
+	if start != "" {
+		query += ` WHERE o.day BETWEEN ? AND ?`
+		args = append(args, start, end)
+	}
+	query += ` ORDER BY o.time,o.provider_id,o.model_id,o.protocol,o.key_id LIMIT 100001`
+	if scope == "heatmap" {
+		// 热力图只需要逻辑请求的三个合计及判断指标未知所需的计数。
+		query = `SELECT 0,day,'','','','','','','',json_object(
+			'requests',SUM(json_extract(metrics,'$.requests')),
+			'tokens',SUM(json_extract(metrics,'$.tokens')),
+			'standardCost',SUM(json_extract(metrics,'$.standardCost')),
+			'unknownUsage',SUM(json_extract(metrics,'$.unknownUsage')),
+			'unknownStandard',SUM(json_extract(metrics,'$.unknownStandard')))
+			FROM request_overview WHERE day BETWEEN ? AND ? AND key_id='' GROUP BY day ORDER BY day`
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return result, err
 	}
@@ -395,6 +463,7 @@ func (s *Store) Overview(ctx context.Context) (OverviewSnapshot, error) {
 		err = rows.Err()
 	}
 	rows.Close()
+	settled = time.Since(queryStarted)
 	if err != nil {
 		return OverviewSnapshot{}, fmt.Errorf("读取概览统计: %w", err)
 	}
@@ -412,12 +481,14 @@ func (s *Store) Overview(ctx context.Context) (OverviewSnapshot, error) {
 		if err != nil {
 			break
 		}
-		start := time.UnixMilli(r.StartedAt).In(s.zone)
-		day := start.Format("2006-01-02")
-		if result.FirstDay == "" || day < result.FirstDay {
-			result.FirstDay = day
+		activeDay := time.UnixMilli(r.StartedAt).In(s.zone).Format("2006-01-02")
+		if result.FirstDay == "" || activeDay < result.FirstDay {
+			result.FirstDay = activeDay
 		}
-		result.Rows = append(result.Rows, OverviewRow{Time: r.StartedAt, Day: day, ProviderID: r.ProviderID, ProviderName: r.ProviderName, ModelID: r.ModelID, ModelName: r.ModelName, Protocol: r.Protocol, Metrics: overviewMetrics(r)})
+		if start != "" && (activeDay < start || activeDay > end) {
+			continue
+		}
+		result.Rows = append(result.Rows, OverviewRow{Time: r.StartedAt, Day: activeDay, ProviderID: r.ProviderID, ProviderName: r.ProviderName, ModelID: r.ModelID, ModelName: r.ModelName, Protocol: r.Protocol, Metrics: overviewMetrics(r)})
 		if len(result.Rows) > 100000 {
 			err = errors.New("概览统计维度超过十万，无法返回完整快照")
 			break
