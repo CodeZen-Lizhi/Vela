@@ -144,7 +144,8 @@
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 /* 呼吸仅作用于状态点，文字保持可读，不让整行闪烁。 */
