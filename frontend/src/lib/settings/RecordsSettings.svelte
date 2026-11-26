@@ -54,7 +54,7 @@
       } else if (days !== undefined) {
         if (!Number.isInteger(days) || days < (body ? 0 : 1) || days > 3650) {
           error = `请输入 ${body ? 0 : 1}–3650 之间的整数天数。`;
-        } else if (saved !== undefined && days > 0 && days < saved) {
+        } else if (saved !== undefined && days > 0 && (saved === 0 || days < saved)) {
           preview = { ...await countBefore(days), days };
         } else {
           await persist(days, 0);

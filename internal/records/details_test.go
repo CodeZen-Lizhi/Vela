@@ -83,8 +83,44 @@ func TestDetailArchiveLifecycle(t *testing.T) {
 	if days, err := store.detailExpiryDays(ctx); err != nil || days != 7 {
 		t.Fatalf("关闭采集改变既有正文期限: %d %v", days, err)
 	}
+	if err = store.SetRetention(ctx, true, 1, 0); err == nil {
+		t.Fatal("重新启用较短正文期限前未要求预览")
+	}
+	preview, err := store.PreviewDetails(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SetRetention(ctx, true, 1, preview.Before); err != nil {
+		t.Fatalf("确认预览后重新启用正文期限失败: %v", err)
+	}
 	fresh, _ = exchange(t, store, upstream.URL, "chat", false)
-	if fresh.Client == nil || fresh.Client.RequestBody != "" || fresh.Client.BodyState != "unavailable" {
-		t.Fatal("关闭采集后仍保存正文")
+	if fresh.Client == nil || fresh.Client.RequestBody == "" || fresh.Client.BodyState != "available" {
+		t.Fatal("重新启用后未保存正文")
+	}
+}
+
+// TestDetailArchiveFailureKeepsRequest 验证正文写失败不会丢掉调用摘要与错误原因。
+func TestDetailArchiveFailureKeepsRequest(t *testing.T) {
+	legacy, catalog := fixture(t)
+	root := filepath.Join(t.TempDir(), "details")
+	if err := os.WriteFile(root, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewWithDetails(catalog.DB(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"code":"rate_limit_exceeded","message":"try again later"}}`)
+	}))
+	defer upstream.Close()
+	record, _ := exchange(t, store, upstream.URL, "chat", false)
+	if record.Client == nil || record.Client.BodyState != "saveFailed" || len(record.Attempts) != 1 || !strings.Contains(record.Attempts[0].Error, "try again later") {
+		t.Fatalf("正文写入失败影响了可用明细: %+v", record)
+	}
+	var count int
+	if err = legacy.db.QueryRow(`SELECT COUNT(*) FROM request_totals`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("正文写入失败影响了长期累计: %d %v", count, err)
 	}
 }
