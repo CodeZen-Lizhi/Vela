@@ -108,8 +108,15 @@
     </div>
     <div hidden={section !== "records"} class="grid gap-5">
       <ConfigTransfer />
-      <RecordsSettings />
-      <RecordsSettings body />
+      <section class="settings-card @container" aria-labelledby="history-settings-title">
+        <header class="border-b px-5 py-4">
+          <h2 id="history-settings-title" class="text-[15px] font-semibold">请求历史</h2>
+        </header>
+        <div class="divide-y">
+          <RecordsSettings />
+          <RecordsSettings body />
+        </div>
+      </section>
     </div>
   {/if}
   </div>

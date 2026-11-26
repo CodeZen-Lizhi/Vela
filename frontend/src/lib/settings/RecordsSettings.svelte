@@ -3,17 +3,16 @@
   import { isMyGo } from "mygo-runtime";
   import { onMount, untrack } from "svelte";
   import * as InputGroup from "$lib/components/ui/input-group";
-  import { Trash2 } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Dialog from "$lib/components/ui/dialog";
   import Choice from "$lib/providers/Choice.svelte";
   import { VelaService, type CleanupPreview } from "$lib/generated/mygo";
   import { errorMessage } from "./sections";
-  /** 两张卡使用相同的预览和确认交互，各自调用对应存储。 */
+  /** 两个区块使用相同的预览和确认交互，各自调用对应存储。 */
   let { body = false }: { body?: boolean } = $props();
   const title = $derived(body ? "请求正文" : "使用记录");
   const label = $derived(body ? "份正文" : "条请求明细");
-  const description = $derived(body ? "请求和响应正文独立保留。设为 0 天后停止保存新正文。" : "累计请求数、Token 与估算费用持续保留。");
+  const description = $derived(body ? "设为 0 天后停止保存新正文。清理正文后仍可查看明细、计费和执行链路。" : "清理明细后，累计用量、费用和正文文件仍可保留。");
   const desktop = isMyGo();
   let days = $state<number | undefined>(undefined);
   let saved = $state<number | undefined>(undefined);
@@ -95,38 +94,37 @@
   }
 </script>
 
-<section class="settings-card" aria-label={title}>
-  <div class="flex items-start gap-3 p-6">
-    <Trash2 aria-hidden="true" class="size-5 text-muted-foreground" />
-    <div>
-      <h2 class="text-[15px] font-semibold">{title}</h2>
-      <p class="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-    </div>
+<section class="grid gap-4 px-5 py-4 @lg:grid-cols-[minmax(0,1fr)_auto] @lg:items-center" aria-label={title}>
+  <div class="min-w-0">
+    <h3 class="text-sm font-semibold">{title}</h3>
+    <p class="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">{description}</p>
   </div>
-  <div class="flex flex-wrap items-center justify-between gap-4 px-6 pb-4">
-    <label class="flex items-center gap-2 text-sm">
-      保留天数
-      <InputGroup.Root class="w-32">
-        <InputGroup.Input aria-label={`${title}保留天数`} type="number" min={body ? 0 : 1} max={3650} step={1} bind:value={days} disabled={!desktop || busy || saved === undefined} />
-        <InputGroup.Addon align="inline-end">天</InputGroup.Addon>
-      </InputGroup.Root>
-    </label>
-    <Button variant="outline" disabled={!desktop || busy || days === saved || days === undefined} onclick={() => prepare(true)}>保存天数</Button>
-  </div>
-  <div class="flex flex-wrap items-center justify-between gap-4 px-6 pb-6">
-    <div class="w-60">
-      <Choice label={`${title}清理时间范围`} bind:value={range} {options} disabled={!desktop || busy} />
+  <div class="flex flex-wrap items-end gap-x-5 gap-y-3">
+    <div class="grid gap-1.5">
+      <label for={body ? "body-retention" : "record-retention"} class="text-xs font-medium text-muted-foreground">保留天数</label>
+      <div class="flex items-center gap-2">
+        <InputGroup.Root class="w-24">
+          <InputGroup.Input id={body ? "body-retention" : "record-retention"} aria-label={`${title}保留天数`} type="number" min={body ? 0 : 1} max={3650} step={1} bind:value={days} disabled={!desktop || busy || saved === undefined} />
+          <InputGroup.Addon align="inline-end">天</InputGroup.Addon>
+        </InputGroup.Root>
+        <Button variant="outline" disabled={!desktop || busy || days === saved || days === undefined} onclick={() => prepare(true)}>保存</Button>
+      </div>
     </div>
-    <Button variant="outline" disabled={!desktop || busy} onclick={() => prepare(false)}>预览清理</Button>
+    <div class="grid gap-1.5">
+      <span class="text-xs font-medium text-muted-foreground">清理范围</span>
+      <div class="flex items-center gap-2">
+        <div class="w-36">
+          <Choice label={`${title}清理时间范围`} bind:value={range} {options} disabled={!desktop || busy} />
+        </div>
+        <Button variant="outline" disabled={!desktop || busy} onclick={() => prepare(false)}>预览清理</Button>
+      </div>
+    </div>
   </div>
   {#if error}
-    <Alert.Root variant="inline-error" class="mx-6 mb-4"><Alert.Description>{error}</Alert.Description></Alert.Root>
+    <Alert.Root variant="inline-error" class="@lg:col-span-2"><Alert.Description>{error}</Alert.Description></Alert.Root>
   {:else if message}
-    <p class="px-6 pb-4 text-xs" role="status">{message}</p>
+    <p class="text-xs text-muted-foreground @lg:col-span-2" role="status">{message}</p>
   {/if}
-  <p class="border-t px-6 py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-    {body ? "清理正文后，仍可查看请求明细、计费和执行链路。" : "清理使用记录后，正文仍按自己的期限清理。"}
-  </p>
 </section>
 
 <Dialog.Root open={!!preview} onOpenChange={(open) => { if (!open && !busy) preview = null; }}>
