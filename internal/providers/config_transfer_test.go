@@ -71,7 +71,7 @@ func transferFixture(t *testing.T, base string) (modelFixture, *Accounts, string
 	}
 	config.URL = base + "/key?token=fixture-key-token"
 	q := ProviderKeyQueryDraft{Config: config, NameSource: "upstream_key", MultiplierSource: "upstream", NamePath: "name", GroupPath: "group", MultiplierPath: "rate", KeyPath: "secret"}
-	id, err := a.saveKeyLocal(ctx, f.provider, "", keyDraft("来源主力", "sk-transfer-full-credential", 2), q)
+	id, _, err := a.saveKeyLocal(ctx, f.provider, "", keyDraft("来源主力", "sk-transfer-full-credential", 2), q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestConfigurationPreserveKeyQuery(t *testing.T) {
 			var previousRevision string
 			if existing {
 				query := ProviderKeyQueryDraft{Config: QueryConfig{Mode: "usage_api", BaseURL: "https://local.example", APIKey: "local-query-secret"}, NameSource: "manual", MultiplierSource: "manual"}
-				if _, err = a.saveKeyLocal(ctx, f.provider, key.ID, keyDraft("保留本机名称", "", 6), query); err != nil {
+				if _, _, err = a.saveKeyLocal(ctx, f.provider, key.ID, keyDraft("保留本机名称", "", 6), query); err != nil {
 					t.Fatal(err)
 				}
 				if err = f.store.db.QueryRow("SELECT secret,revision FROM provider_key_queries WHERE key_id=?", key.ID).Scan(&previousSecret, &previousRevision); err != nil {

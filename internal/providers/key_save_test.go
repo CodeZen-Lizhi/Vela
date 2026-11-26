@@ -133,7 +133,7 @@ func TestSaveKeyValidationAndRollback(t *testing.T) {
 	}
 }
 
-// TestSaveKeySourceTransition 验证上游已知倍率不受手动占位值覆盖，切回手动重新执行输入校验且不访问上游。
+// TestSaveKeySourceTransition 验证普通编辑绕过查询队列，刷新失败保留有效倍率，切回手动重新校验输入。
 func TestSaveKeySourceTransition(t *testing.T) {
 	var fail atomic.Bool
 	var requests atomic.Int32
@@ -158,9 +158,20 @@ func TestSaveKeySourceTransition(t *testing.T) {
 	draft.Name = "edited"
 	draft.Secret = ""
 	draft.Multiplier = nil
-	result, err = a.SaveKey(ctx, p.ID, result.KeyID, draft, query)
-	if err != nil || result.MultiplierStatus.State != "failed" {
-		t.Fatalf("edit %+v %v", result, err)
+	// 占住查询席位以模拟慢上游任务，普通编辑仍应完成本地保存。
+	if err = a.beginQuery(ctx); err != nil {
+		t.Fatal(err)
+	}
+	editCtx, cancelEdit := context.WithTimeout(ctx, time.Second)
+	result, err = a.SaveKey(editCtx, p.ID, result.KeyID, draft, query)
+	cancelEdit()
+	a.endQuery()
+	if err != nil || result.MultiplierStatus.State != "success" || requests.Load() != 1 {
+		t.Fatalf("仅改名称不应重新查询上游：请求数 %d，错误 %v", requests.Load(), err)
+	}
+	result, err = a.RefreshProviderKey(ctx, result.KeyID)
+	if err != nil || result.MultiplierStatus.State != "failed" || requests.Load() != 2 {
+		t.Fatalf("主动刷新应记录失败：请求数 %d，错误 %v", requests.Load(), err)
 	}
 	keys, err := a.store.Keys(ctx, p.ID)
 	if err != nil || keys[0].Name != "edited" || keys[0].Multiplier == nil || *keys[0].Multiplier != 120 {
