@@ -16,10 +16,12 @@
   import { VelaService, type ProviderKeyQuery, type ProviderKeyQueryDraft } from "$lib/generated/mygo";
 
   /** Key 编辑器按凭证、调用规则和可选上游同步分层；保存仍由父级协调。 */
-  let { item, defaults, nextPriority, busy, error, onsave, onclose }: {
+  let { item, defaults, nextPriority, providerQueryMode, busy, error, onsave, onclose }: {
     item: ProviderKey | null;
     defaults: ProviderDefaults;
     nextPriority: number;
+    /** 供应商余额查询方式；Key 复用连接时据此决定是否显示响应字段路径。 */
+    providerQueryMode: string;
     busy: boolean;
     error: string;
     onsave: (draft: ProviderKeyDraft, query: ProviderKeyQueryDraft) => Promise<void>;
@@ -207,7 +209,7 @@
         {/snippet}</Collapsible.Trigger>
         <Collapsible.Content forceMount class="key-sync-content">
           <p class="key-sync-intro">默认由你手动维护名称和倍率。只有选择上游来源时，才需要使用供应商连接查询。</p>
-          {#if queryLoading}<p class="text-xs text-muted-foreground">正在读取查询配置…</p>{:else if queryError}<Alert.Root variant="inline-error"><Alert.Description>{queryError}</Alert.Description></Alert.Root>{:else}<KeyQueryFields bind:draft={queryDraft} {queryState} disabled={busy}/>{/if}
+          {#if queryLoading}<p class="text-xs text-muted-foreground">正在读取查询配置…</p>{:else if queryError}<Alert.Root variant="inline-error"><Alert.Description>{queryError}</Alert.Description></Alert.Root>{:else}<KeyQueryFields bind:draft={queryDraft} {queryState} {providerQueryMode} disabled={busy}/>{/if}
         </Collapsible.Content>
       </Collapsible.Root>
     </Field.Set>

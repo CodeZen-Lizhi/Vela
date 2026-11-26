@@ -22,8 +22,8 @@
   import MultiplierSource from "./MultiplierSource.svelte";
   import InlineMultiplier from "./InlineMultiplier.svelte";
   import { queryConfigDraft } from "./query-defaults";
-  /** 单个供应商详情始终附着在列表上方，数据刷新不关闭抽屉。 */
-  let { provider, defaults, onupdated, notify }: {provider:Provider;defaults:ProviderDefaults;onupdated:()=>Promise<void>;notify:(message:string)=>void}=$props();
+  /** 单个供应商详情始终附着在列表上方，数据刷新不关闭抽屉；查询方式用于判断 Key 复用连接时是否有响应字段路径。 */
+  let { provider, defaults, providerQueryMode, onupdated, notify }: {provider:Provider;defaults:ProviderDefaults;providerQueryMode:string;onupdated:()=>Promise<void>;notify:(message:string)=>void}=$props();
   let tab=$state("keys"), query=$state(""), status=$state("all");
   let keys=$state<ProviderKey[]>([]), models=$state<ProviderModel[]>([]);
   /** 主动测试历史独立读取，失败保留已有列表与最近结果。 */
@@ -184,7 +184,7 @@
     </Table.Row>{/each}</Table.Body></Table.Root>{#if !filtered.length}<Empty.Root>{keys.length?"没有符合条件的 Key":"尚无 Key，添加第一把 Key 开始配置。"}{#if keys.length}<Button variant="outline" size="sm" onclick={()=>{query="";status="all";}}>清空筛选</Button>{/if}</Empty.Root>{/if}</div>
   {:else}<ModelRelations providerID={provider.id} {models} {testResults} {testResultsError} mappingTab={tab==="mappings"} reload={updated} {notify}/>{/if}
 </Tabs.Content></div></Tabs.Root>
-<Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy){editorOpen=value;if(!value)keyEditorError="";}}}><Dialog.Content class="provider-form-dialog provider-key-editor-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{selected?"编辑 Key":"添加 Key"}</Dialog.Title><Dialog.Description>{provider.name} · 配置调用凭证、倍率与调度规则；模型权限在列表中维护。</Dialog.Description></Dialog.Header>{#if editorOpen}<KeyForm item={selected} {defaults} {nextPriority} {busy} error={keyEditorError} onsave={saveKey} onclose={()=>{editorOpen=false;keyEditorError="";}}/>{/if}</Dialog.Content></Dialog.Root>
+<Dialog.Root open={editorOpen} onOpenChange={(value)=>{if(!busy){editorOpen=value;if(!value)keyEditorError="";}}}><Dialog.Content class="provider-form-dialog provider-key-editor-dialog" showCloseButton={!busy} onInteractOutside={(event)=>{if(busy)event.preventDefault();}} onEscapeKeydown={(event)=>{if(busy)event.preventDefault();}}><Dialog.Header><Dialog.Title>{selected?"编辑 Key":"添加 Key"}</Dialog.Title><Dialog.Description>{provider.name} · 配置调用凭证、倍率与调度规则；模型权限在列表中维护。</Dialog.Description></Dialog.Header>{#if editorOpen}<KeyForm item={selected} {defaults} {nextPriority} {providerQueryMode} {busy} error={keyEditorError} onsave={saveKey} onclose={()=>{editorOpen=false;keyEditorError="";}}/>{/if}</Dialog.Content></Dialog.Root>
 {#if permissionKey}<KeyPermissions item={permissionKey} {models} onclose={()=>permissionKey=null} onsaved={updated}/>{/if}
 
 <Dialog.Root open={deleting!==null} onOpenChange={(value)=>{if(!busy&&!value)deleting=null;}}><Dialog.Content><Dialog.Header><Dialog.Title>删除 Key？</Dialog.Title><Dialog.Description>确认删除“{deleting?.name}”？密钥、模型权限和查询配置将一并删除，此操作不能撤销。</Dialog.Description></Dialog.Header>{#if error}<Alert.Root variant="inline-error"><Alert.Description>{error}</Alert.Description></Alert.Root>{/if}<Dialog.Footer><Button variant="outline" disabled={busy} onclick={()=>deleting=null}>取消</Button><Button variant="destructive" disabled={busy} onclick={deleteKey}>确认删除</Button></Dialog.Footer></Dialog.Content></Dialog.Root>

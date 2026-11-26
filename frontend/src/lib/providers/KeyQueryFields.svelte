@@ -8,21 +8,25 @@
   import { defaultKeyQuery } from "./query-defaults";
 
   /** 只维护上游同步草稿；读取、保存和 Key 生命周期仍由父级负责。 */
-  let { draft = $bindable(defaultKeyQuery()), disabled = false, queryState = null }: {
+  let { draft = $bindable(defaultKeyQuery()), disabled = false, queryState = null, providerQueryMode = "" }: {
     /** 名称来源、倍率来源及当前 Key 的查询连接草稿。 */
     draft?: ProviderKeyQueryDraft;
     /** 父表单加载或保存时统一禁用字段。 */
     disabled?: boolean;
     /** 已保存配置的最近同步状态；新增 Key 尚未查询时为空。 */
     queryState?: ProviderKeyQuery | null;
+    /** 复用供应商连接时实际使用的查询方式；用于隐藏内置查询不适用的字段路径。 */
+    providerQueryMode?: string;
   } = $props();
 
   /** 为同页多个编辑器生成唯一字段身份。 */
   const id = $props.id();
   /** 只有名称或倍率选择上游来源时才需要配置查询连接。 */
   const hasUpstreamSource = $derived(draft.nameSource !== "manual" || draft.multiplierSource !== "manual");
-  /** 复用供应商连接或自定义 URL 时，需要声明返回对象中的字段路径。 */
-  const needsPathFields = $derived(hasUpstreamSource && (draft.reuseProvider || draft.config.mode === "custom"));
+  /** 当前 Key 实际使用的查询方式；复用连接时以供应商账户配置为准。 */
+  const queryMode = $derived(draft.reuseProvider ? providerQueryMode : draft.config.mode);
+  /** 只有自定义查询返回当前 Key 对象时，才需要声明响应字段路径。 */
+  const needsPathFields = $derived(hasUpstreamSource && queryMode === "custom");
   /** 最近同步只显示当前真正由上游维护的字段，手动项不制造同步状态。 */
   const statuses = $derived(queryState ? [
     { label: "名称", source: queryState.nameSource, status: queryState.nameStatus },
