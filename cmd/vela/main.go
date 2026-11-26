@@ -126,6 +126,9 @@ func runDesktop() error {
 
 // startApplication 装配真实业务依赖；初始化失败会运行已有清理，再由入口显示原生错误。
 func startApplication(dataDir string, isolated bool) error {
+	if err := backupBeforeBodyMigration(dataDir); err != nil {
+		return fmt.Errorf("备份迁移前数据: %w", err)
+	}
 	secrets, err := credentials.New(dataDir, legacyCredentials(isolated))
 	if err != nil {
 		return fmt.Errorf("读取本机凭据: %w", err)
