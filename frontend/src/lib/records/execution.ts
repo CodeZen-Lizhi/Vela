@@ -47,7 +47,7 @@ export function attemptError(item: Attempt | undefined): string {
   } catch { /* 非 JSON 错误保留原始文本。 */ }
   if (!detail) detail = conversationMessages(payload.responseBody, "response").filter(row => row.role === "错误").map(row => row.text).join("\n");
   if (!detail && (item.status >= 400 || !item.status)) detail = payload.responseBody;
-  return [item.error, detail && detail !== item.error ? detail : ""].filter(Boolean).join("：");
+  return [item.error, detail && !item.error?.includes(detail) && !item.error?.includes(detail.replace("：", ": ")) ? detail : ""].filter(Boolean).join("：");
 }
 
 /** 冷却按真实 Unix 毫秒截止时间逐秒显示；到期只说明可重试/探测，不改写请求或健康终态。 */

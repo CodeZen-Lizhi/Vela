@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+
 	"github.com/CodeZen-Lizhi/vela/internal/records"
 )
 
@@ -123,4 +124,40 @@ func (s *VelaService) rememberDeletedKeyNames(ctx context.Context, providerID, k
 		return err
 	}
 	return s.records.RememberKeyNames(ctx, names)
+}
+
+// RequestRetention 返回使用记录或正文保留天数。
+func (s *VelaService) RequestRetention(ctx context.Context, body bool) (int, error) {
+	store, err := s.recordStore()
+	if err != nil {
+		return 0, err
+	}
+	return store.Retention(ctx, body)
+}
+
+// SaveRequestRetention 保存已确认的保留期限。
+func (s *VelaService) SaveRequestRetention(ctx context.Context, body bool, days int, before int64) error {
+	store, err := s.recordStore()
+	if err != nil {
+		return err
+	}
+	return store.SetRetention(ctx, body, days, before)
+}
+
+// PreviewRequestDetailsCleanup 预览独立正文清理。
+func (s *VelaService) PreviewRequestDetailsCleanup(ctx context.Context, days int) (records.CleanupPreview, error) {
+	store, err := s.recordStore()
+	if err != nil {
+		return records.CleanupPreview{}, err
+	}
+	return store.PreviewDetails(ctx, days)
+}
+
+// CleanupRequestDetails 删除截止时间内的正文文件。
+func (s *VelaService) CleanupRequestDetails(ctx context.Context, before int64) (int64, error) {
+	store, err := s.recordStore()
+	if err != nil {
+		return 0, err
+	}
+	return store.CleanupDetails(ctx, before)
 }

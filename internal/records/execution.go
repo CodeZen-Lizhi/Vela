@@ -196,13 +196,15 @@ func (s *session) saveClient(ctx context.Context) error {
 	if s.clientOutput == nil {
 		return nil
 	}
-	var raw string
-	var p Payload
-	if err := s.store.db.QueryRowContext(ctx, `SELECT document FROM request_payloads WHERE request_id=? AND number=0`, s.record.ID).Scan(&raw); err != nil {
-		return err
-	}
-	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		return err
+	p := s.payloads[0]
+	if s.store.archive == nil {
+		var raw string
+		if err := s.store.db.QueryRowContext(ctx, `SELECT document FROM request_payloads WHERE request_id=? AND number=0`, s.record.ID).Scan(&raw); err != nil {
+			return err
+		}
+		if err := json.Unmarshal([]byte(raw), &p); err != nil {
+			return err
+		}
 	}
 	p.ResponseBody = sanitize(s.clientOutput.raw.String(), s.secrets)
 	if s.clientOutput.omitted && s.clientOutput.raw.Len() == 0 {
@@ -210,7 +212,7 @@ func (s *session) saveClient(ctx context.Context) error {
 		if p.BodyState != "truncated" {
 			p.BodyState = "unavailable"
 		}
-		return s.store.putPayload(ctx, s.record.ID, 0, p)
+		return s.putPayload(ctx, 0, p)
 	}
 	if p.BodyState == "unavailable" {
 		p.BodyState = "available"
@@ -218,7 +220,7 @@ func (s *session) saveClient(ctx context.Context) error {
 	if s.clientOutput.truncated {
 		p.BodyState = "truncated"
 	}
-	return s.store.putPayload(ctx, s.record.ID, 0, p)
+	return s.putPayload(ctx, 0, p)
 }
 
 // retentionDeadline 用固定时长解释保留期限，不受夏令时自然日跳变影响。
@@ -235,6 +237,20 @@ func (w *responseWriter) Flush() {
 
 // redactSaved 清除其他候选响应里回显的已用凭据，覆盖正文中嵌套 JSON 的转义形式。
 func (s *session) redactSaved(ctx context.Context) error {
+	if s.store.archive != nil {
+		for number, payload := range s.payloads {
+			for _, secret := range s.secrets {
+				payload.RequestBody = redact(payload.RequestBody, secret)
+				payload.ResponseBody = redact(payload.ResponseBody, secret)
+				payload.RequestHeaders = redact(payload.RequestHeaders, secret)
+				payload.ResponseHeaders = redact(payload.ResponseHeaders, secret)
+			}
+			if err := s.putPayload(ctx, number, payload); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	for _, secret := range s.secrets {
 		if secret == "" {
 			continue

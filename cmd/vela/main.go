@@ -157,7 +157,7 @@ func startApplication(dataDir string, isolated bool) error {
 	if err = upstreams.InitModels(); err != nil {
 		return fmt.Errorf("初始化供应商模型: %w", err)
 	}
-	history, err := records.New(store.DB())
+	history, err := records.NewWithDetails(store.DB(), filepath.Join(dataDir, "details"))
 	if err != nil {
 		return fmt.Errorf("初始化请求记录: %w", err)
 	}

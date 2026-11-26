@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"slices"
 	"strings"
 	"time"
@@ -97,7 +98,11 @@ func (s *Store) Query(ctx context.Context, q Query) (Page, error) {
 		return page, err
 	}
 	where += " AND (ended_at=0 OR ended_at>?)"
-	args = append(args, retentionDeadline(s, 30))
+	days, err := s.Retention(ctx, false)
+	if err != nil {
+		return page, err
+	}
+	args = append(args, retentionDeadline(s, days))
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return page, err
@@ -177,7 +182,11 @@ func (s *Store) Query(ctx context.Context, q Query) (Page, error) {
 func (s *Store) Get(ctx context.Context, id string) (Record, error) {
 	var r Record
 	var raw string
-	err := s.db.QueryRowContext(ctx, `SELECT document FROM request_records WHERE id=? AND (ended_at=0 OR ended_at>?)`, id, retentionDeadline(s, 30)).Scan(&raw)
+	days, err := s.Retention(ctx, false)
+	if err != nil {
+		return r, err
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT document FROM request_records WHERE id=? AND (ended_at=0 OR ended_at>?)`, id, retentionDeadline(s, days)).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, errors.New("请求记录不存在或已清理")
 	}
@@ -186,6 +195,19 @@ func (s *Store) Get(ctx context.Context, id string) (Record, error) {
 	}
 	if err = json.Unmarshal([]byte(raw), &r); err != nil {
 		return r, err
+	}
+	var bodies map[int]Payload
+	var archiveErr error
+	expired := false
+	if s.archive != nil && r.EndedAt > 0 {
+		days, err := s.detailExpiryDays(ctx)
+		if err != nil {
+			return r, err
+		}
+		expired = r.EndedAt <= retentionDeadline(s, days)
+		if !expired {
+			bodies, archiveErr = s.archive.read(r.ID, r.EndedAt)
+		}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT number,document FROM request_payloads WHERE request_id=? ORDER BY number`, id)
 	if err != nil {
@@ -201,7 +223,19 @@ func (s *Store) Get(ctx context.Context, id string) (Record, error) {
 		if err = json.Unmarshal([]byte(raw), &p); err != nil {
 			return r, err
 		}
-		if r.EndedAt > 0 && r.EndedAt <= retentionDeadline(s, 7) {
+		if s.archive != nil {
+			if saved, ok := bodies[number]; ok {
+				p.RequestBody, p.ResponseBody, p.BodyState = saved.RequestBody, saved.ResponseBody, saved.BodyState
+			} else if p.BodyState == "archived" {
+				p.BodyState = "cleared"
+				if expired {
+					p.BodyState = "expired"
+				}
+				if archiveErr != nil && !errors.Is(archiveErr, fs.ErrNotExist) {
+					p.BodyState = "readFailed"
+				}
+			}
+		} else if r.EndedAt > 0 && r.EndedAt <= retentionDeadline(s, 7) {
 			p.RequestBody = ""
 			p.ResponseBody = ""
 			p.BodyState = "expired"

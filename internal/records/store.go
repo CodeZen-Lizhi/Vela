@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/CodeZen-Lizhi/vela/internal/models"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -44,9 +45,11 @@ CREATE TABLE IF NOT EXISTS request_totals(
 // Store 复用宿主 SQLite，负责请求与统计原子结算、正文期限及有界查询。
 type Store struct {
 	// db 的生命周期由宿主管理；now 可在隔离测试控制，zone 首次确定后固定。
-	db   *sql.DB
-	now  func() time.Time
-	zone *time.Location
+	db        *sql.DB
+	now       func() time.Time
+	zone      *time.Location
+	archive   *detailArchive
+	archiveMu sync.Mutex
 }
 
 // session 是一个逻辑请求的内存事实，HTTP 包装器在真实出站处附加尝试。
@@ -67,6 +70,7 @@ type session struct {
 	writeErr error
 	// clientOutput 保存实际提交给客户端的文本，随逻辑请求释放。
 	clientOutput *responseWriter
+	payloads     map[int]Payload
 }
 
 // sessionKey、targetKey 是私有 context 键，防止调用方伪造请求记录。
@@ -84,6 +88,15 @@ type attemptScope struct {
 
 // New 建立表并回填长期概览，再清理上次进程中断的活跃状态；不能将中断冒充成功。
 func New(db *sql.DB) (*Store, error) {
+	return newStore(db, nil)
+}
+
+// NewWithDetails 启用独立正文归档并迁移旧正文。
+func NewWithDetails(db *sql.DB, root string) (*Store, error) {
+	return newStore(db, &detailArchive{root: root})
+}
+
+func newStore(db *sql.DB, archive *detailArchive) (*Store, error) {
 	if db == nil {
 		return nil, errors.New("请求记录数据库尚未初始化")
 	}
@@ -110,7 +123,7 @@ func New(db *sql.DB) (*Store, error) {
 			return nil, errors.New("请求统计时区无效")
 		}
 	}
-	s := &Store{db: db, now: clockNow, zone: zone}
+	s := &Store{db: db, now: clockNow, zone: zone, archive: archive}
 	if err = s.migrateMetrics(); err != nil {
 		return nil, err
 	}
@@ -152,6 +165,11 @@ func New(db *sql.DB) (*Store, error) {
 		r.EndedAt = s.now().UnixMilli()
 		r.DurationMillis = r.EndedAt - r.StartedAt
 		if err = s.save(context.Background(), r, true); err != nil {
+			return nil, err
+		}
+	}
+	if archive != nil {
+		if err := s.migrateDetails(context.Background()); err != nil {
 			return nil, err
 		}
 	}
@@ -225,10 +243,10 @@ func (s *Store) Begin(ctx context.Context, in Input) (context.Context, func(erro
 	} else if len(in.Body) > captureLimit {
 		client.BodyState = "truncated"
 	}
-	if err = s.putPayload(ctx, r.ID, 0, client); err != nil {
+	run := &session{store: s, record: r, secrets: headerSecrets(in.Headers), resourceQuery: in.ResourceQuery, payloads: make(map[int]Payload)}
+	if err = run.putPayload(ctx, 0, client); err != nil {
 		return ctx, nil, err
 	}
-	run := &session{store: s, record: r, secrets: headerSecrets(in.Headers), resourceQuery: in.ResourceQuery}
 	return context.WithValue(ctx, sessionKey{}, run), run.finish, nil
 }
 
@@ -410,7 +428,17 @@ func (s *session) finish(cause error) error {
 	if s.writeErr != nil {
 		return fmt.Errorf("保存请求诊断失败: %w", s.writeErr)
 	}
-	if err := s.store.save(ctx, *r, true); err != nil {
+	if s.store.archive != nil {
+		archiveCtx, stopArchive := context.WithTimeout(context.Background(), 5*time.Second)
+		err := s.archivePayloads(archiveCtx)
+		stopArchive()
+		if err != nil {
+			log.Printf("保存请求正文失败: %v", err)
+		}
+	}
+	settleCtx, stopSettle := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopSettle()
+	if err := s.store.save(settleCtx, *r, true); err != nil {
 		return fmt.Errorf("调用已结束，但保存请求记录失败: %w", err)
 	}
 	return nil
@@ -419,28 +447,49 @@ func (s *session) finish(cause error) error {
 // Expire 清理到期正文和明细，累计统计不依赖明细，不受删除影响。
 func (s *Store) Expire(ctx context.Context) error {
 	now := s.now()
+	days, err := s.Retention(ctx, false)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `UPDATE request_payloads SET document=json_set(document,'$.requestBody','','$.responseBody','','$.bodyState','expired') WHERE request_id IN(SELECT id FROM request_records WHERE ended_at>0 AND ended_at<=?)`, now.Add(-7*24*time.Hour).UnixMilli())
-	if err != nil {
-		return err
+	if s.archive == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE request_payloads SET document=json_set(document,'$.requestBody','','$.responseBody','','$.bodyState','expired') WHERE request_id IN(SELECT id FROM request_records WHERE ended_at>0 AND ended_at<=?)`, now.Add(-7*24*time.Hour).UnixMilli())
+		if err != nil {
+			return err
+		}
 	}
-	_, err = tx.ExecContext(ctx, `DELETE FROM request_records WHERE ended_at>0 AND ended_at<=?`, now.Add(-30*24*time.Hour).UnixMilli())
+	_, err = tx.ExecContext(ctx, `DELETE FROM request_records WHERE ended_at>0 AND ended_at<=?`, retentionDeadline(s, days))
 	if err != nil {
 		return err
 	}
 	if err = pruneOptions(ctx, tx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.archive != nil {
+		s.archiveMu.Lock()
+		defer s.archiveMu.Unlock()
+		days, err := s.detailExpiryDays(ctx)
+		if err != nil {
+			return err
+		}
+		if days > 0 {
+			_, err = s.archive.cleanup(ctx, retentionDeadline(s, days), true)
+			return err
+		}
+	}
+	return nil
 }
 
-// Preview 返回明确截止时刻的已结束记录数量；days 仅允许 0、7、30。
+// Preview 返回明确截止时刻的已结束记录数量；零表示全部已结束记录。
 func (s *Store) Preview(ctx context.Context, days int) (CleanupPreview, error) {
-	if days != 0 && days != 7 && days != 30 {
+	if days < 0 || days > 365 {
 		return CleanupPreview{}, errors.New("清理范围无效")
 	}
 	p := CleanupPreview{Before: s.now().Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()}
@@ -492,7 +541,7 @@ func (s *Store) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-timer.C:
 			if err := s.Expire(ctx); err != nil {
-				return err
+				log.Printf("请求记录到期清理失败: %v", err)
 			}
 		}
 	}

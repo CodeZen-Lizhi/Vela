@@ -1298,6 +1298,10 @@ export const VelaService = {
   checkModelCatalog(): Promise<CatalogStatus> {
     return call("VelaService.CheckModelCatalog");
   },
+  /** CleanupRequestDetails 删除截止时间内的正文文件。 */
+  cleanupRequestDetails(before: number): Promise<number> {
+    return call("VelaService.CleanupRequestDetails", before);
+  },
   /** CleanupRequestRecords 仅在页面明确确认预览后调用，不影响长期累计和配置。 */
   cleanupRequestRecords(before: number): Promise<number> {
     return call("VelaService.CleanupRequestRecords", before);
@@ -1413,6 +1417,10 @@ export const VelaService = {
   previewRequestCleanup(days: number): Promise<CleanupPreview> {
     return call("VelaService.PreviewRequestCleanup", days);
   },
+  /** PreviewRequestDetailsCleanup 预览独立正文清理。 */
+  previewRequestDetailsCleanup(days: number): Promise<CleanupPreview> {
+    return call("VelaService.PreviewRequestDetailsCleanup", days);
+  },
   /** ProviderAccount 只读取本地账户配置与结果，不访问上游。 */
   providerAccount(providerID: string): Promise<ProviderAccount> {
     return call("VelaService.ProviderAccount", providerID);
@@ -1476,6 +1484,10 @@ export const VelaService = {
   /** RequestRecords 返回数据库内筛选、分页与整组摘要，不向前端加载全部历史。 */
   requestRecords(q: Query): Promise<Page> {
     return call("VelaService.RequestRecords", q);
+  },
+  /** RequestRetention 返回使用记录或正文保留天数。 */
+  requestRetention(body: boolean): Promise<number> {
+    return call("VelaService.RequestRetention", body);
   },
   /** RequestTotals 查询独立于明细清理的长期日维度统计。 */
   requestTotals(q: Query): Promise<Aggregate[]> {
@@ -1548,6 +1560,10 @@ export const VelaService = {
   /** SaveProviderModels 一次替换供应商全部模型关联；Key 权限由独立权限入口维护。 */
   saveProviderModels(providerID: string, draft: ProviderModelsDraft): Promise<void> {
     return call("VelaService.SaveProviderModels", providerID, draft);
+  },
+  /** SaveRequestRetention 保存已确认的保留期限。 */
+  saveRequestRetention(body: boolean, days: number, before: number): Promise<void> {
+    return call("VelaService.SaveRequestRetention", body, days, before);
   },
   /** SaveSchedulingProviderOrder 原子保存完整供应商顺序，失败不改变已保存配置。 */
   saveSchedulingProviderOrder(ids: string[]): Promise<void> {

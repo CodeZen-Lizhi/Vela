@@ -43,6 +43,11 @@
   /** 空数据按选中往返的实际状态解释，不把无响应、空正文和未采集混为一谈。 */
   function emptyMessage(direction: string): string {
     if (record.state === "active" && (!current || !current.endedAt && !current.durationMillis)) return "请求进行中，尚无此项数据。";
+    if (view !== "headers") {
+      if (payload?.bodyState === "cleared") return "正文已清理。";
+      if (payload?.bodyState === "saveFailed") return "正文保存失败。";
+      if (payload?.bodyState === "readFailed") return "正文文件无法读取。";
+    }
     if (direction !== "response" || !current || !payload || payload.bodyState === "unavailable") return "此侧数据未采集或不适用。";
     if (!current.status) return "未收到上游 HTTP 响应，因此没有响应头和响应正文。";
     return view === "headers" ? "上游响应头为空。" : "上游未返回响应正文。";
@@ -79,7 +84,7 @@
               <Alert.Root variant="destructive"><Alert.Description>{failure}</Alert.Description></Alert.Root>
             {/if}
             {#if pane.expired}
-              <Alert.Root variant="info"><Alert.Description>正文已超过 7 天保留期限。</Alert.Description></Alert.Root>
+              <Alert.Root variant="info"><Alert.Description>正文已超过保留期限。</Alert.Description></Alert.Root>
             {:else if !pane.formatted}
               <Alert.Root variant="info"><Alert.Description>{emptyMessage(pane.direction)}</Alert.Description></Alert.Root>
             {:else if view === "content" && pane.rows.length}

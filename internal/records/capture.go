@@ -461,6 +461,10 @@ func (b *captureBody) complete() {
 			b.attempt.Error = http.StatusText(b.attempt.Status)
 		}
 		b.payload.ResponseBody = sanitize(b.raw.String(), b.secrets)
+		if b.attempt.Status >= 400 {
+			b.attempt.Error = upstreamErrorSummary(b.attempt.Error, b.payload.ResponseBody)
+		}
+
 		if b.omitBody {
 			b.payload.ResponseBody = omittedResponseBody
 			b.payload.BodyState = "unavailable"
@@ -501,7 +505,7 @@ func (b *captureBody) complete() {
 		r.Attempts[b.attempt.Number-1] = b.attempt
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := b.run.store.putPayload(ctx, r.ID, b.attempt.Number, b.payload); err != nil {
+		if err := b.run.putPayload(ctx, b.attempt.Number, b.payload); err != nil {
 			b.run.writeErr = errors.Join(b.run.writeErr, err)
 		}
 		if err := b.run.store.save(ctx, *r, false); err != nil {
@@ -667,3 +671,41 @@ func scrub(value any) {
 
 // isEncodedMedia 只处理内嵌媒体的字符串 data，不删除正常响应 data 数组元信息。
 func isEncodedMedia(value any) bool { _, ok := value.(string); return ok }
+
+// upstreamErrorSummary 保留脱敏结构化错误，正文清理后仍可定位失败。
+func upstreamErrorSummary(reason, body string) string {
+	var response struct {
+		Error   json.RawMessage
+		Message string
+	}
+	if json.Unmarshal([]byte(body), &response) != nil {
+		return reason
+	}
+	var detail struct{ Code, Type, Message string }
+	if json.Unmarshal(response.Error, &detail) != nil {
+		_ = json.Unmarshal(response.Error, &detail.Message)
+	}
+	message := detail.Message
+	if message == "" {
+		message = response.Message
+	}
+	code := detail.Code
+	if code == "" {
+		code = detail.Type
+	}
+	if code != "" && message != "" {
+		message = code + ": " + message
+	} else if code != "" {
+		message = code
+	}
+	if message == "" || message == reason {
+		return reason
+	}
+	if len(message) > 4096 {
+		message = strings.ToValidUTF8(message[:4096], "�")
+	}
+	if reason == "" {
+		return message
+	}
+	return reason + ": " + message
+}

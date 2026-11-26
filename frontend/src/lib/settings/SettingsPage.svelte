@@ -109,6 +109,7 @@
     <div hidden={section !== "records"} class="grid gap-5">
       <ConfigTransfer />
       <RecordsSettings />
+      <RecordsSettings body />
     </div>
   {/if}
   </div>
